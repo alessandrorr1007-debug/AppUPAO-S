@@ -64,6 +64,24 @@ data class RankingResponse(
     @SerializedName("percentil") val percentil: Int? = null
 )
 
+// ---------- Modelos para Promedio Ponderado Semestral (PPS) ----------
+
+data class PromedioCursoItem(
+    @SerializedName("crn") val crn: String = "",
+    @SerializedName("nombre") val nombre: String = "",
+    @SerializedName("nota") val nota: Float? = null,
+    @SerializedName("creditos") val creditos: Int? = null
+)
+
+data class PromedioPeriodoResponse(
+    @SerializedName("periodo") val periodo: String,
+    @SerializedName("pps_oficial") val ppsOficial: Float? = null,
+    @SerializedName("pps_calculado") val ppsCalculado: Float? = null,
+    @SerializedName("fuente") val fuente: String = "calculado",
+    @SerializedName("total_creditos") val totalCreditos: Int? = null,
+    @SerializedName("cursos") val cursos: List<PromedioCursoItem> = emptyList()
+)
+
 // ---------- Modelos para el Panel Administrador ----------
 
 data class AdminCuentaItem(

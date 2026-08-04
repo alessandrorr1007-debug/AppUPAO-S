@@ -116,6 +116,12 @@ interface ApiService {
         @Query("ciclo") ciclo: String
     ): Response<RankingResponse>
 
+    @GET("api/promedio/{periodo}")
+    suspend fun getPromedioPeriodo(
+        @Path("periodo") periodo: String,
+        @Header("Authorization") authorization: String
+    ): Response<PromedioPeriodoResponse>
+
     // ---------- Endpoints Panel Administrador ----------
 
     @GET("admin/cuentas")
