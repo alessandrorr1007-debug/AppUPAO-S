@@ -35,6 +35,7 @@ import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.GradesResponse
+import com.example.upaos.data.model.PromedioPeriodoResponse
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.CircularGauge
 import com.example.upaos.ui.components.EmptyState
@@ -86,10 +87,28 @@ fun GradesContent(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var promedioGeneral by remember { mutableStateOf<Any?>(null) }
     var promedioBasadoEn by remember { mutableStateOf<String?>(null) }
+    var promedioPeriodoRes by remember { mutableStateOf<PromedioPeriodoResponse?>(null) }
     var ultimaActualizacion by remember { mutableStateOf<String?>(null) }
     var sesionExpirada by remember { mutableStateOf(false) }
 
     val claveCache = "notas_${usuario ?: "anonimo"}"
+
+    fun loadPromedioPeriodo(term: String) {
+        scope.launch {
+            try {
+                Log.d("UPAO_APP", "[Android UI] Solicitando promedio PPS para periodo: $term")
+                val res = RetrofitClient.apiService.getPromedioPeriodo(term, "Bearer $token")
+                if (res.isSuccessful && res.body() != null) {
+                    promedioPeriodoRes = res.body()
+                    Log.d("UPAO_APP", "[Android UI] PPS recibido -> Oficial=${promedioPeriodoRes?.ppsOficial}, Calc=${promedioPeriodoRes?.ppsCalculado}, Fuente=${promedioPeriodoRes?.fuente}")
+                } else {
+                    Log.w("UPAO_APP", "[Android UI] No se pudo obtener PPS (${res.code()}), usando promedio local de fallback")
+                }
+            } catch (e: Exception) {
+                Log.w("UPAO_APP", "[Android UI] Excepción obteniendo PPS: ${e.localizedMessage}, usando promedio local de fallback")
+            }
+        }
+    }
 
     fun aplicarCache() {
         scope.launch {
@@ -143,6 +162,7 @@ fun GradesContent(
                 Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             }
         }
+        loadPromedioPeriodo(selectedPeriodo)
     }
 
     fun updateCarrerasForTerm(term: String) {
@@ -287,12 +307,12 @@ fun GradesContent(
         }
 
         AnimatedVisibility(
-            visible = errorMessage == null && promedioGeneral != null,
+            visible = errorMessage == null && (promedioGeneral != null || promedioPeriodoRes != null),
             enter = fadeIn(tween(220)) + expandVertically(),
             exit = fadeOut(tween(180))
         ) {
             Column {
-                PromedioCard(promedioGeneral)
+                PromedioCard(promedioGeneral = promedioGeneral, promedioPeriodoRes = promedioPeriodoRes)
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
@@ -358,9 +378,30 @@ fun GradesContent(
 }
 
 @Composable
-fun PromedioCard(promedioGeneral: Any?) {
-    val p = promedioGeneral?.toString()?.toDoubleOrNull()
-    val gaugeColor = gradeColor(p)
+fun PromedioCard(
+    promedioGeneral: Any?,
+    promedioPeriodoRes: PromedioPeriodoResponse? = null
+) {
+    val ppsOficial = promedioPeriodoRes?.ppsOficial?.toDouble()
+    val ppsCalculado = promedioPeriodoRes?.ppsCalculado?.toDouble()
+
+    val pFinal = when {
+        ppsOficial != null -> ppsOficial
+        ppsCalculado != null -> ppsCalculado
+        else -> promedioGeneral?.toString()?.toDoubleOrNull()
+    }
+
+    val fuenteTexto = when {
+        ppsOficial != null -> "Oficial (Cuadro de Mérito)"
+        ppsCalculado != null -> "Estimado (Notas × Créditos)"
+        else -> "Resumen del periodo"
+    }
+
+    val esOficial = ppsOficial != null
+    val esEstimado = ppsOficial == null && ppsCalculado != null
+
+    val gaugeColor = gradeColor(pFinal)
+
     AppCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -371,8 +412,8 @@ fun PromedioCard(promedioGeneral: Any?) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             CircularGauge(
-                progress = if (p != null) (p / 20f).toFloat() else 0f,
-                centerValue = formatNota(promedioGeneral),
+                progress = if (pFinal != null) (pFinal / 20.0).toFloat() else 0f,
+                centerValue = formatNota(pFinal ?: promedioGeneral),
                 centerLabel = "/ 20",
                 size = 48.dp,
                 strokeWidth = 5.dp,
@@ -380,22 +421,31 @@ fun PromedioCard(promedioGeneral: Any?) {
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Promedio general",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Promedio general",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (esOficial || esEstimado) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        StatusBadge(
+                            text = if (esOficial) "Oficial" else "Estimado",
+                            color = if (esOficial) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Resumen del periodo",
+                    text = fuenteTexto,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (p != null) {
+            if (pFinal != null) {
                 StatusBadge(
-                    text = if (p >= 10.5) "Aprobado" else "Requiere mejorar",
+                    text = if (pFinal >= 10.5) "Aprobado" else "Requiere mejorar",
                     color = gaugeColor
                 )
             }
