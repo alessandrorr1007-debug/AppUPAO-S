@@ -384,110 +384,71 @@ fun PromedioCard(
 ) {
     val ppsOficial = promedioPeriodoRes?.ppsOficial?.toDouble()
     val ppsCalculado = promedioPeriodoRes?.ppsCalculado?.toDouble()
+    val fuente = promedioPeriodoRes?.fuente
 
-    val ppsFinal = when {
+    val pFinal = when {
         ppsOficial != null -> ppsOficial
         ppsCalculado != null -> ppsCalculado
-        else -> null
+        else -> promedioGeneral?.toString()?.toDoubleOrNull()
     }
 
-    val promedioSimpleVal = promedioGeneral?.toString()?.toDoubleOrNull()
+    val fuenteTexto = when {
+        fuente == "cuadro_merito" || ppsOficial != null -> "Oficial (Cuadro de Mérito)"
+        fuente == "calculado" || ppsCalculado != null -> "Estimado (Notas × Créditos)"
+        else -> "Resumen del periodo"
+    }
 
-    val esOficial = ppsOficial != null
-    val esEstimado = ppsOficial == null && ppsCalculado != null
+    val esOficial = fuente == "cuadro_merito" || ppsOficial != null
+    val esEstimado = !esOficial && (fuente == "calculado" || ppsCalculado != null)
+
+    val gaugeColor = gradeColor(pFinal)
 
     AppCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
         corner = 16.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column {
-            Text(
-                text = "Resumen de Promedios del Periodo",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularGauge(
+                progress = if (pFinal != null) (pFinal / 20.0).toFloat() else 0f,
+                centerValue = formatNota(pFinal),
+                centerLabel = "/ 20",
+                size = 52.dp,
+                strokeWidth = 5.dp,
+                gaugeColor = gaugeColor
             )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 1. Promedio Simple del Ciclo
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularGauge(
-                            progress = if (promedioSimpleVal != null) (promedioSimpleVal / 20.0).toFloat() else 0f,
-                            centerValue = formatNota(promedioSimpleVal),
-                            centerLabel = "/ 20",
-                            size = 40.dp,
-                            strokeWidth = 4.dp,
-                            gaugeColor = gradeColor(promedioSimpleVal)
-                        )
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Promedio Ponderado (PPS)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (esOficial || esEstimado) {
                         Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text(
-                                text = "Prom. Ciclo",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Suma simple",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 9.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        StatusBadge(
+                            text = if (esOficial) "Oficial" else "Estimado",
+                            color = if (esOficial) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+                        )
                     }
                 }
-
-                // 2. Promedio Ponderado (PPS)
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularGauge(
-                            progress = if (ppsFinal != null) (ppsFinal / 20.0).toFloat() else (promedioSimpleVal?.let { (it / 20.0).toFloat() } ?: 0f),
-                            centerValue = formatNota(ppsFinal ?: promedioSimpleVal),
-                            centerLabel = "/ 20",
-                            size = 40.dp,
-                            strokeWidth = 4.dp,
-                            gaugeColor = gradeColor(ppsFinal ?: promedioSimpleVal)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text(
-                                text = "Ponderado (PPS)",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = if (esOficial) "Cuadro Mérito" else if (esEstimado) "Notas × Créditos" else "En proceso",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 9.sp,
-                                color = if (esOficial) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = fuenteTexto,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (pFinal != null) {
+                StatusBadge(
+                    text = if (pFinal >= 10.5) "Aprobado" else "Requiere mejorar",
+                    color = gaugeColor
+                )
             }
         }
     }
