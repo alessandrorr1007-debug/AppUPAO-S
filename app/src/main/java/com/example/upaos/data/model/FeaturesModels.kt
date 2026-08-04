@@ -7,11 +7,14 @@ data class CuentaInfo(
     @SerializedName("usuario") val usuario: String? = null,
     @SerializedName("nombre") val nombre: String? = null,
     @SerializedName("is_admin") val isAdmin: Boolean = false,
+    @SerializedName("rol") val rol: String? = null,
     @SerializedName("ranking_optin") val rankingOptin: Boolean = false,
     @SerializedName("auto_check_enabled") val autoCheckEnabled: Boolean = false,
     @SerializedName("tiene_password_guardada") val tienePasswordGuardada: Boolean = false,
     @SerializedName("fecha_primer_login") val fechaPrimerLogin: String? = null
-)
+) {
+    val esAdmin: Boolean get() = isAdmin || rol == "admin"
+}
 
 data class SemanaInfo(
     @SerializedName("configurada") val configurada: Boolean = false,
@@ -59,6 +62,60 @@ data class RankingResponse(
     @SerializedName("position") val position: Int? = null,
     @SerializedName("total") val total: Int = 0,
     @SerializedName("percentil") val percentil: Int? = null
+)
+
+// ---------- Modelos para el Panel Administrador ----------
+
+data class AdminCuentaItem(
+    @SerializedName("usuario") val usuario: String,
+    @SerializedName("nombre") val nombre: String? = null,
+    @SerializedName("is_admin") val isAdmin: Boolean = false,
+    @SerializedName("ranking_optin") val rankingOptin: Boolean = false,
+    @SerializedName("auto_check_enabled") val autoCheckEnabled: Boolean = false,
+    @SerializedName("tiene_password_guardada") val tienePasswordGuardada: Boolean = false,
+    @SerializedName("fecha_primer_login") val fechaPrimerLogin: String? = null,
+    @SerializedName("ultima_revision") val ultimaRevision: String? = null
+)
+
+data class AdminCuentasResponse(
+    @SerializedName("cuentas") val cuentas: List<AdminCuentaItem> = emptyList()
+)
+
+data class AdminSugerenciaItem(
+    @SerializedName("id") val id: Long,
+    @SerializedName("usuario") val usuario: String,
+    @SerializedName("texto") val texto: String,
+    @SerializedName("estado") val estado: String = "pendiente",
+    @SerializedName("fecha_creacion") val fechaCreacion: String? = null
+)
+
+data class AdminSugerenciasResponse(
+    @SerializedName("sugerencias") val sugerencias: List<AdminSugerenciaItem> = emptyList()
+)
+
+data class AdminEstadoSugerenciaRequest(
+    @SerializedName("estado") val estado: String
+)
+
+data class AdminSemanaRequest(
+    @SerializedName("fecha_inicio") val fechaInicio: String
+)
+
+data class DauPunto(
+    @SerializedName("fecha") val fecha: String,
+    @SerializedName("usuarios") val usuarios: Int
+)
+
+data class PicoTrafico(
+    @SerializedName("fecha_hora") val fechaHora: String? = null,
+    @SerializedName("usuarios_simultaneos") val usuariosSimultaneos: Int = 0
+)
+
+data class AdminMetricasResponse(
+    @SerializedName("dau_30_dias") val dau30Dias: List<DauPunto> = emptyList(),
+    @SerializedName("cuentas_activas_hoy") val cuentasActivasHoy: Int = 0,
+    @SerializedName("pico_hoy") val picoHoy: PicoTrafico? = null,
+    @SerializedName("pico_historico") val picoHistorico: PicoTrafico? = null
 )
 
 /** course_id único = subjectCode + courseNumber (ej. 'HUMA-1185'), normalizado sin tildes. */

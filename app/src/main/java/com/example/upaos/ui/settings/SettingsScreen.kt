@@ -1,27 +1,36 @@
 package com.example.upaos.ui.settings
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.EmojiObjects
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.AutoCheckRequest
 import com.example.upaos.data.model.IntervaloRequest
 import com.example.upaos.data.model.RankingOptinRequest
+import com.example.upaos.ui.components.AppCard
+import com.example.upaos.ui.components.StatusBadge
+import com.example.upaos.ui.components.cursoColor
+import com.example.upaos.ui.components.toTitleCase
 import kotlinx.coroutines.launch
 
 private val OPCIONES_INTERVALO = listOf(5, 10, 15, 30)
@@ -32,7 +41,8 @@ fun SettingsScreen(
     usuario: String?,
     onBack: () -> Unit,
     onOpenSugerencias: () -> Unit,
-    onOpenRanking: () -> Unit
+    onOpenRanking: () -> Unit,
+    onOpenAdmin: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -43,7 +53,6 @@ fun SettingsScreen(
     var cargando by remember { mutableStateOf(true) }
     var guardando by remember { mutableStateOf(false) }
 
-    // 1.4/1.2: perfil (nombre + is_admin) y opt-in de ranking desde /cuenta.
     var nombreEstudiante by remember { mutableStateOf<String?>(null) }
     var esAdmin by remember { mutableStateOf(false) }
     var rankingOptin by remember { mutableStateOf(false) }
@@ -71,11 +80,11 @@ fun SettingsScreen(
             if (resCuenta.isSuccessful && resCuenta.body() != null) {
                 val cuenta = resCuenta.body()!!
                 nombreEstudiante = cuenta.nombre
-                esAdmin = cuenta.isAdmin
+                esAdmin = cuenta.esAdmin
                 rankingOptin = cuenta.rankingOptin
             }
         } catch (e: Exception) {
-            // El perfil es opcional: la app funciona aunque /cuenta falle.
+            // El perfil es opcional
         }
         cargando = false
     }
@@ -121,7 +130,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Ajustes", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    containerColor = MaterialTheme.colorScheme.background
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -149,78 +158,82 @@ fun SettingsScreen(
             }
 
             if (usuario == null) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Sin sesión guardada",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Inicia sesión para activar la revisión automática de notas en segundo plano.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Person,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(
+                                text = "Sin sesión guardada",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Inicia sesión para activar la revisión automática de notas en segundo plano.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 return@Column
             }
 
-            // 1.4 Perfil: etiqueta "Estudiante: [Nombre]" (fallback al código).
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
+            val avatarColor = cursoColor(nombreEstudiante ?: usuario)
+            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(avatarColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = (nombreEstudiante ?: usuario!!).trim().firstOrNull()?.uppercase() ?: "?",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Estudiante: ${nombreEstudiante ?: usuario}",
+                            text = "Estudiante: ${nombreEstudiante?.let { toTitleCase(it) } ?: usuario}",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (nombreEstudiante != null) "Código: $usuario" else usuario,
+                            text = if (nombreEstudiante != null) "Código: $usuario" else usuario!!,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (esAdmin) {
-                        SuggestionChip(
-                            onClick = {},
-                            label = { Text("Administrador") },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                labelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
-                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        StatusBadge(text = "Administrador", color = MaterialTheme.colorScheme.tertiary)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Participar en el ranking de cursos",
@@ -241,41 +254,92 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                shape = MaterialTheme.shapes.large
+            AppCard(
+                corner = 20.dp,
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Column {
                     ListItem(
                         headlineContent = { Text("Ranking de cursos") },
                         supportingContent = { Text("Tu posición anónima en cada curso") },
-                        leadingContent = { Icon(Icons.Filled.Leaderboard, contentDescription = null) },
+                        leadingContent = {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Leaderboard,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        },
                         trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                         modifier = Modifier.clickable(onClick = onOpenRanking)
                     )
-                    HorizontalDivider()
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     ListItem(
                         headlineContent = { Text("Buzón de sugerencias") },
                         supportingContent = { Text("Envíanos ideas y revisa su estado") },
-                        leadingContent = { Icon(Icons.Filled.EmojiObjects, contentDescription = null) },
+                        leadingContent = {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.EmojiObjects,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        },
                         trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                         modifier = Modifier.clickable(onClick = onOpenSugerencias)
                     )
+
+                    if (esAdmin) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        ListItem(
+                            headlineContent = { Text("Panel Administrador", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+                            supportingContent = { Text("Métricas, usuarios registrados y configuración del ciclo") },
+                            leadingContent = {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.AdminPanelSettings,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                            modifier = Modifier.clickable(onClick = onOpenAdmin)
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Revisión automática en 2do plano",
@@ -300,13 +364,10 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+                Column {
                     Text(
                         text = "Frecuencia de revisión",
                         style = MaterialTheme.typography.titleSmall,

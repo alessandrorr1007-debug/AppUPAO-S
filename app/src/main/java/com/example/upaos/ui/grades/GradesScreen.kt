@@ -6,6 +6,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -21,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,30 +35,25 @@ import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.GradesResponse
+import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.CircularGauge
+import com.example.upaos.ui.components.EmptyState
+import com.example.upaos.ui.components.ErrorView
+import com.example.upaos.ui.components.SkeletonCourseCard
+import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.gradeColor
 import com.example.upaos.ui.components.isPendiente
 import com.example.upaos.ui.components.textoUltimaActualizacion
+import com.example.upaos.ui.components.toTitleCase
 import com.google.gson.Gson
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
-/**
- * Regla compartida con el backend: un periodo es de ciclo regular si su código
- * termina en "10" o "20". Los códigos que terminan en "90" son Centro de
- * Idiomas y NO se consideran ciclo regular.
- */
 private fun esPeriodoRegular(code: String): Boolean {
     val s = code.trim()
     return s.endsWith("10") || s.endsWith("20")
 }
 
-/**
- * Detecta el periodo actual: de los periodos regulares (10/20, excluyendo 90)
- * selecciona el de código numérico más alto (los códigos son cronológicos:
- * 202610 < 202620 < 202710, el más alto siempre es el más reciente/actual).
- * Se aplica al cargar y cada vez que la lista de periodos se actualiza.
- */
 fun detectarPeriodoActual(periodos: List<String>, periodoActual: String? = null): String {
     val regulares = periodos.filter(::esPeriodoRegular)
     regulares.maxOrNull()?.let { return it }
@@ -105,7 +103,7 @@ fun GradesContent(
                 ultimaActualizacion = body.ultimaActualizacion
                 body.periodo?.let { selectedPeriodo = it }
                 body.carrera?.let { selectedCarrera = it }
-                Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${cursos.size} cursos, actualizado=$ultimaActualizacion")
+                Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${cursos.size} cursos")
             } catch (e: Exception) {
                 Log.e("UPAO_APP", "[Android UI] Error leyendo caché de notas: ${e.localizedMessage}", e)
             }
@@ -117,39 +115,30 @@ fun GradesContent(
         errorMessage = null
         scope.launch {
             try {
-                Log.d("UPAO_APP", "[Android UI] Enviando consulta -> Periodo: $selectedPeriodo, Nivel/Carrera: $selectedCarrera, Token: ${token.take(10)}...")
+                Log.d("UPAO_APP", "[Android UI] Consultando notas -> Periodo: $selectedPeriodo, Carrera: $selectedCarrera")
                 val req = mapOf("periodo" to selectedPeriodo, "carrera" to selectedCarrera)
                 val res = RetrofitClient.apiService.buscarNotas("Bearer $token", req)
                 isLoading = false
                 val errBody = res.errorBody()?.string()
                 if (esErrorSesionExpirada(res.code(), errBody)) {
-                    Log.e("UPAO_APP", "[Android UI] Sesión expirada detectada (401 sesion_expirada)")
                     sesionExpirada = true
                     return@launch
                 }
 
-                Log.d("UPAO_APP", "[Android UI] Respuesta HTTP buscarNotas Code: ${res.code()}")
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     cursos = body.cursos
                     promedioGeneral = body.promedioGeneral
                     promedioBasadoEn = body.promedioBasadoEn
                     ultimaActualizacion = body.ultimaActualizacion
-                    // Se guarda el JSON completo: el timestamp real del backend viaja con los datos.
                     scope.launch { cache.guardar(claveCache, gson.toJson(body)) }
-                    Log.d("UPAO_APP", "[Android UI] Cursos recibidos por la API: ${cursos.size}")
-                    Log.d("UPAO_APP", "[Android UI] Promedio general: $promedioGeneral (basado en: $promedioBasadoEn)")
                 } else {
                     val err = errBody ?: "Error desconocido"
-                    Log.e("UPAO_APP", "[Android UI] Error HTTP ${res.code()}: $err")
-                    // No se borra la caché: se sigue mostrando la última versión conocida.
                     errorMessage = "Error HTTP ${res.code()}: $err"
                     Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 isLoading = false
-                Log.e("UPAO_APP", "[Android UI] Excepción al cargar notas: ${e.localizedMessage}", e)
-                // No se borra la caché: se sigue mostrando la última versión conocida.
                 errorMessage = "Excepción: ${e.localizedMessage}"
                 Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             }
@@ -175,19 +164,16 @@ fun GradesContent(
     }
 
     LaunchedEffect(Unit) {
-        // Mostrar al instante lo último que se conoce de este usuario.
         aplicarCache()
         try {
             val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
             if (periodosRes.isSuccessful && periodosRes.body() != null) {
                 val body = periodosRes.body()!!
                 periodos = body.periodos
-                // Selección automática: periodo regular (10/20, excluye 90) de mayor código.
                 selectedPeriodo = detectarPeriodoActual(body.periodos, body.periodoActual)
             }
             updateCarrerasForTerm(selectedPeriodo)
         } catch (e: Exception) {
-            Log.e("UPAO_APP", "Error consultando combos iniciales: ${e.localizedMessage}")
             loadGrades()
         }
     }
@@ -195,7 +181,7 @@ fun GradesContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -211,7 +197,7 @@ fun GradesContent(
                     value = selectedPeriodo,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Periodo") },
+                    label = { Text("Periodo", fontSize = 12.sp) },
                     shape = RoundedCornerShape(12.dp),
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = periodosExpanded) },
                     modifier = Modifier.menuAnchor()
@@ -222,7 +208,7 @@ fun GradesContent(
                 ) {
                     periodos.forEach { item ->
                         DropdownMenuItem(
-                            text = { Text(item) },
+                            text = { Text(item, fontSize = 13.sp) },
                             onClick = {
                                 selectedPeriodo = item
                                 periodosExpanded = false
@@ -242,7 +228,7 @@ fun GradesContent(
                     value = selectedCarrera,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Nivel / Carrera") },
+                    label = { Text("Nivel / Carrera", fontSize = 12.sp) },
                     shape = RoundedCornerShape(12.dp),
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = carrerasExpanded) },
                     modifier = Modifier.menuAnchor()
@@ -253,7 +239,7 @@ fun GradesContent(
                 ) {
                     carreras.forEach { item ->
                         DropdownMenuItem(
-                            text = { Text(item) },
+                            text = { Text(item, fontSize = 13.sp) },
                             onClick = {
                                 selectedCarrera = item
                                 carrerasExpanded = false
@@ -264,29 +250,36 @@ fun GradesContent(
                 }
             }
 
-            IconButton(onClick = { loadGrades() }) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = "Actualizar Notas",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.size(46.dp)
+            ) {
+                IconButton(onClick = { loadGrades() }) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "Actualizar Notas",
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         if (ultimaActualizacion != null && errorMessage == null) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
                 Text(
                     text = textoUltimaActualizacion(ultimaActualizacion),
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (isLoading) {
                     Spacer(modifier = Modifier.width(6.dp))
                     CircularProgressIndicator(
                         modifier = Modifier.size(12.dp),
-                        strokeWidth = 2.dp,
+                        strokeWidth = 1.8.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -295,8 +288,8 @@ fun GradesContent(
 
         AnimatedVisibility(
             visible = errorMessage == null && promedioGeneral != null,
-            enter = androidx.compose.animation.fadeIn(tween(300)) + androidx.compose.animation.expandVertically(),
-            exit = androidx.compose.animation.fadeOut(tween(200))
+            enter = fadeIn(tween(220)) + expandVertically(),
+            exit = fadeOut(tween(180))
         ) {
             Column {
                 PromedioCard(promedioGeneral)
@@ -306,27 +299,29 @@ fun GradesContent(
 
         when {
             isLoading && cursos.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    repeat(4) { SkeletonCourseCard() }
                 }
             }
             errorMessage != null && cursos.isEmpty() -> {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = "Error de Consulta", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = errorMessage!!, fontSize = 13.sp, color = MaterialTheme.colorScheme.onErrorContainer)
-                    }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ErrorView(
+                        message = errorMessage!!,
+                        onRetry = { loadGrades() },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
                 }
             }
             cursos.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No hay cursos registrados para el periodo $selectedPeriodo", color = MaterialTheme.colorScheme.outline)
-                }
+                EmptyState(
+                    icon = Icons.Filled.Grade,
+                    title = "No hay cursos registrados",
+                    subtitle = "No hay cursos para el periodo $selectedPeriodo.",
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
             }
             else -> {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -341,14 +336,16 @@ fun GradesContent(
     if (sesionExpirada) {
         AlertDialog(
             onDismissRequest = { sesionExpirada = false },
-            title = { Text("Sesión expirada") },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text("Sesión expirada", fontWeight = FontWeight.Bold) },
             text = { Text("Tu sesión expiró, por favor inicia sesión de nuevo.") },
             confirmButton = {
                 TextButton(onClick = {
                     sesionExpirada = false
                     onSesionExpirada()
                 }) {
-                    Text("Iniciar sesión")
+                    Text("Iniciar sesión", fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
@@ -363,43 +360,44 @@ fun GradesContent(
 @Composable
 fun PromedioCard(promedioGeneral: Any?) {
     val p = promedioGeneral?.toString()?.toDoubleOrNull()
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        shape = MaterialTheme.shapes.large,
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+    val gaugeColor = gradeColor(p)
+    AppCard(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        corner = 14.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             CircularGauge(
                 progress = if (p != null) (p / 20f).toFloat() else 0f,
                 centerValue = formatNota(promedioGeneral),
                 centerLabel = "/ 20",
-                size = 104.dp
+                size = 48.dp,
+                strokeWidth = 5.dp,
+                gaugeColor = gaugeColor
             )
-            Spacer(modifier = Modifier.width(24.dp))
-            Column {
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Promedio general",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Basado en las notas actuales de tus cursos",
+                    text = "Resumen del periodo",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                if (p != null) {
-                    Text(
-                        text = if (p >= 10.5) "Aprobado" else "Requiere mejorar",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = gradeColor(p)
-                    )
-                }
+            }
+            if (p != null) {
+                StatusBadge(
+                    text = if (p >= 10.5) "Aprobado" else "Requiere mejorar",
+                    color = gaugeColor
+                )
             }
         }
     }
@@ -432,34 +430,30 @@ fun CourseGradeCard(
                     "carrera" to carrera,
                     "crn" to courseCrn
                 )
-                Log.d("UPAO_APP", "[Android UI] Solicitando componentes CRN=$courseCrn periodo=$periodo")
                 val res = RetrofitClient.apiService.getDetalleCurso("Bearer $token", req)
                 isLoadingDetails = false
-                Log.d("UPAO_APP", "[Android UI] Respuesta getDetalleCurso Code: ${res.code()}")
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     if (body.success) {
                         componentes = body.detalles
                         notaProyectada = body.notaProyectada
                         pesosPendientes = body.pesosPendientes
-                        Log.d("UPAO_APP", "[Android UI] Componentes recibidos: ${componentes.size}, notaProyectada=$notaProyectada")
                     } else {
-                        detailMessage = "Sin desglose de componentes disponible"
+                        detailMessage = "Sin desglose disponible"
                     }
                 } else {
-                    detailMessage = "Sin desglose de componentes disponible"
+                    detailMessage = "Sin desglose disponible"
                 }
             } catch (e: Exception) {
                 isLoadingDetails = false
-                Log.e("UPAO_APP", "[Android UI] Excepción al cargar componentes: ${e.localizedMessage}", e)
-                detailMessage = "En espera de carga de desgloses"
+                detailMessage = "En espera de desgloses"
             }
         }
     }
 
     val arrowRotation by animateFloatAsState(
         targetValue = if (componentesExpanded) 180f else 0f,
-        animationSpec = tween(250),
+        animationSpec = tween(220),
         label = "arrow"
     )
     val statusColor = gradeColor(course.displayNotaActual)
@@ -471,95 +465,102 @@ fun CourseGradeCard(
     ) {
         Box(
             modifier = Modifier
-                .width(6.dp)
+                .width(4.dp)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
                 .background(statusColor)
         )
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-            shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        AppCard(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            corner = 14.dp,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
             modifier = Modifier.weight(1f)
         ) {
             Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .animateContentSize()
+                modifier = Modifier.animateContentSize(animationSpec = tween(220))
             ) {
-                Text(
-                    text = course.displayNombre,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = if (courseCrn.isNotBlank()) "CRN $courseCrn" else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "NOTA",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        letterSpacing = 0.5.sp
-                    )
-                    Text(
-                        text = formatNota(course.displayNotaActual),
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = statusColor
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = toTitleCase(course.displayNombre),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2
+                        )
+                        if (courseCrn.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "CRN $courseCrn",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "NOTA",
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = formatNota(course.displayNotaActual),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = statusColor
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                OutlinedButton(
+                FilledTonalButton(
                     onClick = {
                         componentesExpanded = !componentesExpanded
                         if (componentesExpanded) fetchComponentes()
                     },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.KeyboardArrowDown,
                         contentDescription = null,
                         modifier = Modifier
-                            .size(18.dp)
+                            .size(16.dp)
                             .rotate(arrowRotation)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (componentesExpanded) "Ocultar Componente" else "Ver Componente")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        if (componentesExpanded) "Ocultar componentes" else "Ver componentes",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
 
                 AnimatedVisibility(visible = componentesExpanded) {
-                    Column(modifier = Modifier.padding(top = 12.dp)) {
+                    Column(modifier = Modifier.padding(top = 8.dp)) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Detalle de Componentes", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("Detalle de Componentes", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         Spacer(modifier = Modifier.height(4.dp))
 
                         when {
                             isLoadingDetails -> {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.padding(vertical = 8.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.padding(vertical = 6.dp)
                                 ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                    Text("Consultando componentes...", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.8.dp)
+                                    Text("Consultando componentes...", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
                                 }
                             }
                             componentes.isNotEmpty() -> {
@@ -569,14 +570,14 @@ fun CourseGradeCard(
                                             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                                             contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                                         ),
-                                        shape = MaterialTheme.shapes.medium,
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                                     ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
                                             Text(
-                                                text = "Nota proyectada (estimada, no oficial): ${displayGrade(notaProyectada)}",
+                                                text = "Nota proyectada: ${displayGrade(notaProyectada)}",
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
+                                                fontSize = 12.sp
                                             )
                                             if (pesosPendientes.isNotEmpty()) {
                                                 Spacer(modifier = Modifier.height(2.dp))
@@ -595,7 +596,7 @@ fun CourseGradeCard(
                             detailMessage != null -> {
                                 Text(
                                     text = detailMessage!!,
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.outline
                                 )
                             }
@@ -617,17 +618,17 @@ fun ComponenteRow(componente: ComponenteDetalle) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(enabled = hasSub) { expanded = !expanded }
-                .padding(vertical = 6.dp),
+                .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = componente.displayNombre, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(text = componente.displayNombre, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 val puntaje = componente.displayPuntaje
                 if (puntaje != null) {
                     Text(
-                        text = "$puntaje  ·  Peso ${componente.displayPeso}%",
-                        fontSize = 11.sp,
+                        text = "$puntaje · Peso ${componente.displayPeso}%",
+                        fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.outline
                     )
                 }
@@ -638,7 +639,7 @@ fun ComponenteRow(componente: ComponenteDetalle) {
                     imageVector = Icons.Filled.KeyboardArrowDown,
                     contentDescription = "Expandir sub-componentes",
                     modifier = Modifier
-                        .size(18.dp)
+                        .size(16.dp)
                         .rotate(if (expanded) 180f else 0f)
                 )
             }
@@ -648,21 +649,21 @@ fun ComponenteRow(componente: ComponenteDetalle) {
             AnimatedVisibility(visible = expanded) {
                 Column(
                     modifier = Modifier
-                        .padding(start = 16.dp, bottom = 4.dp)
+                        .padding(start = 12.dp, bottom = 4.dp)
                         .fillMaxWidth()
                 ) {
                     componente.subcomponentes.forEach { sub ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 3.dp),
+                                .padding(vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = sub.displayNombre, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(text = sub.displayNombre, fontSize = 11.sp, modifier = Modifier.weight(1f))
                             Text(
                                 text = displayGrade(sub.displayNota),
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -679,7 +680,6 @@ fun displayGrade(value: Any?): String = when {
     else -> value.toString()
 }
 
-// Muestra la nota con máximo 2 decimales, sin ceros a la derecha (14.0 -> "14", 9.84 -> "9.84").
 fun formatNota(value: Any?): String {
     if (isPendiente(value)) return "Pendiente"
     val d = value.toString().trim().toDoubleOrNull() ?: return value.toString()
@@ -693,13 +693,13 @@ fun GradeBadge(label: String, value: Any?) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
-            fontSize = 11.sp,
+            fontSize = 9.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             letterSpacing = 0.5.sp
         )
         Text(
             text = displayGrade(value),
-            fontSize = 18.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             color = color
         )

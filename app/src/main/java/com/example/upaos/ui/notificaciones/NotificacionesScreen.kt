@@ -19,7 +19,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.NotificacionItem
+import com.example.upaos.ui.components.AppCard
+import com.example.upaos.ui.components.EmptyState
+import com.example.upaos.ui.components.ErrorView
+import com.example.upaos.ui.components.SkeletonBox
 import com.example.upaos.ui.components.tiempoRelativo
+import com.example.upaos.ui.components.toTitleCase
 import com.example.upaos.ui.theme.UpaoOrange
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,7 +70,7 @@ fun NotificacionesScreen(
             TopAppBar(
                 title = { Text("Notificaciones", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    containerColor = MaterialTheme.colorScheme.background
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -77,13 +82,14 @@ fun NotificacionesScreen(
     ) { padding ->
         when {
             cargando -> {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
+                        .padding(padding)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    repeat(4) { SkeletonNotificacion() }
                 }
             }
             errorMessage != null && notificaciones.isEmpty() -> {
@@ -93,10 +99,8 @@ fun NotificacionesScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = errorMessage!!,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 14.sp,
+                    ErrorView(
+                        message = errorMessage!!,
                         modifier = Modifier.padding(24.dp)
                     )
                 }
@@ -108,26 +112,11 @@ fun NotificacionesScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Filled.NotificationsNone,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(56.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Aún no hay notificaciones",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Cuando cambie una nota te avisaremos aquí.",
-                            color = MaterialTheme.colorScheme.outline,
-                            fontSize = 13.sp
-                        )
-                    }
+                    EmptyState(
+                        icon = Icons.Filled.NotificationsNone,
+                        title = "Aún no hay notificaciones",
+                        subtitle = "Cuando cambie una nota te avisaremos aquí."
+                    )
                 }
             }
             else -> {
@@ -136,7 +125,7 @@ fun NotificacionesScreen(
                         .fillMaxSize()
                         .padding(padding),
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(notificaciones, key = { it.id }) { notif ->
                         NotificacionCard(notif)
@@ -149,21 +138,16 @@ fun NotificacionesScreen(
 
 @Composable
 fun NotificacionCard(notif: NotificacionItem) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (notif.leida) {
-                MaterialTheme.colorScheme.surfaceContainerHigh
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerHighest
-            }
-        ),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (notif.leida) 1.dp else 3.dp)
+    AppCard(
+        color = if (notif.leida) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+        corner = 20.dp,
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
             verticalAlignment = Alignment.Top
         ) {
             Box(
@@ -177,7 +161,7 @@ fun NotificacionCard(notif: NotificacionItem) {
             Column(modifier = Modifier.weight(1f)) {
                 if (!notif.curso.isNullOrBlank()) {
                     Text(
-                        text = notif.curso,
+                        text = toTitleCase(notif.curso),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -196,6 +180,23 @@ fun NotificacionCard(notif: NotificacionItem) {
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.outline
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonNotificacion() {
+    AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SkeletonBox(modifier = Modifier.size(10.dp), corner = 5.dp)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                SkeletonBox(modifier = Modifier.fillMaxWidth(0.3f).height(12.dp), corner = 6.dp)
+                Spacer(modifier = Modifier.height(8.dp))
+                SkeletonBox(modifier = Modifier.fillMaxWidth().height(14.dp), corner = 7.dp)
+                Spacer(modifier = Modifier.height(8.dp))
+                SkeletonBox(modifier = Modifier.fillMaxWidth(0.25f).height(10.dp), corner = 5.dp)
             }
         }
     }

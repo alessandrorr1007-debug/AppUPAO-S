@@ -7,25 +7,24 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -34,8 +33,8 @@ import androidx.navigation.navArgument
 import com.example.upaos.data.local.ThemePreferences
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.service.FcmTokenHelper
+import com.example.upaos.ui.admin.AdminScreen
 import com.example.upaos.ui.calculadora.CalculadoraScreen
-import com.example.upaos.ui.components.UpaoLogo
 import com.example.upaos.ui.home.HomeScreen
 import com.example.upaos.ui.login.EligeCuentaScreen
 import com.example.upaos.ui.login.LoginScreen
@@ -44,20 +43,21 @@ import com.example.upaos.ui.ranking.RankingScreen
 import com.example.upaos.ui.settings.SettingsScreen
 import com.example.upaos.ui.sugerencias.SugerenciasScreen
 import com.example.upaos.ui.theme.UPAOSTheme
-import com.example.upaos.ui.theme.UpaoBlueDark
-import com.example.upaos.ui.theme.UpaoOrangeBright
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) {
+                FcmTokenHelper.register(this)
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Android 13+: pedir permiso de notificaciones para mostrar los avisos de notas.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.POST_NOTIFICATIONS
@@ -74,7 +74,6 @@ class MainActivity : ComponentActivity() {
             val darkTheme by themePreferences.isDarkTheme.collectAsState(initial = true)
             val scope = rememberCoroutineScope()
 
-            // Registrar el token FCM del dispositivo con el usuario (si hay sesión guardada).
             LaunchedEffect(Unit) {
                 FcmTokenHelper.register(context)
             }
@@ -175,7 +174,15 @@ class MainActivity : ComponentActivity() {
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() },
                                 onOpenSugerencias = { navController.navigate("sugerencias") },
-                                onOpenRanking = { navController.navigate("ranking") }
+                                onOpenRanking = { navController.navigate("ranking") },
+                                onOpenAdmin = { navController.navigate("admin") }
+                            )
+                        }
+
+                        composable("admin") {
+                            AdminScreen(
+                                usuario = tokenManager.getSavedUser(),
+                                onBack = { navController.popBackStack() }
                             )
                         }
 
@@ -207,7 +214,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SplashScreen(onTimeout: () -> Unit) {
+    var startAnim by remember { mutableStateOf(false) }
+
+    val scale by animateFloatAsState(
+        targetValue = if (startAnim) 1f else 0.85f,
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+        label = "splashScale"
+    )
+
     LaunchedEffect(Unit) {
+        startAnim = true
         delay(1200)
         onTimeout()
     }
@@ -215,28 +231,45 @@ fun SplashScreen(onTimeout: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(UpaoBlueDark, Color(0xFF071D4D)))),
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                )
+            ),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            modifier = Modifier.scale(scale)
         ) {
-            UpaoLogo(size = 104.dp)
-            Spacer(modifier = Modifier.height(24.dp))
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(100.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Image(
+                        painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                        contentDescription = "Logo UPAO",
+                        modifier = Modifier.size(80.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(20.dp))
             Text(
-                text = "UPAO MÓVIL",
-                color = Color.White,
-                fontSize = 24.sp,
+                text = "UPAO Móvil",
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
+                color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Notas y Campus Virtual",
-                color = UpaoOrangeBright,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
+                text = "Notas, Horario y Asistencia",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

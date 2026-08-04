@@ -1,10 +1,11 @@
 package com.example.upaos.ui.login
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -14,18 +15,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.CuentaGuardada
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.LoginRequest
 import com.example.upaos.service.FcmTokenHelper
-import androidx.compose.ui.unit.sp
+import com.example.upaos.ui.components.AppCard
+import com.example.upaos.ui.components.EmptyState
+import com.example.upaos.ui.components.PrimaryButton
+import com.example.upaos.ui.components.ReusableDialog
+import com.example.upaos.ui.components.cursoColor
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EligeCuentaScreen(
     onLoginSuccess: (String) -> Unit,
@@ -70,114 +77,132 @@ fun EligeCuentaScreen(
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = { Text("Elige una cuenta", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
-                    }
-                }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                )
             )
-        }
-    ) { padding ->
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(12.dp)
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Volver",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Elige una cuenta",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
             Text(
                 text = "Cuentas guardadas en este dispositivo",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             if (cuentas.isEmpty()) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Person,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No hay cuentas guardadas",
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Guarda tu contraseña al iniciar sesión para verla aquí.",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                EmptyState(
+                    icon = Icons.Filled.Person,
+                    title = "No hay cuentas guardadas",
+                    subtitle = "Guarda tu contraseña al iniciar sesión para verla aquí."
+                )
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(cuentas, key = { it.usuario }) { cuenta ->
-                        Card(
+                        AppCard(
                             onClick = { iniciarSesionCon(cuenta) },
-                            enabled = autenticando == null,
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                            shape = RoundedCornerShape(16.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            corner = 14.dp
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Person,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(cursoColor(cuenta.nombre ?: cuenta.usuario)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = cuenta.nombre?.trim()?.firstOrNull()?.uppercase()
+                                            ?: cuenta.usuario.firstOrNull()?.uppercase()
+                                            ?: "?",
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+                                }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = cuenta.usuario,
-                                        fontWeight = FontWeight.Bold
+                                        text = cuenta.nombre?.takeIf { it.isNotBlank() } ?: "Usuario UPAO",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
                                     )
-                                    if (!cuenta.nombre.isNullOrBlank()) {
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = cuenta.nombre,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = cuenta.usuario,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                     if (autenticando == cuenta.usuario) {
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "Iniciando sesión...",
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(12.dp),
+                                                strokeWidth = 1.8.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Iniciando sesión...",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                     }
                                 }
-                                IconButton(onClick = { eliminarCuenta = cuenta }) {
+                                IconButton(
+                                    onClick = { eliminarCuenta = cuenta },
+                                    enabled = autenticando == null
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
                                         contentDescription = "Eliminar cuenta guardada",
-                                        tint = MaterialTheme.colorScheme.error
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
@@ -186,41 +211,34 @@ fun EligeCuentaScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            Button(
+            PrimaryButton(
+                text = "Agregar otra cuenta",
                 onClick = onGoToLogin,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-            ) {
-                Icon(Icons.Filled.PersonAdd, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Agregar otra cuenta", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            }
+                icon = Icons.Filled.PersonAdd,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ),
+                height = 44.dp,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 
     eliminarCuenta?.let { cuenta ->
-        AlertDialog(
-            onDismissRequest = { eliminarCuenta = null },
-            title = { Text("¿Eliminar esta cuenta guardada?") },
-            text = { Text("Se quitará la cuenta ${cuenta.usuario} de las cuentas guardadas de este dispositivo.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    tokenManager.removeCuenta(cuenta.usuario)
-                    cuentas = tokenManager.getCuentas()
-                    eliminarCuenta = null
-                }) {
-                    Text("Eliminar")
-                }
+        ReusableDialog(
+            title = "¿Eliminar esta cuenta guardada?",
+            text = "Se quitará la cuenta ${cuenta.usuario} de las cuentas guardadas de este dispositivo.",
+            confirmLabel = "Eliminar",
+            dismissLabel = "Cancelar",
+            onConfirm = {
+                tokenManager.removeCuenta(cuenta.usuario)
+                cuentas = tokenManager.getCuentas()
+                eliminarCuenta = null
             },
-            dismissButton = {
-                TextButton(onClick = { eliminarCuenta = null }) {
-                    Text("Cancelar")
-                }
-            }
+            onDismiss = { eliminarCuenta = null }
         )
     }
 }

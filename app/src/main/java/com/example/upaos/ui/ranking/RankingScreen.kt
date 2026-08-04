@@ -22,6 +22,11 @@ import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.GradesResponse
 import com.example.upaos.data.model.RankingResponse
 import com.example.upaos.data.model.normalizarCourseId
+import com.example.upaos.ui.components.AppCard
+import com.example.upaos.ui.components.EmptyState
+import com.example.upaos.ui.components.SectionHeader
+import com.example.upaos.ui.components.SkeletonCourseCard
+import com.example.upaos.ui.components.toTitleCase
 import com.google.gson.Gson
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,7 +89,7 @@ fun RankingScreen(
             TopAppBar(
                 title = { Text("Ranking de cursos", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    containerColor = MaterialTheme.colorScheme.background
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -96,13 +101,14 @@ fun RankingScreen(
     ) { padding ->
         when {
             cargando -> {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
+                        .padding(padding)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    repeat(3) { SkeletonCourseCard() }
                 }
             }
             cursos.isEmpty() -> {
@@ -112,27 +118,11 @@ fun RankingScreen(
                         .padding(padding),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.Leaderboard,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(56.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Aún no tienes cursos disponibles",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Abre primero la pestaña de Notas para cargar tus cursos del periodo.",
-                            color = MaterialTheme.colorScheme.outline,
-                            fontSize = 13.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
+                    EmptyState(
+                        icon = Icons.Filled.Leaderboard,
+                        title = "Aún no tienes cursos disponibles",
+                        subtitle = "Abre primero la pestaña de Notas para cargar tus cursos del periodo."
+                    )
                 }
             }
             else -> {
@@ -141,16 +131,21 @@ fun RankingScreen(
                         .fillMaxSize()
                         .padding(padding),
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (!optinActivo) {
                         item {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                                shape = RoundedCornerShape(16.dp)
+                            AppCard(
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                corner = 20.dp,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Info,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
                                         text = "La participación en el ranking está desactivada. Actívala desde Ajustes para ver tu posición.",
@@ -162,11 +157,8 @@ fun RankingScreen(
                         }
                     }
                     item {
-                        Text(
-                            text = if (periodo != null) "Periodo $periodo" else "Periodo actual",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        SectionHeader(
+                            title = if (periodo != null) "Periodo $periodo" else "Periodo actual"
                         )
                     }
                     items(cursos, key = { it.crn ?: it.displayNombre }) { curso ->
@@ -203,20 +195,13 @@ fun RankingCursoCard(curso: CourseGrade, ranking: RankingResponse?) {
         }
     }
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
+    AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = curso.displayNombre,
+                    text = toTitleCase(curso.displayNombre),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -228,8 +213,9 @@ fun RankingCursoCard(curso: CourseGrade, ranking: RankingResponse?) {
                 )
             }
             if (ranking?.disponible == true && ranking.position != null) {
+                Spacer(modifier = Modifier.width(12.dp))
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(

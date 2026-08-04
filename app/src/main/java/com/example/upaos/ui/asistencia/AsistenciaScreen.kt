@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,9 +26,17 @@ import com.example.upaos.data.api.esErrorSesionExpirada
 import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.model.AsistenciaCurso
 import com.example.upaos.data.model.AsistenciaResponse
+import com.example.upaos.ui.components.AppCard
+import com.example.upaos.ui.components.CircularGauge
+import com.example.upaos.ui.components.EmptyState
+import com.example.upaos.ui.components.ErrorView
+import com.example.upaos.ui.components.SectionHeader
+import com.example.upaos.ui.components.SkeletonBox
+import com.example.upaos.ui.components.StatusBadge
+import com.example.upaos.ui.components.cursoColor
+import com.example.upaos.ui.components.toTitleCase
 import com.example.upaos.ui.theme.UpaoAmber
 import com.example.upaos.ui.theme.UpaoGreen
-import com.example.upaos.ui.theme.UpaoOrange
 import com.example.upaos.ui.theme.UpaoRed
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
@@ -49,6 +58,12 @@ private fun porcentajeColor(pct: Double): Color = when {
     pct >= 90 -> UpaoGreen
     pct >= 70 -> UpaoAmber
     else -> UpaoRed
+}
+
+private fun estadoAsistencia(pct: Double): Pair<String, Color> = when {
+    pct >= 90 -> "Óptimo" to UpaoGreen
+    pct >= 70 -> "Aceptable" to UpaoAmber
+    else -> "En riesgo" to UpaoRed
 }
 
 private fun formatPct(pct: Double): String =
@@ -95,7 +110,6 @@ fun AsistenciaContent(
                 isLoading = false
                 val errBody = res.errorBody()?.string()
                 if (esErrorSesionExpirada(res.code(), errBody)) {
-                    Log.e("UPAO_APP", "[Android UI] Sesión expirada detectada (401 sesion_expirada)")
                     sesionExpirada = true
                     return@launch
                 }
@@ -103,16 +117,13 @@ fun AsistenciaContent(
                     val body = res.body()!!
                     registros = body.asistencia
                     scope.launch { cache.guardar(claveCache, gson.toJson(body)) }
-                    Log.d("UPAO_APP", "[Android UI] Asistencia recibida: ${registros.size} registros")
                 } else {
                     val err = errBody ?: "Error desconocido"
-                    Log.e("UPAO_APP", "[Android UI] Error HTTP ${res.code()}: $err")
                     errorMessage = "Error HTTP ${res.code()}: $err"
                     Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 isLoading = false
-                Log.e("UPAO_APP", "[Android UI] Excepción al cargar asistencia: ${e.localizedMessage}", e)
                 errorMessage = "Excepción: ${e.localizedMessage}"
                 Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             }
@@ -127,7 +138,7 @@ fun AsistenciaContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -138,6 +149,7 @@ fun AsistenciaContent(
                 Text(
                     text = "Asistencia",
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
@@ -147,17 +159,25 @@ fun AsistenciaContent(
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { load() }) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Actualizar Asistencia",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    IconButton(onClick = { load() }) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Actualizar Asistencia",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 if (isLoading && registros.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(6.dp))
                     CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 1.8.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -168,32 +188,65 @@ fun AsistenciaContent(
 
         when {
             isLoading && registros.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    repeat(3) { SkeletonAsistenciaCard() }
                 }
             }
             errorMessage != null && registros.isEmpty() -> {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = "Error de Consulta", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = errorMessage!!, fontSize = 13.sp, color = MaterialTheme.colorScheme.onErrorContainer)
-                    }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ErrorView(
+                        message = errorMessage!!,
+                        onRetry = { load() },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
                 }
             }
             registros.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Sin datos de asistencia disponibles", color = MaterialTheme.colorScheme.outline)
-                }
+                EmptyState(
+                    icon = Icons.Filled.Schedule,
+                    title = "Sin datos de asistencia",
+                    subtitle = "No hay datos de asistencia para este periodo.",
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
             }
             else -> {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(registros) { item ->
-                        AsistenciaCard(item)
+                val conNota = registros.mapNotNull { it.porcentaje }
+                val promedio = if (conNota.isNotEmpty()) conNota.average() else 0.0
+                val enRiesgo = registros.filter { (it.porcentaje ?: 0.0) < 70.0 }
+                val optimos = registros.count { (it.porcentaje ?: 0.0) >= 90.0 }
+                val resto = registros.filterNot { it in enRiesgo }
+
+                Column(modifier = Modifier.fillMaxSize()) {
+                    ResumenAsistencia(promedio, registros.size, enRiesgo.size, optimos)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (enRiesgo.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Cursos en riesgo",
+                                    subtitle = "Asistencia menor al 70%",
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                            items(enRiesgo) { curso -> AsistenciaCard(curso) }
+                            if (resto.isNotEmpty()) {
+                                item {
+                                    SectionHeader(
+                                        title = "Todos los cursos",
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                        if (resto.isNotEmpty()) {
+                            items(resto) { curso -> AsistenciaCard(curso) }
+                        }
                     }
                 }
             }
@@ -203,14 +256,16 @@ fun AsistenciaContent(
     if (sesionExpirada) {
         AlertDialog(
             onDismissRequest = { sesionExpirada = false },
-            title = { Text("Sesión expirada") },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text("Sesión expirada", fontWeight = FontWeight.Bold) },
             text = { Text("Tu sesión expiró, por favor inicia sesión de nuevo.") },
             confirmButton = {
                 TextButton(onClick = {
                     sesionExpirada = false
                     onSesionExpirada()
                 }) {
-                    Text("Iniciar sesión")
+                    Text("Iniciar sesión", fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
@@ -223,116 +278,195 @@ fun AsistenciaContent(
 }
 
 @Composable
+private fun ResumenAsistencia(promedio: Double, totalCursos: Int, enRiesgo: Int, optimos: Int) {
+    val color = porcentajeColor(promedio)
+    val (estado, _) = estadoAsistencia(promedio)
+    AppCard(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        corner = 14.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularGauge(
+                progress = (promedio / 100f).toFloat().coerceIn(0f, 1f),
+                centerValue = "${formatPct(promedio)}%",
+                size = 52.dp,
+                strokeWidth = 6.dp,
+                gaugeColor = color
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Promedio de asistencia",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                StatusBadge(text = estado, color = color)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                StatChip(label = "Cursos", value = "$totalCursos", color = MaterialTheme.colorScheme.onSurface)
+                StatChip(
+                    label = "Riesgo",
+                    value = "$enRiesgo",
+                    color = if (enRiesgo > 0) UpaoRed else MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatChip(label: String, value: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        modifier = Modifier.padding(2.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = value,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+            Text(
+                text = label,
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 fun AsistenciaCard(item: AsistenciaCurso) {
     val pct = item.porcentaje ?: 0.0
     val color = porcentajeColor(pct)
+    val (estado, _) = estadoAsistencia(pct)
     val activos = diasActivos(item.horarioDias)
+    val courseColor = cursoColor(item.displayNombre)
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        shape = MaterialTheme.shapes.large,
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        modifier = Modifier.fillMaxWidth()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = item.displayNombre,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            val meta = buildString {
-                append("CRN ${item.crn ?: "-"}")
-                item.seccion?.let { append(" · Sección $it") }
-                item.hora12h?.let { append(" · $it") }
-            }
-            Text(
-                text = meta,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Asistencia",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "${item.faltas ?: 0} faltas",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                LinearProgressIndicator(
-                    progress = { (pct / 100f).toFloat().coerceIn(0f, 1f) },
-                    color = color,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                )
-                Text(
-                    text = "${formatPct(pct)}%",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = color
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                dayNames.forEachIndexed { index, _ ->
-                    val activo = index in activos
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (activo) UpaoOrange else MaterialTheme.colorScheme.surfaceVariant
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
+                .background(color)
+        )
+        AppCard(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            corner = 14.dp,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = dayInitials[index],
-                            fontSize = 12.sp,
-                            fontWeight = if (activo) FontWeight.Bold else FontWeight.Medium,
-                            color = if (activo) Color(0xFF271700) else MaterialTheme.colorScheme.onSurfaceVariant
+                            text = toTitleCase(item.displayNombre),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                        val meta = buildString {
+                            append("CRN ${item.crn ?: "-"}")
+                            item.seccion?.let { append(" · Sec $it") }
+                        }
+                        Text(
+                            text = meta,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    StatusBadge(text = estado, color = color)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LinearProgressIndicator(
+                        progress = { (pct / 100f).toFloat().coerceIn(0f, 1f) },
+                        color = color,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(7.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                    )
+                    Text(
+                        text = "${formatPct(pct)}%",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = color
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        dayNames.forEachIndexed { index, _ ->
+                            val activo = index in activos
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (activo) courseColor else MaterialTheme.colorScheme.surfaceVariant
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = dayInitials[index],
+                                    fontSize = 10.sp,
+                                    fontWeight = if (activo) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (activo) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = "${item.faltas ?: 0} faltas",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
+        }
+    }
+}
 
+@Composable
+private fun SkeletonAsistenciaCard() {
+    AppCard(corner = 14.dp, contentPadding = PaddingValues(10.dp)) {
+        Column {
+            SkeletonBox(modifier = Modifier.fillMaxWidth(0.7f).height(14.dp), corner = 7.dp)
+            Spacer(modifier = Modifier.height(6.dp))
+            SkeletonBox(modifier = Modifier.fillMaxWidth(0.45f).height(10.dp), corner = 5.dp)
             Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = item.horarioDias ?: "Sin horario registrado",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
+            SkeletonBox(modifier = Modifier.fillMaxWidth().height(8.dp), corner = 4.dp)
         }
     }
 }

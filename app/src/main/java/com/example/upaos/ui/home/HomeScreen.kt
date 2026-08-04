@@ -1,13 +1,15 @@
 package com.example.upaos.ui.home
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.EventNote
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.LightMode
@@ -25,7 +27,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -61,7 +62,6 @@ fun HomeScreen(
         onLogout()
     }
 
-    // 1.3 Semana académica: chip con la etiqueta del ciclo (si el admin la configuró).
     LaunchedEffect(usuario) {
         if (usuario == null) return@LaunchedEffect
         try {
@@ -73,11 +73,10 @@ fun HomeScreen(
                 }
             }
         } catch (e: Exception) {
-            // Silencioso: sin chip si el servidor no responde.
+            // Silencioso
         }
     }
 
-    // Consulta periódica del contador de notificaciones no leídas (badge).
     LaunchedEffect(usuario) {
         if (usuario == null) return@LaunchedEffect
         while (true) {
@@ -87,7 +86,7 @@ fun HomeScreen(
                     unreadCount = res.body()!!.noLeidas
                 }
             } catch (e: Exception) {
-                // Silencioso: se reintenta en el siguiente ciclo.
+                // Silencioso
             }
             delay(30_000)
         }
@@ -100,15 +99,16 @@ fun HomeScreen(
                 title = {
                     Text(
                         text = when (selectedTab) {
-                            0 -> "Mis Notas UPAO"
-                            1 -> "Horario UPAO"
-                            else -> "Asistencia UPAO"
+                            0 -> "Mis Notas"
+                            1 -> "Horario"
+                            else -> "Asistencia"
                         },
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    containerColor = MaterialTheme.colorScheme.background
                 ),
                 actions = {
                     BadgedBox(
@@ -124,7 +124,8 @@ fun HomeScreen(
                             Icon(
                                 imageVector = Icons.Filled.Notifications,
                                 contentDescription = "Notificaciones",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -132,50 +133,59 @@ fun HomeScreen(
                         Icon(
                             imageVector = Icons.Filled.Settings,
                             contentDescription = "Ajustes",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     IconButton(onClick = onToggleTheme) {
                         Icon(
                             imageVector = if (isDarkTheme) Icons.Filled.LightMode else Icons.Filled.DarkMode,
                             contentDescription = if (isDarkTheme) "Cambiar a tema claro" else "Cambiar a tema oscuro",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     IconButton(onClick = onOpenCalculator) {
                         Icon(
                             imageVector = Icons.Filled.Calculate,
                             contentDescription = "Calculadora de Notas",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     IconButton(onClick = { cerrarSesion() }) {
-                        Text("Salir", fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = "Cerrar sesión",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             )
         },
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                tonalElevation = 2.dp
             ) {
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Filled.Grade, contentDescription = null) },
-                    label = { Text("Notas") }
+                    icon = { Icon(Icons.Filled.Grade, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    label = { Text("Notas", fontSize = 12.sp) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
-                    label = { Text("Horario") }
+                    icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    label = { Text("Horario", fontSize = 12.sp) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null) },
-                    label = { Text("Asistencia") }
+                    icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    label = { Text("Asistencia", fontSize = 12.sp) }
                 )
             }
         }
@@ -189,24 +199,24 @@ fun HomeScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     color = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = RoundedCornerShape(20.dp)
+                    shape = RoundedCornerShape(50)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.EventNote,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = semanaEtiqueta!!,
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
@@ -215,7 +225,7 @@ fun HomeScreen(
             }
             Crossfade(
                 targetState = selectedTab,
-                animationSpec = tween(durationMillis = 300),
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
                 label = "tabCrossfade",
                 modifier = Modifier
                     .fillMaxSize()

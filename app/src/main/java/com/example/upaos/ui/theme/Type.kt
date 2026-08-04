@@ -6,42 +6,46 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Tipografía con jerarquía marcada: títulos en Bold/SemiBold, cuerpo en Regular.
+// Tipografía con jerarquía marcada y un toque más compacto/premium.
+// Se mantiene FontFamily.Default (sin assets extra), pero con tamaños y
+// espaciados refinados para una lectura moderna.
 val Typography = Typography(
     displaySmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
-        fontSize = 36.sp,
-        lineHeight = 42.sp
+        fontSize = 34.sp,
+        lineHeight = 40.sp,
+        letterSpacing = (-0.5).sp
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
-        fontSize = 28.sp,
-        lineHeight = 34.sp
+        fontSize = 26.sp,
+        lineHeight = 32.sp,
+        letterSpacing = (-0.3).sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Bold,
-        fontSize = 24.sp,
-        lineHeight = 30.sp
-    ),
-    titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
         fontSize = 22.sp,
         lineHeight = 28.sp
     ),
+    titleLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = 20.sp,
+        lineHeight = 26.sp
+    ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 17.sp,
-        lineHeight = 24.sp
+        fontSize = 16.sp,
+        lineHeight = 22.sp
     ),
     titleSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 15.sp,
+        fontSize = 14.sp,
         lineHeight = 20.sp
     ),
     bodyLarge = TextStyle(
@@ -78,6 +82,6 @@ val Typography = Typography(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
-        lineHeight = 16.sp
+        lineHeight = 14.sp
     )
 )

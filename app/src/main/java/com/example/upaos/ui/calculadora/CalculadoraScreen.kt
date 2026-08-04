@@ -125,7 +125,7 @@ fun CalculadoraScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = { Text("Calculadora de Notas", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    containerColor = MaterialTheme.colorScheme.background
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -221,12 +221,12 @@ private fun ResultadoCard(resultado: Resultado) {
             containerColor = color.copy(alpha = 0.14f),
             contentColor = color
         ),
-        shape = MaterialTheme.shapes.large,
+        shape = RoundedCornerShape(20.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(18.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -266,7 +266,7 @@ private fun NotaCard(
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        shape = MaterialTheme.shapes.large,
+        shape = RoundedCornerShape(20.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         modifier = modifier.fillMaxWidth()
     ) {
@@ -303,7 +303,7 @@ private fun NotaCard(
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 ),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(68.dp)

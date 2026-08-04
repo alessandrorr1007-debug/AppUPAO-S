@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -20,7 +21,18 @@ import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.SugerenciaItem
 import com.example.upaos.data.model.SugerenciaRequest
+import com.example.upaos.ui.components.AppCard
+import com.example.upaos.ui.components.EmptyState
+import com.example.upaos.ui.components.ErrorView
+import com.example.upaos.ui.components.ModernTextField
+import com.example.upaos.ui.components.PrimaryButton
+import com.example.upaos.ui.components.SectionHeader
+import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.tiempoRelativo
+import com.example.upaos.ui.theme.UpaoAmber
+import com.example.upaos.ui.theme.UpaoBlue
+import com.example.upaos.ui.theme.UpaoGreen
+import com.example.upaos.ui.theme.UpaoRed
 import kotlinx.coroutines.launch
 
 private fun textoEstado(estado: String): String = when (estado) {
@@ -28,6 +40,13 @@ private fun textoEstado(estado: String): String = when (estado) {
     "aprobada" -> "Aprobada"
     "rechazada" -> "Rechazada"
     else -> "Pendiente"
+}
+
+private fun estadoColor(estado: String): Color = when (estado) {
+    "aprobada" -> UpaoGreen
+    "rechazada" -> UpaoRed
+    "en_revision" -> UpaoAmber
+    else -> UpaoBlue
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,7 +100,7 @@ fun SugerenciasScreen(
                 } else {
                     val detalle = res.errorBody()?.string()
                     val msg = if (!detalle.isNullOrBlank() && detalle.contains("\"detail\"")) {
-                        detalle.substringAfter("\"detail\":").substringAfter("\"").substringBefore("\"")
+                        detalle.substringAfter("\"detail\"").substringAfter("\"").substringBefore("\"")
                     } else "No se pudo enviar (${res.code()})"
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }
@@ -98,7 +117,7 @@ fun SugerenciasScreen(
             TopAppBar(
                 title = { Text("Buzón de sugerencias", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    containerColor = MaterialTheme.colorScheme.background
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -113,64 +132,59 @@ fun SugerenciasScreen(
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.EmojiObjects,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "¿Qué mejorarías en UPAO Móvil?",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = texto,
-                            onValueChange = { texto = it.take(500) },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Ej: me gustaría ver el promedio ponderado por ciclo...") },
-                            minLines = 4,
-                            maxLines = 8,
-                            supportingText = { Text("${texto.length}/500 · mínimo 10") }
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = { enviar() },
-                            enabled = !enviando && texto.trim().length >= 10,
-                            modifier = Modifier.align(Alignment.End)
+                AppCard(corner = 24.dp, modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.size(36.dp)
                         ) {
-                            if (enviando) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Enviando...")
-                            } else {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Enviar sugerencia")
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.EmojiObjects,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "¿Qué mejorarías en UPAO Móvil?",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ModernTextField(
+                        value = texto,
+                        onValueChange = { texto = it.take(500) },
+                        label = "Tu sugerencia",
+                        singleLine = false,
+                        minLines = 4,
+                        maxLines = 8,
+                        placeholder = "Ej: me gustaría ver el promedio ponderado por ciclo...",
+                        supportingText = "${texto.length}/500 · mínimo 10",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    PrimaryButton(
+                        text = "Enviar sugerencia",
+                        onClick = { enviar() },
+                        enabled = texto.trim().length >= 10,
+                        loading = enviando,
+                        icon = Icons.AutoMirrored.Filled.Send,
+                        height = 48.dp,
+                        modifier = Modifier.align(Alignment.End)
+                    )
                 }
             }
 
             item {
-                Text(
-                    text = "Mis sugerencias",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                SectionHeader(title = "Mis sugerencias")
             }
 
             if (cargando) {
@@ -181,14 +195,14 @@ fun SugerenciasScreen(
                 }
             } else if (errorCarga != null && sugerencias.isEmpty()) {
                 item {
-                    Text(text = errorCarga!!, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                    ErrorView(message = errorCarga!!)
                 }
             } else if (sugerencias.isEmpty()) {
                 item {
-                    Text(
-                        text = "Aún no has enviado sugerencias.",
-                        color = MaterialTheme.colorScheme.outline,
-                        fontSize = 14.sp
+                    EmptyState(
+                        icon = Icons.Filled.EmojiObjects,
+                        title = "Aún no has enviado sugerencias",
+                        subtitle = "Tus sugerencias enviadas aparecerán aquí."
                     )
                 }
             } else {
@@ -202,31 +216,18 @@ fun SugerenciasScreen(
 
 @Composable
 fun SugerenciaCard(sugerencia: SugerenciaItem) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+    AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+        Column {
             Text(
                 text = sugerencia.texto,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SuggestionChip(
-                    onClick = {},
-                    enabled = false,
-                    label = { Text(textoEstado(sugerencia.estado), fontSize = 12.sp) },
-                    colors = SuggestionChipDefaults.suggestionChipColors(
-                        containerColor = when (sugerencia.estado) {
-                            "aprobada" -> MaterialTheme.colorScheme.primaryContainer
-                            "rechazada" -> MaterialTheme.colorScheme.errorContainer
-                            "en_revision" -> MaterialTheme.colorScheme.tertiaryContainer
-                            else -> MaterialTheme.colorScheme.secondaryContainer
-                        }
-                    )
+                StatusBadge(
+                    text = textoEstado(sugerencia.estado),
+                    color = estadoColor(sugerencia.estado)
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
