@@ -139,6 +139,13 @@ fun HorarioContent(
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
+            if (isLoading && cursos.isNotEmpty()) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
