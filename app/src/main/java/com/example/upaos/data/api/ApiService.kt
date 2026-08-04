@@ -1,0 +1,118 @@
+package com.example.upaos.data.api
+
+import com.example.upaos.data.model.*
+import retrofit2.Response
+import retrofit2.http.*
+
+interface ApiService {
+
+    @POST("login")
+    suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
+
+    @POST("login/confirmar-captcha")
+    suspend fun loginConfirmarCaptcha(@Body request: ManualCaptchaRequest): Response<LoginResponse>
+
+    @GET("notas/periodos")
+    suspend fun getPeriodos(
+        @Header("Authorization") token: String? = null
+    ): Response<PeriodosResponse>
+
+    @GET("notas/carreras")
+    suspend fun getCarreras(
+        @Header("Authorization") token: String? = null,
+        @Query("term") term: String = "202610"
+    ): Response<CarrerasResponse>
+
+    @POST("notas/buscar")
+    suspend fun buscarNotas(
+        @Header("Authorization") token: String,
+        @Body request: Map<String, String>
+    ): Response<GradesResponse>
+
+    @POST("notas/detalle")
+    suspend fun getDetalleCurso(
+        @Header("Authorization") token: String,
+        @Body request: Map<String, String>
+    ): Response<DetalleCursoResponse>
+
+    @PATCH("settings/auto-check")
+    suspend fun updateAutoCheck(
+        @Query("usuario") usuario: String,
+        @Body request: AutoCheckRequest
+    ): Response<Map<String, Any>>
+
+    @PATCH("settings/intervalo")
+    suspend fun updateIntervalo(
+        @Query("usuario") usuario: String,
+        @Body request: IntervaloRequest
+    ): Response<Map<String, Any>>
+
+    @GET("settings")
+    suspend fun getSettings(
+        @Query("usuario") usuario: String
+    ): Response<SettingsResponse>
+
+    @POST("device-token")
+    suspend fun updateDeviceToken(
+        @Query("usuario") usuario: String,
+        @Body request: DeviceTokenRequest
+    ): Response<Map<String, Any>>
+
+    @POST("notas/actualizar-ahora")
+    suspend fun actualizarAhora(
+        @Query("usuario") usuario: String
+    ): Response<Map<String, Any>>
+
+    @GET("asistencia")
+    suspend fun getAsistencia(
+        @Header("Authorization") token: String
+    ): Response<AsistenciaResponse>
+
+    @GET("horario")
+    suspend fun getHorario(
+        @Header("Authorization") token: String,
+        @Query("term") term: String
+    ): Response<HorarioResponse>
+
+    @GET("notificaciones")
+    suspend fun getNotificaciones(
+        @Query("usuario") usuario: String
+    ): Response<NotificacionesResponse>
+
+    @PATCH("notificaciones/marcar-leidas")
+    suspend fun marcarNotificacionesLeidas(
+        @Query("usuario") usuario: String
+    ): Response<Map<String, Any>>
+
+    @PATCH("notificaciones/{id}/marcar-leida")
+    suspend fun marcarNotificacionLeida(
+        @Path("id") id: Long,
+        @Query("usuario") usuario: String
+    ): Response<Map<String, Any>>
+
+    @GET("cuenta")
+    suspend fun getCuenta(
+        @Query("usuario") usuario: String
+    ): Response<CuentaInfo>
+
+    @GET("semana")
+    suspend fun getSemana(): Response<SemanaInfo>
+
+    @POST("sugerencias")
+    suspend fun postSugerencia(@Body request: SugerenciaRequest): Response<SugerenciaResponse>
+
+    @GET("sugerencias/mis")
+    suspend fun getMisSugerencias(
+        @Query("usuario") usuario: String
+    ): Response<MisSugerenciasResponse>
+
+    @POST("ranking/optin")
+    suspend fun postRankingOptin(@Body request: RankingOptinRequest): Response<Map<String, Any>>
+
+    @GET("ranking")
+    suspend fun getRanking(
+        @Query("usuario") usuario: String,
+        @Query("course_id") courseId: String,
+        @Query("ciclo") ciclo: String
+    ): Response<RankingResponse>
+}
