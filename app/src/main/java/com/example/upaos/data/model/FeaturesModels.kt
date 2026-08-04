@@ -58,7 +58,7 @@ data class RankingResponse(
     @SerializedName("motivo") val motivo: String? = null,
     @SerializedName("course_id") val courseId: String? = null,
     @SerializedName("ciclo") val ciclo: String? = null,
-    @SerializedName("min_usuarios") val minUsuarios: Int = 5,
+    @SerializedName("min_usuarios") val minUsuarios: Int = 2,
     @SerializedName("position") val position: Int? = null,
     @SerializedName("total") val total: Int = 0,
     @SerializedName("percentil") val percentil: Int? = null
