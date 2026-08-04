@@ -229,10 +229,12 @@ fun HomeScreen(
                     )
                     1 -> HorarioContent(
                         token = token,
+                        usuario = usuario,
                         onSesionExpirada = { cerrarSesion() }
                     )
                     else -> AsistenciaContent(
                         token = token,
+                        usuario = usuario,
                         onSesionExpirada = { cerrarSesion() }
                     )
                 }

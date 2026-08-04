@@ -22,11 +22,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.api.esErrorSesionExpirada
+import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.model.AsistenciaCurso
+import com.example.upaos.data.model.AsistenciaResponse
 import com.example.upaos.ui.theme.UpaoAmber
 import com.example.upaos.ui.theme.UpaoGreen
 import com.example.upaos.ui.theme.UpaoOrange
 import com.example.upaos.ui.theme.UpaoRed
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
 
 private val dayNames = listOf("LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM")
@@ -52,14 +55,35 @@ private fun formatPct(pct: Double): String =
     if (pct % 1.0 == 0.0) pct.toInt().toString() else pct.toString()
 
 @Composable
-fun AsistenciaContent(token: String, onSesionExpirada: () -> Unit = {}) {
+fun AsistenciaContent(
+    token: String,
+    usuario: String? = null,
+    onSesionExpirada: () -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val cache = remember { ApiCache(context) }
+    val gson = remember { Gson() }
+    val claveCache = "asistencia_${usuario ?: "anonimo"}"
 
     var registros by remember { mutableStateOf<List<AsistenciaCurso>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var sesionExpirada by remember { mutableStateOf(false) }
+
+    fun aplicarCache() {
+        scope.launch {
+            try {
+                if (registros.isNotEmpty()) return@launch
+                val json = cache.cargar(claveCache) ?: return@launch
+                val body = gson.fromJson(json, AsistenciaResponse::class.java)
+                registros = body.asistencia
+                Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${registros.size} registros de asistencia")
+            } catch (e: Exception) {
+                Log.e("UPAO_APP", "[Android UI] Error leyendo caché de asistencia: ${e.localizedMessage}", e)
+            }
+        }
+    }
 
     fun load() {
         isLoading = true
@@ -78,6 +102,7 @@ fun AsistenciaContent(token: String, onSesionExpirada: () -> Unit = {}) {
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     registros = body.asistencia
+                    scope.launch { cache.guardar(claveCache, gson.toJson(body)) }
                     Log.d("UPAO_APP", "[Android UI] Asistencia recibida: ${registros.size} registros")
                 } else {
                     val err = errBody ?: "Error desconocido"
@@ -94,7 +119,10 @@ fun AsistenciaContent(token: String, onSesionExpirada: () -> Unit = {}) {
         }
     }
 
-    LaunchedEffect(Unit) { load() }
+    LaunchedEffect(Unit) {
+        aplicarCache()
+        load()
+    }
 
     Column(
         modifier = Modifier

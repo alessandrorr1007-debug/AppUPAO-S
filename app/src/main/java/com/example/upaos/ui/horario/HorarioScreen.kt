@@ -21,18 +21,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.api.esErrorSesionExpirada
+import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.model.HorarioCurso
+import com.example.upaos.data.model.HorarioResponse
 import com.example.upaos.ui.grades.detectarPeriodoActual
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HorarioContent(
     token: String,
+    usuario: String? = null,
     onSesionExpirada: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val cache = remember { ApiCache(context) }
+    val gson = remember { Gson() }
 
     var periodos by remember { mutableStateOf(listOf("202610")) }
     var selectedPeriodo by remember { mutableStateOf("202610") }
@@ -42,6 +48,22 @@ fun HorarioContent(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var sesionExpirada by remember { mutableStateOf(false) }
+
+    fun claveCache(): String = "horario_${usuario ?: "anonimo"}_$selectedPeriodo"
+
+    fun aplicarCache() {
+        scope.launch {
+            try {
+                if (cursos.isNotEmpty()) return@launch
+                val json = cache.cargar(claveCache()) ?: return@launch
+                val body = gson.fromJson(json, HorarioResponse::class.java)
+                cursos = body.cursos
+                Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${cursos.size} cursos de horario")
+            } catch (e: Exception) {
+                Log.e("UPAO_APP", "[Android UI] Error leyendo caché de horario: ${e.localizedMessage}", e)
+            }
+        }
+    }
 
     fun loadHorario() {
         isLoading = true
@@ -60,6 +82,7 @@ fun HorarioContent(
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     cursos = body.cursos
+                    scope.launch { cache.guardar(claveCache(), gson.toJson(body)) }
                     Log.d("UPAO_APP", "[Android UI] Horario recibido: ${cursos.size} cursos, ${body.totalBloques} bloques")
                 } else {
                     val err = errBody ?: "Error desconocido"
@@ -84,9 +107,11 @@ fun HorarioContent(
                 periodos = body.periodos
                 selectedPeriodo = detectarPeriodoActual(body.periodos, body.periodoActual)
             }
+            aplicarCache()
             loadHorario()
         } catch (e: Exception) {
             Log.e("UPAO_APP", "Error consultando periodos para horario: ${e.localizedMessage}")
+            aplicarCache()
             loadHorario()
         }
     }
