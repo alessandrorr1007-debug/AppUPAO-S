@@ -56,7 +56,7 @@ fun AdminScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var fechaInicioInput by remember { mutableStateOf("") }
 
-    val adminUsuario = usuario ?: "000002006"
+    val adminUsuario = usuario ?: "000279330"
 
     LaunchedEffect(adminUsuario) {
         viewModel.cargarDatosAdmin(adminUsuario)

@@ -120,29 +120,29 @@ interface ApiService {
 
     @GET("admin/cuentas")
     suspend fun getAdminCuentas(
-        @Query("admin_usuario") adminUsuario: String = "000002006"
+        @Query("admin_usuario") adminUsuario: String = "000279330"
     ): Response<AdminCuentasResponse>
 
     @GET("admin/sugerencias")
     suspend fun getAdminSugerencias(
-        @Query("admin_usuario") adminUsuario: String = "000002006"
+        @Query("admin_usuario") adminUsuario: String = "000279330"
     ): Response<AdminSugerenciasResponse>
 
     @PATCH("admin/sugerencias/{id}/estado")
     suspend fun updateAdminSugerenciaEstado(
         @Path("id") id: Long,
         @Body request: AdminEstadoSugerenciaRequest,
-        @Query("admin_usuario") adminUsuario: String = "000002006"
+        @Query("admin_usuario") adminUsuario: String = "000279330"
     ): Response<Map<String, Any>>
 
     @POST("admin/semana")
     suspend fun setAdminSemana(
         @Body request: AdminSemanaRequest,
-        @Query("admin_usuario") adminUsuario: String = "000002006"
+        @Query("admin_usuario") adminUsuario: String = "000279330"
     ): Response<SemanaInfo>
 
     @GET("admin/metricas")
     suspend fun getAdminMetricas(
-        @Query("admin_usuario") adminUsuario: String = "000002006"
+        @Query("admin_usuario") adminUsuario: String = "000279330"
     ): Response<AdminMetricasResponse>
 }

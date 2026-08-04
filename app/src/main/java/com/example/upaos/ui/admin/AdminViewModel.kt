@@ -25,7 +25,7 @@ class AdminViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(AdminUiState())
     val uiState: StateFlow<AdminUiState> = _uiState.asStateFlow()
 
-    fun cargarDatosAdmin(adminUsuario: String = "000002006") {
+    fun cargarDatosAdmin(adminUsuario: String = "000279330") {
         _uiState.value = _uiState.value.copy(cargando = true, error = null)
         viewModelScope.launch {
             try {
@@ -58,7 +58,7 @@ class AdminViewModel : ViewModel() {
         }
     }
 
-    fun cambiarEstadoSugerencia(id: Long, nuevoEstado: String, adminUsuario: String = "000002006") {
+    fun cambiarEstadoSugerencia(id: Long, nuevoEstado: String, adminUsuario: String = "000279330") {
         viewModelScope.launch {
             try {
                 val api = RetrofitClient.apiService
@@ -79,7 +79,7 @@ class AdminViewModel : ViewModel() {
         }
     }
 
-    fun guardarFechaSemana(fechaInicioIso: String, adminUsuario: String = "000002006") {
+    fun guardarFechaSemana(fechaInicioIso: String, adminUsuario: String = "000279330") {
         viewModelScope.launch {
             try {
                 val api = RetrofitClient.apiService
