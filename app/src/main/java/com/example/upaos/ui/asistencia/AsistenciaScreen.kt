@@ -419,37 +419,17 @@ fun AsistenciaCard(item: AsistenciaCurso) {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        dayNames.forEachIndexed { index, _ ->
-                            val activo = index in activos
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (activo) courseColor else MaterialTheme.colorScheme.surfaceVariant
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = dayInitials[index],
-                                    fontSize = 10.sp,
-                                    fontWeight = if (activo) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (activo) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
                     Text(
-                        text = "${item.faltas ?: 0} faltas",
+                        text = "${item.faltas ?: 0} faltas registradas",
                         fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

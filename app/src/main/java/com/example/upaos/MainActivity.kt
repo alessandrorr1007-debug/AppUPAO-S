@@ -83,11 +83,12 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    val savedUser = tokenManager.getSavedUser()
                     val savedToken = tokenManager.getToken()
                     val keepLoggedIn = tokenManager.shouldKeepLoggedIn()
 
                     val targetDestination = if (keepLoggedIn && savedToken != null) {
-                        "home/$savedToken"
+                        if (savedUser == "000000000") "admin" else "home/$savedToken"
                     } else {
                         "login"
                     }
@@ -111,7 +112,9 @@ class MainActivity : ComponentActivity() {
                         composable("login") {
                             LoginScreen(
                                 onLoginSuccess = { token ->
-                                    navController.navigate("home/$token") {
+                                    val user = tokenManager.getSavedUser()
+                                    val dest = if (user == "000000000") "admin" else "home/$token"
+                                    navController.navigate(dest) {
                                         popUpTo("login") { inclusive = true }
                                     }
                                 }
@@ -121,7 +124,9 @@ class MainActivity : ComponentActivity() {
                         composable("elige-cuenta") {
                             EligeCuentaScreen(
                                 onLoginSuccess = { token ->
-                                    navController.navigate("home/$token") {
+                                    val user = tokenManager.getSavedUser()
+                                    val dest = if (user == "000000000") "admin" else "home/$token"
+                                    navController.navigate(dest) {
                                         popUpTo(0) { inclusive = true }
                                     }
                                 },
@@ -182,7 +187,13 @@ class MainActivity : ComponentActivity() {
                         composable("admin") {
                             AdminScreen(
                                 usuario = tokenManager.getSavedUser(),
-                                onBack = { navController.popBackStack() }
+                                onBack = { navController.popBackStack() },
+                                onLogout = {
+                                    tokenManager.clearSession()
+                                    navController.navigate("login") {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                }
                             )
                         }
 

@@ -40,6 +40,21 @@ import com.google.gson.Gson
 import java.util.Calendar
 import kotlinx.coroutines.launch
 
+private fun formatDiaNombre(dia: String?): String {
+    if (dia.isNullOrBlank()) return "—"
+    val d = dia.uppercase().trim()
+    return when {
+        d.startsWith("LUN") || d == "L" -> "Lunes"
+        d.startsWith("MAR") || d == "M" -> "Martes"
+        d.startsWith("MIE") || d.startsWith("MIÉ") || d == "MI" -> "Miércoles"
+        d.startsWith("JUE") || d == "J" -> "Jueves"
+        d.startsWith("VIE") || d == "V" -> "Viernes"
+        d.startsWith("SAB") || d.startsWith("SÁB") || d == "S" -> "Sábado"
+        d.startsWith("DOM") || d == "D" -> "Domingo"
+        else -> dia.lowercase().replaceFirstChar { it.uppercase() }
+    }
+}
+
 private fun diaHoy(): Int = (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) + 5) % 7
 
 private fun minutosAhora(): Int {
@@ -469,11 +484,11 @@ private fun HorarioCursoCard(curso: HorarioCurso) {
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = bloque.diaNombre ?: "—",
-                            fontSize = 11.sp,
+                            text = formatDiaNombre(bloque.diaNombre),
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (esHoy) color else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.width(40.dp)
+                            modifier = Modifier.width(75.dp)
                         )
                         Icon(
                             imageVector = Icons.Filled.AccessTime,

@@ -49,6 +49,7 @@ import com.example.upaos.ui.theme.UpaoRed
 fun AdminScreen(
     usuario: String?,
     onBack: () -> Unit,
+    onLogout: () -> Unit = {},
     viewModel: AdminViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -98,6 +99,13 @@ fun AdminScreen(
                 actions = {
                     IconButton(onClick = { viewModel.cargarDatosAdmin(adminUsuario) }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Actualizar datos admin")
+                    }
+                    IconButton(onClick = onLogout) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Cerrar sesión",
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             )
