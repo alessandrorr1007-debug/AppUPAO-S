@@ -273,6 +273,12 @@ private fun HorarioCursoCard(curso: HorarioCurso) {
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = bloque.aula ?: "—",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

@@ -8,7 +8,8 @@ data class HorarioBloque(
     @SerializedName("hora_inicio") val horaInicio: String? = null,
     @SerializedName("hora_fin") val horaFin: String? = null,
     @SerializedName("hora_inicio_12h") val horaInicio12h: String? = null,
-    @SerializedName("hora_fin_12h") val horaFin12h: String? = null
+    @SerializedName("hora_fin_12h") val horaFin12h: String? = null,
+    @SerializedName("aula") val aula: String? = null
 )
 
 data class HorarioCurso(
