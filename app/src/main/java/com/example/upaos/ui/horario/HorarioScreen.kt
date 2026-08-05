@@ -5,7 +5,10 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,6 +41,7 @@ import com.example.upaos.ui.components.toTitleCase
 import com.example.upaos.ui.grades.detectarPeriodoActual
 import com.google.gson.Gson
 import java.util.Calendar
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private fun formatDiaNombre(dia: String?): String {
@@ -56,6 +60,9 @@ private fun formatDiaNombre(dia: String?): String {
 }
 
 private fun diaHoy(): Int = (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) + 5) % 7
+
+private val diasCortos = listOf("LU", "MA", "MI", "JU", "VI", "SA", "DO")
+private val diasCompletos = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
 
 private fun minutosAhora(): Int {
     val c = Calendar.getInstance()
@@ -124,6 +131,19 @@ fun HorarioContent(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var sesionExpirada by remember { mutableStateOf(false) }
 
+    var selectedDia by remember { mutableStateOf(diaHoy()) }
+    var verTodosLosDias by remember { mutableStateOf(false) }
+    val dayChipsState = rememberLazyListState()
+
+    fun cursosDelDia(dia: Int): List<HorarioCurso> =
+        cursos
+            .filter { curso -> curso.bloques.any { it.dia == dia } }
+            .sortedBy { curso ->
+                curso.bloques
+                    .filter { it.dia == dia }
+                    .minOfOrNull { minutosDe(it.horaInicio) ?: Int.MAX_VALUE }
+            }
+
     fun claveCache(): String = "horario_${usuario ?: "anonimo"}_$selectedPeriodo"
 
     fun aplicarCache() {
@@ -183,6 +203,16 @@ fun HorarioContent(
         } catch (e: Exception) {
             aplicarCache()
             loadHorario()
+        }
+    }
+
+    LaunchedEffect(cursos.size) {
+        if (cursos.isNotEmpty() && !verTodosLosDias) {
+            val visibles = snapshotFlow { dayChipsState.layoutInfo.visibleItemsInfo }
+                .first { it.isNotEmpty() }
+            if (visibles.none { it.index == diaHoy() + 1 }) {
+                dayChipsState.scrollToItem(diaHoy() + 1)
+            }
         }
     }
 
@@ -285,12 +315,93 @@ fun HorarioContent(
                         ProximaClaseCard(proxima)
                         Spacer(modifier = Modifier.height(10.dp))
                     }
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+
+                    LazyRow(
+                        state = dayChipsState,
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(cursos) { curso ->
-                            HorarioCursoCard(curso)
+                        item {
+                            FiltroDiaChip(
+                                etiqueta = "Todos",
+                                activo = verTodosLosDias,
+                                esHoy = false,
+                                onClick = {
+                                    verTodosLosDias = true
+                                    selectedDia = diaHoy()
+                                }
+                            )
+                        }
+                        itemsIndexed(diasCortos) { idx, label ->
+                            FiltroDiaChip(
+                                etiqueta = label,
+                                activo = !verTodosLosDias && selectedDia == idx,
+                                esHoy = idx == diaHoy(),
+                                onClick = {
+                                    verTodosLosDias = false
+                                    selectedDia = idx
+                                }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (verTodosLosDias) {
+                        val diasConClases = (0..6).filter { dia ->
+                            cursos.any { c -> c.bloques.any { it.dia == dia } }
+                        }
+                        if (diasConClases.isEmpty()) {
+                            EmptyState(
+                                icon = Icons.Filled.Schedule,
+                                title = "Sin horario publicado",
+                                subtitle = "No hay horario para el periodo $selectedPeriodo.",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                diasConClases.forEach { dia ->
+                                    val delDia = cursosDelDia(dia)
+                                    item(key = "dia_header_$dia") {
+                                        DiaHeader(
+                                            nombre = diasCompletos[dia],
+                                            total = delDia.size,
+                                            esHoy = dia == diaHoy()
+                                        )
+                                    }
+                                    items(delDia, key = { "dia_${dia}_${it.crn}" }) { curso ->
+                                        HorarioCursoCard(curso, soloDia = dia)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        val delDia = cursosDelDia(selectedDia)
+                        if (delDia.isEmpty()) {
+                            EmptyState(
+                                icon = Icons.Filled.Schedule,
+                                title = "Sin clases",
+                                subtitle = "No tienes clases los ${diasCompletos[selectedDia].lowercase()}.",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                item(key = "dia_header") {
+                                    DiaHeader(
+                                        nombre = diasCompletos[selectedDia],
+                                        total = delDia.size,
+                                        esHoy = selectedDia == diaHoy()
+                                    )
+                                }
+                                items(delDia, key = { it.crn ?: "" }) { curso ->
+                                    HorarioCursoCard(curso, soloDia = selectedDia)
+                                }
+                            }
                         }
                     }
                 }
@@ -414,9 +525,99 @@ private fun ProximaClaseCard(proxima: ProximaClase) {
 }
 
 @Composable
-private fun HorarioCursoCard(curso: HorarioCurso) {
+private fun FiltroDiaChip(
+    etiqueta: String,
+    activo: Boolean,
+    esHoy: Boolean,
+    onClick: () -> Unit
+) {
+    val bg = when {
+        activo -> MaterialTheme.colorScheme.primary
+        esHoy -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val fg = when {
+        activo -> MaterialTheme.colorScheme.onPrimary
+        esHoy -> MaterialTheme.colorScheme.onSecondaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = bg,
+        modifier = Modifier.height(34.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (esHoy && !activo) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+            }
+            Text(
+                text = etiqueta,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = fg
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiaHeader(nombre: String, total: Int, esHoy: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = nombre,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (esHoy) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    text = "HOY",
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = if (total == 1) "1 clase" else "$total clases",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun HorarioCursoCard(curso: HorarioCurso, soloDia: Int? = null) {
     val color = cursoColor(curso.displayNombre)
     val hoy = diaHoy()
+    val bloques = remember(curso, soloDia) {
+        curso.bloques
+            .filter { soloDia == null || it.dia == soloDia }
+            .sortedBy { minutosDe(it.horaInicio) ?: Int.MAX_VALUE }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -473,7 +674,7 @@ private fun HorarioCursoCard(curso: HorarioCurso) {
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                curso.bloques.forEach { bloque ->
+                bloques.forEach { bloque ->
                     val esHoy = bloque.dia == hoy
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

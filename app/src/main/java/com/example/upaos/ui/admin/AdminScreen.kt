@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.upaos.data.model.AdminCuentaItem
 import com.example.upaos.data.model.AdminSugerenciaItem
+import com.example.upaos.data.local.TokenManager
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
 import com.example.upaos.ui.components.PrimaryButton
@@ -58,9 +59,10 @@ fun AdminScreen(
     var fechaInicioInput by remember { mutableStateOf("") }
 
     val adminUsuario = usuario ?: "000000000"
+    val adminToken = remember(context) { TokenManager(context).getToken().orEmpty() }
 
-    LaunchedEffect(adminUsuario) {
-        viewModel.cargarDatosAdmin(adminUsuario)
+    LaunchedEffect(adminUsuario, adminToken) {
+        if (adminToken.isNotBlank()) viewModel.cargarDatosAdmin(adminToken, adminUsuario)
     }
 
     LaunchedEffect(state.semanaInfo) {
@@ -97,7 +99,7 @@ fun AdminScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.cargarDatosAdmin(adminUsuario) }) {
+                    IconButton(onClick = { viewModel.cargarDatosAdmin(adminToken, adminUsuario) }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Actualizar datos admin")
                     }
                     IconButton(onClick = onLogout) {
@@ -160,12 +162,12 @@ fun AdminScreen(
                             semanaInfo = state.semanaInfo,
                             fechaInicioInput = fechaInicioInput,
                             onFechaInicioChange = { fechaInicioInput = it },
-                            onGuardarFecha = { viewModel.guardarFechaSemana(fechaInicioInput, adminUsuario) }
+                            onGuardarFecha = { viewModel.guardarFechaSemana(fechaInicioInput, adminToken, adminUsuario) }
                         )
                         1 -> CuentasTab(cuentas = state.cuentas)
                         else -> SugerenciasAdminTab(
                             sugerencias = state.sugerencias,
-                            onCambiarEstado = { id, nuevo -> viewModel.cambiarEstadoSugerencia(id, nuevo, adminUsuario) }
+                            onCambiarEstado = { id, nuevo -> viewModel.cambiarEstadoSugerencia(id, nuevo, adminToken, adminUsuario) }
                         )
                     }
                 }

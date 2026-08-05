@@ -126,11 +126,13 @@ interface ApiService {
 
     @GET("admin/cuentas")
     suspend fun getAdminCuentas(
+        @Header("Authorization") authorization: String,
         @Query("admin_usuario") adminUsuario: String = "000000000"
     ): Response<AdminCuentasResponse>
 
     @GET("admin/sugerencias")
     suspend fun getAdminSugerencias(
+        @Header("Authorization") authorization: String,
         @Query("admin_usuario") adminUsuario: String = "000000000"
     ): Response<AdminSugerenciasResponse>
 
@@ -138,17 +140,20 @@ interface ApiService {
     suspend fun updateAdminSugerenciaEstado(
         @Path("id") id: Long,
         @Body request: AdminEstadoSugerenciaRequest,
+        @Header("Authorization") authorization: String,
         @Query("admin_usuario") adminUsuario: String = "000000000"
     ): Response<Map<String, Any>>
 
     @POST("admin/semana")
     suspend fun setAdminSemana(
         @Body request: AdminSemanaRequest,
+        @Header("Authorization") authorization: String,
         @Query("admin_usuario") adminUsuario: String = "000000000"
     ): Response<SemanaInfo>
 
     @GET("admin/metricas")
     suspend fun getAdminMetricas(
+        @Header("Authorization") authorization: String,
         @Query("admin_usuario") adminUsuario: String = "000000000"
     ): Response<AdminMetricasResponse>
 }

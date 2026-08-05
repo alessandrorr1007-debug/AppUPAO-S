@@ -18,5 +18,6 @@ data class LoginResponse(
     @SerializedName("token") val token: String?,
     @SerializedName("necesita_captcha") val necesitaCaptcha: Boolean,
     @SerializedName("imagen_base64") val imagenBase64: String?,
+    @SerializedName("es_admin") val esAdmin: Boolean = false,
     @SerializedName("message") val message: String?
 )

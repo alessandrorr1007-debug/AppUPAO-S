@@ -50,7 +50,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (String) -> Unit
+    onLoginSuccess: (String, Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
@@ -82,7 +82,7 @@ fun LoginScreen(
         label = "logoScale"
     )
 
-    fun procesarLogin(token: String?) {
+    fun procesarLogin(token: String?, esAdmin: Boolean = false) {
         if (token != null) {
             tokenManager.saveToken(token)
             tokenManager.setKeepLoggedIn(mantenerSesion)
@@ -94,7 +94,7 @@ fun LoginScreen(
                 tokenManager.removeCuenta(usuario)
             }
             FcmTokenHelper.register(context)
-            onLoginSuccess(token)
+            onLoginSuccess(token, esAdmin)
         }
     }
 
@@ -241,7 +241,7 @@ fun LoginScreen(
                                     val body = response.body()
                                     if (response.isSuccessful && body != null) {
                                         if (body.success && body.token != null) {
-                                            procesarLogin(body.token)
+                                            procesarLogin(body.token, body.esAdmin)
                                         } else if (body.necesitaCaptcha && body.imagenBase64 != null) {
                                             captchaBase64 = body.imagenBase64
                                             showCaptchaDialog = true

@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun EligeCuentaScreen(
-    onLoginSuccess: (String) -> Unit,
+    onLoginSuccess: (String, Boolean) -> Unit,
     onGoToLogin: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -61,7 +61,7 @@ fun EligeCuentaScreen(
                     tokenManager.saveCuenta(cuenta.usuario, cuenta.password, cuenta.nombre)
                     FcmTokenHelper.register(context)
                     autenticando = null
-                    onLoginSuccess(body.token)
+                    onLoginSuccess(body.token, body.esAdmin)
                 } else {
                     autenticando = null
                     Toast.makeText(

@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
@@ -88,6 +89,8 @@ fun GradesContent(
     var promedioGeneral by remember { mutableStateOf<Any?>(null) }
     var promedioBasadoEn by remember { mutableStateOf<String?>(null) }
     var promedioPeriodoRes by remember { mutableStateOf<PromedioPeriodoResponse?>(null) }
+    var promedioPeriodoCargando by remember { mutableStateOf(false) }
+    var promedioPeriodoError by remember { mutableStateOf<String?>(null) }
     var ultimaActualizacion by remember { mutableStateOf<String?>(null) }
     var sesionExpirada by remember { mutableStateOf(false) }
 
@@ -96,16 +99,23 @@ fun GradesContent(
     fun loadPromedioPeriodo(term: String) {
         scope.launch {
             try {
+                promedioPeriodoCargando = true
+                promedioPeriodoError = null
                 Log.d("UPAO_APP", "[Android UI] Solicitando promedio PPS para periodo: $term")
                 val res = RetrofitClient.apiService.getPromedioPeriodo(term, "Bearer $token")
+                promedioPeriodoCargando = false
                 if (res.isSuccessful && res.body() != null) {
                     promedioPeriodoRes = res.body()
-                    Log.d("UPAO_APP", "[Android UI] PPS recibido -> Oficial=${promedioPeriodoRes?.ppsOficial}, Calc=${promedioPeriodoRes?.ppsCalculado}, Fuente=${promedioPeriodoRes?.fuente}")
+                    promedioPeriodoError = null
+                    Log.d("UPAO_APP", "[Android UI] PPS recibido -> HTTP ${res.code()} JSON=${gson.toJson(promedioPeriodoRes)}")
                 } else {
-                    Log.w("UPAO_APP", "[Android UI] No se pudo obtener PPS (${res.code()}), usando promedio local de fallback")
+                    promedioPeriodoError = "HTTP ${res.code()}"
+                    Log.w("UPAO_APP", "[Android UI] PPS fallo HTTP ${res.code()} errorBody=${res.errorBody()?.string() ?: "sin cuerpo"}")
                 }
             } catch (e: Exception) {
-                Log.w("UPAO_APP", "[Android UI] Excepción obteniendo PPS: ${e.localizedMessage}, usando promedio local de fallback")
+                promedioPeriodoCargando = false
+                promedioPeriodoError = e.localizedMessage ?: "error desconocido"
+                Log.w("UPAO_APP", "[Android UI] Excepción obteniendo PPS: ${e.localizedMessage}")
             }
         }
     }
@@ -312,7 +322,13 @@ fun GradesContent(
             exit = fadeOut(tween(180))
         ) {
             Column {
-                PromedioCard(promedioGeneral = promedioGeneral, promedioPeriodoRes = promedioPeriodoRes)
+                PromedioCard(
+                    promedioGeneral = promedioGeneral,
+                    promedioPeriodoRes = promedioPeriodoRes,
+                    ppsCargando = promedioPeriodoCargando,
+                    ppsError = promedioPeriodoError,
+                    onReintentarPps = { loadPromedioPeriodo(selectedPeriodo) }
+                )
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
@@ -380,75 +396,164 @@ fun GradesContent(
 @Composable
 fun PromedioCard(
     promedioGeneral: Any?,
-    promedioPeriodoRes: PromedioPeriodoResponse? = null
+    promedioPeriodoRes: PromedioPeriodoResponse? = null,
+    ppsCargando: Boolean = false,
+    ppsError: String? = null,
+    onReintentarPps: (() -> Unit)? = null
 ) {
     val ppsOficial = promedioPeriodoRes?.ppsOficial?.toDouble()
     val ppsCalculado = promedioPeriodoRes?.ppsCalculado?.toDouble()
     val fuente = promedioPeriodoRes?.fuente
 
-    val pFinal = when {
+    val ppsFinal = when {
         ppsOficial != null -> ppsOficial
         ppsCalculado != null -> ppsCalculado
-        else -> promedioGeneral?.toString()?.toDoubleOrNull()
+        else -> null
     }
 
-    val fuenteTexto = when {
-        fuente == "cuadro_merito" || ppsOficial != null -> "Oficial (Cuadro de Mérito)"
-        fuente == "calculado" || ppsCalculado != null -> "Estimado (Notas × Créditos)"
-        else -> "Resumen del periodo"
+    val promedioSimpleVal = promedioGeneral?.toString()?.toDoubleOrNull()
+
+    val badge = when (fuente) {
+        "cuadro_merito" -> "Oficial" to MaterialTheme.colorScheme.primary
+        "calculado" -> "Estimado" to MaterialTheme.colorScheme.tertiary
+        else -> null
     }
-
-    val esOficial = fuente == "cuadro_merito" || ppsOficial != null
-    val esEstimado = !esOficial && (fuente == "calculado" || ppsCalculado != null)
-
-    val gaugeColor = gradeColor(pFinal)
 
     AppCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
         corner = 16.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CircularGauge(
-                progress = if (pFinal != null) (pFinal / 20.0).toFloat() else 0f,
-                centerValue = formatNota(pFinal),
-                centerLabel = "/ 20",
-                size = 52.dp,
-                strokeWidth = 5.dp,
-                gaugeColor = gaugeColor
+        Column {
+            Text(
+                text = "Resumen de Promedios del Periodo",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Promedio Ponderado (PPS)",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    if (esOficial || esEstimado) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        StatusBadge(
-                            text = if (esOficial) "Oficial" else "Estimado",
-                            color = if (esOficial) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 1. Promedio de Ciclo (promedio simple de las notas visibles)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularGauge(
+                            progress = if (promedioSimpleVal != null) (promedioSimpleVal / 20.0).toFloat() else 0f,
+                            centerValue = if (promedioSimpleVal != null) formatNota(promedioSimpleVal) else "—",
+                            centerLabel = "/ 20",
+                            size = 40.dp,
+                            strokeWidth = 4.dp,
+                            gaugeColor = gradeColor(promedioSimpleVal)
                         )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Promedio de Ciclo",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = fuenteTexto,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (pFinal != null) {
-                StatusBadge(
-                    text = if (pFinal >= 10.5) "Aprobado" else "Requiere mejorar",
-                    color = gaugeColor
-                )
+
+                // 2. Ponderado (PPS) -> consume GET /api/promedio/{periodo}
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularGauge(
+                            progress = if (ppsFinal != null) (ppsFinal / 20.0).toFloat() else 0f,
+                            centerValue = if (ppsFinal != null) formatPps(ppsFinal) else "—",
+                            centerLabel = "/ 20",
+                            size = 40.dp,
+                            strokeWidth = 4.dp,
+                            gaugeColor = gradeColor(ppsFinal)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Ponderado (PPS)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            when {
+                                ppsCargando -> {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(10.dp),
+                                            strokeWidth = 1.6.dp,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Consultando...",
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                ppsFinal != null && badge != null -> {
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    StatusBadge(
+                                        text = badge.first,
+                                        color = badge.second
+                                    )
+                                }
+                                ppsError != null -> {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "No disponible",
+                                        fontSize = 9.sp,
+                                        color = MaterialTheme.colorScheme.error,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = if (onReintentarPps != null) {
+                                            Modifier.clickable(onClick = onReintentarPps)
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                }
+                                else -> {
+                                    Text(
+                                        text = "En proceso",
+                                        fontSize = 9.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -736,6 +841,11 @@ fun formatNota(value: Any?): String {
     val d = value.toString().trim().toDoubleOrNull() ?: return value.toString()
     val r = (d * 100).roundToInt() / 100.0
     return if (r % 1.0 == 0.0) r.toInt().toString() else r.toString()
+}
+
+fun formatPps(value: Double?): String {
+    if (value == null) return "Pendiente"
+    return String.format(java.util.Locale.ROOT, "%.2f", value)
 }
 
 @Composable

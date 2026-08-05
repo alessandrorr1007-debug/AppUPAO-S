@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -128,9 +129,11 @@ fun CircularGauge(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = centerValue,
-                fontSize = (size.value * 0.28f).sp,
+                fontSize = if (centerValue.length > 5) (size.value * 0.22f).sp else (size.value * 0.28f).sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (centerLabel.isNotEmpty()) {
                 Text(

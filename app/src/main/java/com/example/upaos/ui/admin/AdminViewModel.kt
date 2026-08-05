@@ -25,15 +25,16 @@ class AdminViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(AdminUiState())
     val uiState: StateFlow<AdminUiState> = _uiState.asStateFlow()
 
-    fun cargarDatosAdmin(adminUsuario: String = "000000000") {
+    fun cargarDatosAdmin(token: String, adminUsuario: String = "000000000") {
         _uiState.value = _uiState.value.copy(cargando = true, error = null)
         viewModelScope.launch {
             try {
                 val api = RetrofitClient.apiService
+                val auth = "Bearer $token"
 
-                val cuentasRes = api.getAdminCuentas(adminUsuario)
-                val sugerenciasRes = api.getAdminSugerencias(adminUsuario)
-                val metricasRes = api.getAdminMetricas(adminUsuario)
+                val cuentasRes = api.getAdminCuentas(auth, adminUsuario)
+                val sugerenciasRes = api.getAdminSugerencias(auth, adminUsuario)
+                val metricasRes = api.getAdminMetricas(auth, adminUsuario)
                 val semanaRes = api.getSemana()
 
                 val cuentas = if (cuentasRes.isSuccessful) cuentasRes.body()?.cuentas.orEmpty() else emptyList()
@@ -58,11 +59,11 @@ class AdminViewModel : ViewModel() {
         }
     }
 
-    fun cambiarEstadoSugerencia(id: Long, nuevoEstado: String, adminUsuario: String = "000000000") {
+    fun cambiarEstadoSugerencia(id: Long, nuevoEstado: String, token: String, adminUsuario: String = "000000000") {
         viewModelScope.launch {
             try {
                 val api = RetrofitClient.apiService
-                val res = api.updateAdminSugerenciaEstado(id, AdminEstadoSugerenciaRequest(nuevoEstado), adminUsuario)
+                val res = api.updateAdminSugerenciaEstado(id, AdminEstadoSugerenciaRequest(nuevoEstado), "Bearer $token", adminUsuario)
                 if (res.isSuccessful) {
                     _uiState.value = _uiState.value.copy(
                         sugerencias = _uiState.value.sugerencias.map { s ->
@@ -79,11 +80,11 @@ class AdminViewModel : ViewModel() {
         }
     }
 
-    fun guardarFechaSemana(fechaInicioIso: String, adminUsuario: String = "000000000") {
+    fun guardarFechaSemana(fechaInicioIso: String, token: String, adminUsuario: String = "000000000") {
         viewModelScope.launch {
             try {
                 val api = RetrofitClient.apiService
-                val res = api.setAdminSemana(AdminSemanaRequest(fechaInicioIso), adminUsuario)
+                val res = api.setAdminSemana(AdminSemanaRequest(fechaInicioIso), "Bearer $token", adminUsuario)
                 if (res.isSuccessful && res.body() != null) {
                     _uiState.value = _uiState.value.copy(
                         semanaInfo = res.body(),

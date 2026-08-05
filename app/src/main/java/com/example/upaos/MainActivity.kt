@@ -88,7 +88,7 @@ class MainActivity : ComponentActivity() {
                     val keepLoggedIn = tokenManager.shouldKeepLoggedIn()
 
                     val targetDestination = if (keepLoggedIn && savedToken != null) {
-                        if (savedUser == "000000000") "admin" else "home/$savedToken"
+                        if (savedUser == "000000000" || savedToken.contains("_admin")) "admin" else "home/$savedToken"
                     } else {
                         "login"
                     }
@@ -111,9 +111,8 @@ class MainActivity : ComponentActivity() {
 
                         composable("login") {
                             LoginScreen(
-                                onLoginSuccess = { token ->
-                                    val user = tokenManager.getSavedUser()
-                                    val dest = if (user == "000000000") "admin" else "home/$token"
+                                onLoginSuccess = { token, esAdmin ->
+                                    val dest = if (esAdmin) "admin" else "home/$token"
                                     navController.navigate(dest) {
                                         popUpTo("login") { inclusive = true }
                                     }
@@ -123,9 +122,8 @@ class MainActivity : ComponentActivity() {
 
                         composable("elige-cuenta") {
                             EligeCuentaScreen(
-                                onLoginSuccess = { token ->
-                                    val user = tokenManager.getSavedUser()
-                                    val dest = if (user == "000000000") "admin" else "home/$token"
+                                onLoginSuccess = { token, esAdmin ->
+                                    val dest = if (esAdmin) "admin" else "home/$token"
                                     navController.navigate(dest) {
                                         popUpTo(0) { inclusive = true }
                                     }
