@@ -40,11 +40,6 @@ import com.google.gson.Gson
 import java.util.Calendar
 import kotlinx.coroutines.launch
 
-private fun desescaparHtml(texto: String?): String {
-    if (texto.isNullOrBlank()) return ""
-    return androidx.core.text.HtmlCompat.fromHtml(texto, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
-}
-
 private fun formatDiaNombre(dia: String?): String {
     if (dia.isNullOrBlank()) return "—"
     val d = dia.uppercase().trim()
@@ -407,7 +402,7 @@ private fun ProximaClaseCard(proxima: ProximaClase) {
                         )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
-                            text = desescaparHtml(bloque.aula),
+                            text = bloque.aula!!,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -511,7 +506,7 @@ private fun HorarioCursoCard(curso: HorarioCurso) {
                             )
                             if (!bloque.aula.isNullOrBlank()) {
                                 Text(
-                                    text = desescaparHtml(bloque.aula),
+                                    text = bloque.aula!!,
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
