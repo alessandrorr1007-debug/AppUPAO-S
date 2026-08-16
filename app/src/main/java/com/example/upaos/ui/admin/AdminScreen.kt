@@ -271,6 +271,55 @@ private fun DashboardTab(
         }
 
         Spacer(modifier = Modifier.height(4.dp))
+        SectionHeader(title = "Usuarios Activos por Día (DAU)")
+        AppCard(corner = 14.dp, modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Últimos 30 días", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    if ((metricas?.dau30Dias?.maxOfOrNull { it.usuarios } ?: 0) > 0) {
+                        StatusBadge(
+                            text = "pico: ${metricas?.dau30Dias?.maxOfOrNull { it.usuarios }}",
+                            color = UpaoGreen
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                DauBarChart(datos = metricas?.dau30Dias.orEmpty())
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Error de sesión (Banner): ${metricas?.erroresSesion24h ?: 0} en 24h · ${metricas?.erroresSesion7d ?: 0} en 7d",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if ((metricas?.erroresSesion7d ?: 0) > 0) UpaoRed else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            MetricCard(
+                titulo = "Errores sesión 24h",
+                valor = "${metricas?.erroresSesion24h ?: 0}",
+                subtitulo = if ((metricas?.erroresSesion7d ?: 0) > 0) "Revisar credenciales" else "Todo en orden",
+                icono = Icons.Filled.Warning,
+                colorIcono = if ((metricas?.erroresSesion24h ?: 0) > 0) UpaoRed else UpaoGreen,
+                modifier = Modifier.weight(1f)
+            )
+            MetricCard(
+                titulo = "Errores sesión 7d",
+                valor = "${metricas?.erroresSesion7d ?: 0}",
+                icono = Icons.Filled.Error,
+                colorIcono = if ((metricas?.erroresSesion7d ?: 0) > 0) UpaoAmber else UpaoGreen,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
         SectionHeader(title = "Configuración de Semana Académica")
 
         AppCard(corner = 14.dp, modifier = Modifier.fillMaxWidth()) {
@@ -667,6 +716,52 @@ private fun SugerenciasAdminTab(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DauBarChart(
+    datos: List<DauPunto>,
+    modifier: Modifier = Modifier
+) {
+    val colorBarra = MaterialTheme.colorScheme.primary
+    val colorTrack = MaterialTheme.colorScheme.surfaceVariant
+    val maxUsuarios = (datos.maxOfOrNull { it.usuarios } ?: 0).coerceAtLeast(1)
+
+    if (datos.isEmpty()) {
+        Text(
+            text = "Sin datos de actividad aún",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        return
+    }
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(140.dp)
+    ) {
+        val paso = size.width / datos.size
+        val barraAncho = (paso * 0.6f).coerceIn(2f, 10f)
+        datos.forEachIndexed { index, punto ->
+            val alto = (punto.usuarios.toFloat() / maxUsuarios) * size.height
+            val x = index * paso + (paso - barraAncho) / 2f
+            drawRoundRect(
+                color = colorTrack,
+                topLeft = Offset(x, 0f),
+                size = Size(barraAncho, size.height),
+                cornerRadius = CornerRadius(barraAncho / 2f)
+            )
+            if (alto > 0f) {
+                drawRoundRect(
+                    color = colorBarra,
+                    topLeft = Offset(x, size.height - alto),
+                    size = Size(barraAncho, alto),
+                    cornerRadius = CornerRadius(barraAncho / 2f)
+                )
             }
         }
     }
