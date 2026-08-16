@@ -243,7 +243,6 @@ fun HomeScreen(
             }
             HorizontalPager(
                 state = pagerState,
-                beyondBoundsPageCount = 1,
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
