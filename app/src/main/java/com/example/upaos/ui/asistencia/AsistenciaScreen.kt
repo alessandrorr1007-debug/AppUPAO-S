@@ -23,7 +23,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.api.esErrorSesionExpirada
+import com.example.upaos.data.api.llamarConRenovacion
 import com.example.upaos.data.local.ApiCache
+import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.AsistenciaCurso
 import com.example.upaos.data.model.AsistenciaResponse
 import com.example.upaos.ui.components.AppCard
@@ -73,12 +75,14 @@ private fun formatPct(pct: Double): String =
 fun AsistenciaContent(
     token: String,
     usuario: String? = null,
-    onSesionExpirada: () -> Unit = {}
+    onSesionExpirada: () -> Unit = {},
+    onTokenRenovado: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cache = remember { ApiCache(context) }
     val gson = remember { Gson() }
+    val tokenManagerUi = remember { TokenManager(context) }
     val claveCache = "asistencia_${usuario ?: "anonimo"}"
 
     var registros by remember { mutableStateOf<List<AsistenciaCurso>>(emptyList()) }
@@ -106,9 +110,13 @@ fun AsistenciaContent(
         scope.launch {
             try {
                 Log.d("UPAO_APP", "[Android UI] Consultando asistencia...")
-                val res = RetrofitClient.apiService.getAsistencia("Bearer $token")
+                val resLlamada = llamarConRenovacion(tokenManagerUi, token) { t ->
+                    RetrofitClient.apiService.getAsistencia("Bearer $t")
+                }
+                resLlamada.tokenRenovado?.let(onTokenRenovado)
+                val res = resLlamada.response
                 isLoading = false
-                val errBody = res.errorBody()?.string()
+                val errBody = resLlamada.errorBody
                 if (esErrorSesionExpirada(res.code(), errBody)) {
                     sesionExpirada = true
                     return@launch

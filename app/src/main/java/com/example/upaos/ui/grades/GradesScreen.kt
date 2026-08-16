@@ -32,7 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.api.esErrorSesionExpirada
+import com.example.upaos.data.api.llamarConRenovacion
 import com.example.upaos.data.local.GradesCache
+import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.GradesResponse
@@ -68,12 +70,14 @@ fun detectarPeriodoActual(periodos: List<String>, periodoActual: String? = null)
 fun GradesContent(
     token: String,
     usuario: String?,
-    onSesionExpirada: () -> Unit
+    onSesionExpirada: () -> Unit,
+    onTokenRenovado: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cache = remember { GradesCache(context) }
     val gson = remember { Gson() }
+    val tokenManagerUi = remember { TokenManager(context) }
 
     var periodos by remember { mutableStateOf(listOf("202610")) }
     var selectedPeriodo by remember { mutableStateOf("202610") }
@@ -146,9 +150,13 @@ fun GradesContent(
             try {
                 Log.d("UPAO_APP", "[Android UI] Consultando notas -> Periodo: $selectedPeriodo, Carrera: $selectedCarrera")
                 val req = mapOf("periodo" to selectedPeriodo, "carrera" to selectedCarrera)
-                val res = RetrofitClient.apiService.buscarNotas("Bearer $token", req)
+                val resLlamada = llamarConRenovacion(tokenManagerUi, token) { t ->
+                    RetrofitClient.apiService.buscarNotas("Bearer $t", req)
+                }
+                resLlamada.tokenRenovado?.let(onTokenRenovado)
+                val res = resLlamada.response
                 isLoading = false
-                val errBody = res.errorBody()?.string()
+                val errBody = resLlamada.errorBody
                 if (esErrorSesionExpirada(res.code(), errBody)) {
                     sesionExpirada = true
                     return@launch

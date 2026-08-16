@@ -28,7 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.api.esErrorSesionExpirada
+import com.example.upaos.data.api.llamarConRenovacion
 import com.example.upaos.data.local.ApiCache
+import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.HorarioBloque
 import com.example.upaos.data.model.HorarioCurso
 import com.example.upaos.data.model.HorarioResponse
@@ -124,12 +126,14 @@ private fun calcularProximaClase(cursos: List<HorarioCurso>): ProximaClase? {
 fun HorarioContent(
     token: String,
     usuario: String? = null,
-    onSesionExpirada: () -> Unit = {}
+    onSesionExpirada: () -> Unit = {},
+    onTokenRenovado: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cache = remember { ApiCache(context) }
     val gson = remember { Gson() }
+    val tokenManagerUi = remember { TokenManager(context) }
 
     var periodos by remember { mutableStateOf(listOf("202610")) }
     var selectedPeriodo by remember { mutableStateOf("202610") }
@@ -175,9 +179,13 @@ fun HorarioContent(
         scope.launch {
             try {
                 Log.d("UPAO_APP", "[Android UI] Consultando horario para term=$selectedPeriodo...")
-                val res = RetrofitClient.apiService.getHorario("Bearer $token", selectedPeriodo)
+                val resLlamada = llamarConRenovacion(tokenManagerUi, token) { t ->
+                    RetrofitClient.apiService.getHorario("Bearer $t", selectedPeriodo)
+                }
+                resLlamada.tokenRenovado?.let(onTokenRenovado)
+                val res = resLlamada.response
                 isLoading = false
-                val errBody = res.errorBody()?.string()
+                val errBody = resLlamada.errorBody
                 if (esErrorSesionExpirada(res.code(), errBody)) {
                     sesionExpirada = true
                     return@launch

@@ -57,6 +57,8 @@ fun HomeScreen(
 
     val usuario = tokenManager.getSavedUser()
 
+    var tokenActual by remember { mutableStateOf(token) }
+
     fun cerrarSesion() {
         tokenManager.clearSession()
         onLogout()
@@ -233,19 +235,22 @@ fun HomeScreen(
             ) { tab ->
                 when (tab) {
                     0 -> GradesContent(
-                        token = token,
+                        token = tokenActual,
                         usuario = usuario,
-                        onSesionExpirada = { cerrarSesion() }
+                        onSesionExpirada = { cerrarSesion() },
+                        onTokenRenovado = { tokenActual = it }
                     )
                     1 -> HorarioContent(
-                        token = token,
+                        token = tokenActual,
                         usuario = usuario,
-                        onSesionExpirada = { cerrarSesion() }
+                        onSesionExpirada = { cerrarSesion() },
+                        onTokenRenovado = { tokenActual = it }
                     )
                     else -> AsistenciaContent(
-                        token = token,
+                        token = tokenActual,
                         usuario = usuario,
-                        onSesionExpirada = { cerrarSesion() }
+                        onSesionExpirada = { cerrarSesion() },
+                        onTokenRenovado = { tokenActual = it }
                     )
                 }
             }
