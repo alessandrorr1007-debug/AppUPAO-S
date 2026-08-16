@@ -3,7 +3,10 @@ package com.example.upaos.ui.home
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
@@ -23,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -33,12 +37,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.TokenManager
+import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.ui.asistencia.AsistenciaContent
 import com.example.upaos.ui.grades.GradesContent
 import com.example.upaos.ui.horario.HorarioContent
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     token: String,
@@ -47,11 +53,15 @@ fun HomeScreen(
     onLogout: () -> Unit,
     onOpenCalculator: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenNotifications: () -> Unit
+    onOpenNotifications: () -> Unit,
+    onOpenDetalleComponentes: (token: String, periodo: String, carrera: String, curso: CourseGrade) -> Unit = { _, _, _, _ -> }
 ) {
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+
+    val pagerState = rememberPagerState(initialPage = 0) { 3 }
+    val selectedTab = pagerState.currentPage
     var unreadCount by remember { mutableIntStateOf(0) }
     var semanaEtiqueta by remember { mutableStateOf<String?>(null) }
 
@@ -173,19 +183,25 @@ fun HomeScreen(
             ) {
                 NavigationBarItem(
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    onClick = {
+                        scope.launch { pagerState.animateScrollToPage(0) }
+                    },
                     icon = { Icon(Icons.Filled.Grade, contentDescription = null, modifier = Modifier.size(20.dp)) },
                     label = { Text("Notas", fontSize = 12.sp) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    onClick = {
+                        scope.launch { pagerState.animateScrollToPage(1) }
+                    },
                     icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
                     label = { Text("Horario", fontSize = 12.sp) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
+                    onClick = {
+                        scope.launch { pagerState.animateScrollToPage(2) }
+                    },
                     icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
                     label = { Text("Asistencia", fontSize = 12.sp) }
                 )
@@ -225,20 +241,20 @@ fun HomeScreen(
                     }
                 }
             }
-            Crossfade(
-                targetState = selectedTab,
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-                label = "tabCrossfade",
+            HorizontalPager(
+                state = pagerState,
+                beyondBoundsPageCount = 1,
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
-            ) { tab ->
-                when (tab) {
+            ) { page ->
+                when (page) {
                     0 -> GradesContent(
                         token = tokenActual,
                         usuario = usuario,
                         onSesionExpirada = { cerrarSesion() },
-                        onTokenRenovado = { tokenActual = it }
+                        onTokenRenovado = { tokenActual = it },
+                        onVerComponentes = onOpenDetalleComponentes
                     )
                     1 -> HorarioContent(
                         token = tokenActual,

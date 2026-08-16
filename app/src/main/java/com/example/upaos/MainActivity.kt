@@ -2,6 +2,7 @@ package com.example.upaos
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -35,6 +36,7 @@ import com.example.upaos.data.local.TokenManager
 import com.example.upaos.service.FcmTokenHelper
 import com.example.upaos.ui.admin.AdminScreen
 import com.example.upaos.ui.calculadora.CalculadoraScreen
+import com.example.upaos.ui.grades.DetalleComponentesScreen
 import com.example.upaos.ui.home.HomeScreen
 import com.example.upaos.ui.login.EligeCuentaScreen
 import com.example.upaos.ui.login.LoginScreen
@@ -160,7 +162,34 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenNotifications = {
                                     navController.navigate("notificaciones")
+                                },
+                                onOpenDetalleComponentes = { token, periodo, carrera, curso ->
+                                    val crn = curso.crn ?: curso.courseReferenceNumber ?: ""
+                                    navController.navigate(
+                                        "detalle-componentes/${Uri.encode(token)}/${Uri.encode(periodo)}" +
+                                            "/${Uri.encode(carrera)}/${Uri.encode(crn)}/${Uri.encode(curso.displayNombre)}"
+                                    )
                                 }
+                            )
+                        }
+
+                        composable(
+                            route = "detalle-componentes/{token}/{periodo}/{carrera}/{crn}/{nombre}",
+                            arguments = listOf(
+                                navArgument("token") { type = NavType.StringType },
+                                navArgument("periodo") { type = NavType.StringType },
+                                navArgument("carrera") { type = NavType.StringType },
+                                navArgument("crn") { type = NavType.StringType },
+                                navArgument("nombre") { type = NavType.StringType }
+                            )
+                        ) { backStackEntry ->
+                            DetalleComponentesScreen(
+                                token = backStackEntry.arguments?.getString("token") ?: "",
+                                periodo = backStackEntry.arguments?.getString("periodo") ?: "",
+                                carrera = backStackEntry.arguments?.getString("carrera") ?: "",
+                                crn = backStackEntry.arguments?.getString("crn") ?: "",
+                                nombre = backStackEntry.arguments?.getString("nombre") ?: "",
+                                onBack = { navController.popBackStack() }
                             )
                         }
 
