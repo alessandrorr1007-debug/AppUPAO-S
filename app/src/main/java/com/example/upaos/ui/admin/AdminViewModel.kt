@@ -20,7 +20,8 @@ data class AdminUiState(
     val mensajeExito: String? = null,
     val cuentaDetalle: AdminCuentaDetalle? = null,
     val cuentaDetalleCargando: Boolean = false,
-    val actualizandoNotas: Boolean = false
+    val actualizandoNotas: Boolean = false,
+    val enviandoNotificacion: Boolean = false
 )
 
 class AdminViewModel : ViewModel() {
@@ -190,6 +191,41 @@ class AdminViewModel : ViewModel() {
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     actualizandoNotas = false,
+                    error = "Error de conexión: ${e.localizedMessage}"
+                )
+            }
+        }
+    }
+
+    fun enviarNotificacion(mensaje: String, destino: String, usuario: String?, token: String, adminUsuario: String = "000000000") {
+        _uiState.value = _uiState.value.copy(enviandoNotificacion = true, error = null, mensajeExito = null)
+        viewModelScope.launch {
+            try {
+                val request = AdminEnviarNotificacionRequest(
+                    mensaje = mensaje.trim(),
+                    destino = destino,
+                    usuario = if (destino == "usuario") usuario?.trim() else null
+                )
+                val res = RetrofitClient.apiService.enviarNotificacionAdmin(request, "Bearer $token", adminUsuario)
+                if (res.isSuccessful && res.body() != null) {
+                    val body = res.body()!!
+                    _uiState.value = _uiState.value.copy(
+                        enviandoNotificacion = false,
+                        mensajeExito = if (body.success) {
+                            "Notificación encolada para ${body.destinatarios} dispositivo(s)."
+                        } else {
+                            body.message ?: "No se pudo enviar la notificación"
+                        }
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        enviandoNotificacion = false,
+                        error = "No se pudo enviar la notificación (${res.code()})"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    enviandoNotificacion = false,
                     error = "Error de conexión: ${e.localizedMessage}"
                 )
             }

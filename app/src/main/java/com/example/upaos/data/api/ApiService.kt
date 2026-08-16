@@ -160,4 +160,11 @@ interface ApiService {
         @Header("Authorization") authorization: String,
         @Query("admin_usuario") adminUsuario: String = "000000000"
     ): Response<AdminMetricasResponse>
+
+    @POST("admin/notificaciones/enviar")
+    suspend fun enviarNotificacionAdmin(
+        @Body request: AdminEnviarNotificacionRequest,
+        @Header("Authorization") authorization: String,
+        @Query("admin_usuario") adminUsuario: String = "000000000"
+    ): Response<AdminEnviarNotificacionResponse>
 }

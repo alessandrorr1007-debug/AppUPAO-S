@@ -114,6 +114,19 @@ data class AdminSugerenciasResponse(
     @SerializedName("sugerencias") val sugerencias: List<AdminSugerenciaItem> = emptyList()
 )
 
+data class AdminEnviarNotificacionRequest(
+    @SerializedName("mensaje") val mensaje: String,
+    @SerializedName("destino") val destino: String = "todos",
+    @SerializedName("usuario") val usuario: String? = null
+)
+
+data class AdminEnviarNotificacionResponse(
+    @SerializedName("success") val success: Boolean = false,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("destinatarios") val destinatarios: Int = 0,
+    @SerializedName("enviados") val enviados: Int? = null
+)
+
 data class AdminEstadoSugerenciaRequest(
     @SerializedName("estado") val estado: String? = null,
     @SerializedName("nota_admin") val notaAdmin: String? = null

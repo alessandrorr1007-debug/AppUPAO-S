@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.EmojiObjects
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Speed
@@ -47,6 +48,7 @@ import com.example.upaos.data.local.TokenManager
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
 import com.example.upaos.ui.components.PrimaryButton
+import com.example.upaos.ui.components.ReusableDialog
 import com.example.upaos.ui.components.SectionHeader
 import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.cursoColor
@@ -150,6 +152,12 @@ fun AdminScreen(
                     text = { Text("Sugerencias (${state.sugerencias.size})", fontWeight = FontWeight.Bold) },
                     icon = { Icon(Icons.Filled.EmojiObjects, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
+                Tab(
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    text = { Text("Notificar", fontWeight = FontWeight.Bold) },
+                    icon = { Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
             }
 
             if (state.cargando && state.cuentas.isEmpty() && state.metricas == null) {
@@ -182,10 +190,17 @@ fun AdminScreen(
                             onLimpiarDetalle = { viewModel.limpiarCuentaDetalle() },
                             onActualizarNotas = { usuario -> viewModel.actualizarNotasCuenta(usuario, adminToken, adminUsuario) }
                         )
-                        else -> SugerenciasAdminTab(
+                        2 -> SugerenciasAdminTab(
                             sugerencias = state.sugerencias,
                             onCambiarEstado = { id, nuevo -> viewModel.cambiarEstadoSugerencia(id, nuevo, adminToken, adminUsuario) },
                             onGuardarNota = { id, nota -> viewModel.guardarNotaSugerencia(id, nota, adminToken, adminUsuario) }
+                        )
+                        3 -> NotificarTab(
+                            enviando = state.enviandoNotificacion,
+                            mensajeExito = state.mensajeExito,
+                            onEnviar = { mensaje, destino, usuario ->
+                                viewModel.enviarNotificacion(mensaje, destino, usuario, adminToken, adminUsuario)
+                            }
                         )
                     }
                 }
@@ -718,6 +733,109 @@ private fun SugerenciasAdminTab(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NotificarTab(
+    enviando: Boolean,
+    mensajeExito: String?,
+    onEnviar: (String, String, String?) -> Unit
+) {
+    var mensaje by remember { mutableStateOf("") }
+    var destino by remember { mutableStateOf("todos") }
+    var usuario by remember { mutableStateOf("") }
+    var mostrarConfirmacion by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        SectionHeader(title = "Notificación Push Manual")
+
+        AppCard(corner = 14.dp, modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Text("Mensaje", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = mensaje,
+                    onValueChange = { if (it.length <= 500) mensaje = it },
+                    label = { Text("Texto de la notificación") },
+                    placeholder = { Text("Ej. Recuerda revisar tus notas") },
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 3,
+                    maxLines = 5,
+                    supportingText = { Text("${mensaje.length}/500", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text("Destino", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = destino == "todos",
+                        onClick = { destino = "todos" },
+                        label = { Text("Todos los usuarios", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = destino == "usuario",
+                        onClick = { destino = "usuario" },
+                        label = { Text("Un usuario", fontSize = 11.sp) }
+                    )
+                }
+                if (destino == "usuario") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = usuario,
+                        onValueChange = { usuario = it.filter(Char::isDigit).take(9) },
+                        label = { Text("Número de usuario") },
+                        placeholder = { Text("Ej. 000123456") },
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                PrimaryButton(
+                    text = if (enviando) "Enviando..." else "Enviar notificación",
+                    onClick = {
+                        if (destino == "todos") {
+                            mostrarConfirmacion = true
+                        } else {
+                            onEnviar(mensaje, destino, usuario)
+                        }
+                    },
+                    enabled = mensaje.isNotBlank() && (destino != "usuario" || usuario.isNotBlank()),
+                    loading = enviando,
+                    height = 48.dp
+                )
+                if (mensajeExito != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = mensajeExito,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (mensajeExito.startsWith("Notificación encolada")) UpaoGreen else UpaoRed
+                    )
+                }
+            }
+        }
+    }
+
+    if (mostrarConfirmacion) {
+        ReusableDialog(
+            title = "¿Enviar a todos?",
+            text = "Se notificará a todos los usuarios registrados con token FCM. Esta acción no se puede deshacer.",
+            confirmLabel = "Sí, enviar",
+            dismissLabel = "Cancelar",
+            onConfirm = {
+                mostrarConfirmacion = false
+                onEnviar(mensaje, destino, null)
+            },
+            onDismiss = { mostrarConfirmacion = false }
+        )
     }
 }
 
