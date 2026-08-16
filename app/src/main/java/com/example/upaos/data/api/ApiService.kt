@@ -106,16 +106,6 @@ interface ApiService {
         @Query("usuario") usuario: String
     ): Response<MisSugerenciasResponse>
 
-    @POST("ranking/optin")
-    suspend fun postRankingOptin(@Body request: RankingOptinRequest): Response<Map<String, Any>>
-
-    @GET("ranking")
-    suspend fun getRanking(
-        @Query("usuario") usuario: String,
-        @Query("course_id") courseId: String,
-        @Query("ciclo") ciclo: String
-    ): Response<RankingResponse>
-
     @GET("api/promedio/{periodo}")
     suspend fun getPromedioPeriodo(
         @Path("periodo") periodo: String,

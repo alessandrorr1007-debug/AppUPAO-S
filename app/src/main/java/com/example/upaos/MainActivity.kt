@@ -39,7 +39,6 @@ import com.example.upaos.ui.home.HomeScreen
 import com.example.upaos.ui.login.EligeCuentaScreen
 import com.example.upaos.ui.login.LoginScreen
 import com.example.upaos.ui.notificaciones.NotificacionesScreen
-import com.example.upaos.ui.ranking.RankingScreen
 import com.example.upaos.ui.settings.SettingsScreen
 import com.example.upaos.ui.sugerencias.SugerenciasScreen
 import com.example.upaos.ui.theme.UPAOSTheme
@@ -177,7 +176,6 @@ class MainActivity : ComponentActivity() {
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() },
                                 onOpenSugerencias = { navController.navigate("sugerencias") },
-                                onOpenRanking = { navController.navigate("ranking") },
                                 onOpenAdmin = { navController.navigate("admin") }
                             )
                         }
@@ -197,13 +195,6 @@ class MainActivity : ComponentActivity() {
 
                         composable("sugerencias") {
                             SugerenciasScreen(
-                                usuario = tokenManager.getSavedUser(),
-                                onBack = { navController.popBackStack() }
-                            )
-                        }
-
-                        composable("ranking") {
-                            RankingScreen(
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() }
                             )

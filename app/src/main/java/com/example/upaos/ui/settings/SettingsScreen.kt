@@ -12,7 +12,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.EmojiObjects
-import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +25,6 @@ import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.AutoCheckRequest
 import com.example.upaos.data.model.IntervaloRequest
-import com.example.upaos.data.model.RankingOptinRequest
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.cursoColor
@@ -41,7 +39,6 @@ fun SettingsScreen(
     usuario: String?,
     onBack: () -> Unit,
     onOpenSugerencias: () -> Unit,
-    onOpenRanking: () -> Unit,
     onOpenAdmin: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -55,7 +52,6 @@ fun SettingsScreen(
 
     var nombreEstudiante by remember { mutableStateOf<String?>(null) }
     var esAdmin by remember { mutableStateOf(false) }
-    var rankingOptin by remember { mutableStateOf(false) }
 
     LaunchedEffect(usuario) {
         if (usuario == null) {
@@ -81,7 +77,6 @@ fun SettingsScreen(
                 val cuenta = resCuenta.body()!!
                 nombreEstudiante = cuenta.nombre
                 esAdmin = cuenta.esAdmin
-                rankingOptin = cuenta.rankingOptin
             }
         } catch (e: Exception) {
             // El perfil es opcional
@@ -104,23 +99,6 @@ fun SettingsScreen(
                 Toast.makeText(context, "Error al guardar: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
             guardando = false
-        }
-    }
-
-    fun cambiarRankingOptin(nuevo: Boolean) {
-        if (usuario == null) return
-        rankingOptin = nuevo
-        scope.launch {
-            try {
-                val res = RetrofitClient.apiService.postRankingOptin(RankingOptinRequest(usuario, nuevo))
-                if (!res.isSuccessful) {
-                    rankingOptin = !nuevo
-                    Toast.makeText(context, "No se pudo actualizar el ranking (${res.code()})", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                rankingOptin = !nuevo
-                Toast.makeText(context, "Error de conexión: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-            }
         }
     }
 
@@ -232,59 +210,12 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Participar en el ranking de cursos",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Comparte solo tu nota por curso (de forma anónima) para ver tu posición relativa. Puedes desactivarlo cuando quieras.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = rankingOptin,
-                        onCheckedChange = { nuevo -> cambiarRankingOptin(nuevo) }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
             AppCard(
                 corner = 20.dp,
                 contentPadding = PaddingValues(0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column {
-                    ListItem(
-                        headlineContent = { Text("Ranking de cursos") },
-                        supportingContent = { Text("Tu posición anónima en cada curso") },
-                        leadingContent = {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Leaderboard,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        },
-                        trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                        modifier = Modifier.clickable(onClick = onOpenRanking)
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     ListItem(
                         headlineContent = { Text("Buzón de sugerencias") },
                         supportingContent = { Text("Envíanos ideas y revisa su estado") },
