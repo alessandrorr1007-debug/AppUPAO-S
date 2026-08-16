@@ -64,6 +64,15 @@ private fun diaHoy(): Int = (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) + 
 private val diasCortos = listOf("LU", "MA", "MI", "JU", "VI", "SA", "DO")
 private val diasCompletos = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
 
+private fun diaSinClasesTexto(dia: Int): String {
+    val plural = when (dia) {
+        5 -> "sábados"
+        6 -> "domingos"
+        else -> diasCompletos[dia].lowercase()
+    }
+    return "No tienes clases los $plural."
+}
+
 private fun minutosAhora(): Int {
     val c = Calendar.getInstance()
     return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE)
@@ -383,7 +392,7 @@ fun HorarioContent(
                             EmptyState(
                                 icon = Icons.Filled.Schedule,
                                 title = "Sin clases",
-                                subtitle = "No tienes clases los ${diasCompletos[selectedDia].lowercase()}.",
+                                subtitle = diaSinClasesTexto(selectedDia),
                                 modifier = Modifier.fillMaxSize()
                             )
                         } else {
@@ -440,7 +449,7 @@ private fun ProximaClaseCard(proxima: ProximaClase) {
     val etiqueta = when {
         proxima.esAhora -> "En curso ahora"
         proxima.diasRestantes == 0 -> "Hoy"
-        else -> bloque.diaNombre ?: ""
+        else -> formatDiaNombre(bloque.diaNombre)
     }
     AppCard(
         color = MaterialTheme.colorScheme.primaryContainer,
