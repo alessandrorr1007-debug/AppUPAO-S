@@ -137,5 +137,7 @@ data class AdminMetricasResponse(
     @SerializedName("dau_30_dias") val dau30Dias: List<DauPunto> = emptyList(),
     @SerializedName("cuentas_activas_hoy") val cuentasActivasHoy: Int = 0,
     @SerializedName("pico_hoy") val picoHoy: PicoTrafico? = null,
-    @SerializedName("pico_historico") val picoHistorico: PicoTrafico? = null
+    @SerializedName("pico_historico") val picoHistorico: PicoTrafico? = null,
+    @SerializedName("errores_sesion_24h") val erroresSesion24h: Int = 0,
+    @SerializedName("errores_sesion_7d") val erroresSesion7d: Int = 0
 )
