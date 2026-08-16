@@ -58,6 +58,7 @@ fun EligeCuentaScreen(
                     tokenManager.saveToken(body.token)
                     tokenManager.setKeepLoggedIn(true)
                     tokenManager.saveUserId(cuenta.usuario)
+                    tokenManager.saveCredentials(cuenta.usuario, cuenta.password)
                     tokenManager.saveCuenta(cuenta.usuario, cuenta.password, cuenta.nombre)
                     FcmTokenHelper.register(context)
                     autenticando = null
