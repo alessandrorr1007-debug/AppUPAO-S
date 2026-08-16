@@ -120,6 +120,20 @@ interface ApiService {
         @Query("admin_usuario") adminUsuario: String = "000000000"
     ): Response<AdminCuentasResponse>
 
+    @GET("admin/cuentas/{usuario}")
+    suspend fun getAdminCuentaDetalle(
+        @Path("usuario") usuario: String,
+        @Header("Authorization") authorization: String,
+        @Query("admin_usuario") adminUsuario: String = "000000000"
+    ): Response<AdminCuentaDetalle>
+
+    @POST("admin/cuentas/{usuario}/actualizar-notas")
+    suspend fun actualizarNotasAdmin(
+        @Path("usuario") usuario: String,
+        @Header("Authorization") authorization: String,
+        @Query("admin_usuario") adminUsuario: String = "000000000"
+    ): Response<AdminActualizarNotasResponse>
+
     @GET("admin/sugerencias")
     suspend fun getAdminSugerencias(
         @Header("Authorization") authorization: String,

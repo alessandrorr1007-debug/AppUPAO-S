@@ -17,7 +17,10 @@ data class AdminUiState(
     val sugerencias: List<AdminSugerenciaItem> = emptyList(),
     val metricas: AdminMetricasResponse? = null,
     val semanaInfo: SemanaInfo? = null,
-    val mensajeExito: String? = null
+    val mensajeExito: String? = null,
+    val cuentaDetalle: AdminCuentaDetalle? = null,
+    val cuentaDetalleCargando: Boolean = false,
+    val actualizandoNotas: Boolean = false
 )
 
 class AdminViewModel : ViewModel() {
@@ -105,5 +108,64 @@ class AdminViewModel : ViewModel() {
 
     fun limpiarError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    fun buscarCuentaDetalle(usuario: String, token: String, adminUsuario: String = "000000000") {
+        if (usuario.isBlank()) return
+        _uiState.value = _uiState.value.copy(cuentaDetalleCargando = true, cuentaDetalle = null)
+        viewModelScope.launch {
+            try {
+                val res = RetrofitClient.apiService.getAdminCuentaDetalle(usuario, "Bearer $token", adminUsuario)
+                if (res.isSuccessful && res.body() != null) {
+                    _uiState.value = _uiState.value.copy(cuentaDetalle = res.body(), cuentaDetalleCargando = false)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        cuentaDetalleCargando = false,
+                        error = if (res.code() == 404) "Usuario $usuario no encontrado" else "No se pudo cargar el detalle (${res.code()})"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    cuentaDetalleCargando = false,
+                    error = "Error de conexión: ${e.localizedMessage}"
+                )
+            }
+        }
+    }
+
+    fun limpiarCuentaDetalle() {
+        _uiState.value = _uiState.value.copy(cuentaDetalle = null, cuentaDetalleCargando = false)
+    }
+
+    fun actualizarNotasCuenta(usuario: String, token: String, adminUsuario: String = "000000000") {
+        _uiState.value = _uiState.value.copy(actualizandoNotas = true)
+        viewModelScope.launch {
+            try {
+                val res = RetrofitClient.apiService.actualizarNotasAdmin(usuario, "Bearer $token", adminUsuario)
+                if (res.isSuccessful && res.body() != null) {
+                    val body = res.body()!!
+                    val detalle = _uiState.value.cuentaDetalle
+                    _uiState.value = _uiState.value.copy(
+                        actualizandoNotas = false,
+                        cuentaDetalle = detalle?.copy(ultimaRevision = null),
+                        mensajeExito = if (body.success) {
+                            if (body.totalCambios > 0) "Notas actualizadas (${body.totalCambios} cambio(s)) en ${body.periodo}" else "Notas actualizadas. Sin cambios en ${body.periodo}"
+                        } else {
+                            body.message ?: "No se pudo actualizar las notas"
+                        }
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        actualizandoNotas = false,
+                        error = "No se pudo actualizar las notas (${res.code()})"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    actualizandoNotas = false,
+                    error = "Error de conexión: ${e.localizedMessage}"
+                )
+            }
+        }
     }
 }

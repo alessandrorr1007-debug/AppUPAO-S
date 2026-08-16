@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.EmojiObjects
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -164,7 +165,15 @@ fun AdminScreen(
                             onFechaInicioChange = { fechaInicioInput = it },
                             onGuardarFecha = { viewModel.guardarFechaSemana(fechaInicioInput, adminToken, adminUsuario) }
                         )
-                        1 -> CuentasTab(cuentas = state.cuentas)
+                        1 -> CuentasTab(
+                            cuentas = state.cuentas,
+                            cuentaDetalle = state.cuentaDetalle,
+                            detalleCargando = state.cuentaDetalleCargando,
+                            actualizandoNotas = state.actualizandoNotas,
+                            onBuscar = { usuario -> viewModel.buscarCuentaDetalle(usuario, adminToken, adminUsuario) },
+                            onLimpiarDetalle = { viewModel.limpiarCuentaDetalle() },
+                            onActualizarNotas = { usuario -> viewModel.actualizarNotasCuenta(usuario, adminToken, adminUsuario) }
+                        )
                         else -> SugerenciasAdminTab(
                             sugerencias = state.sugerencias,
                             onCambiarEstado = { id, nuevo -> viewModel.cambiarEstadoSugerencia(id, nuevo, adminToken, adminUsuario) }
@@ -321,7 +330,53 @@ private fun MetricCard(
 }
 
 @Composable
-private fun CuentasTab(cuentas: List<AdminCuentaItem>) {
+private fun CuentasTab(
+    cuentas: List<AdminCuentaItem>,
+    cuentaDetalle: com.example.upaos.data.model.AdminCuentaDetalle?,
+    detalleCargando: Boolean,
+    actualizandoNotas: Boolean,
+    onBuscar: (String) -> Unit,
+    onLimpiarDetalle: () -> Unit,
+    onActualizarNotas: (String) -> Unit
+) {
+    var busqueda by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        AppCard(corner = 14.dp, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = busqueda,
+                    onValueChange = { busqueda = it.filter(Char::isDigit).take(9) },
+                    label = { Text("Buscar por número de usuario") },
+                    placeholder = { Text("Ej. 000123456") },
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                FilledIconButton(onClick = { if (busqueda.isNotBlank()) onBuscar(busqueda) }) {
+                    Icon(Icons.Filled.Search, contentDescription = "Buscar cuenta")
+                }
+            }
+        }
+
+        when {
+            detalleCargando -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            cuentaDetalle != null -> CuentaDetalleCard(
+                detalle = cuentaDetalle,
+                actualizandoNotas = actualizandoNotas,
+                onActualizarNotas = { onActualizarNotas(cuentaDetalle.usuario) },
+                onCerrar = onLimpiarDetalle
+            )
+            else -> CuentasLista(cuentas = cuentas)
+        }
+    }
+}
+
+@Composable
+private fun CuentasLista(cuentas: List<AdminCuentaItem>) {
     if (cuentas.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             EmptyState(icon = Icons.Filled.Group, title = "Sin cuentas registradas", subtitle = "No hay cuentas registradas en el backend.")
@@ -376,6 +431,96 @@ private fun CuentasTab(cuentas: List<AdminCuentaItem>) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CuentaDetalleCard(
+    detalle: com.example.upaos.data.model.AdminCuentaDetalle,
+    actualizandoNotas: Boolean,
+    onActualizarNotas: () -> Unit,
+    onCerrar: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Detalle de la cuenta",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onCerrar) { Text("Volver a la lista") }
+        }
+
+        AppCard(corner = 14.dp, modifier = Modifier.fillMaxWidth()) {
+            Column {
+                DetalleFila("Nombre", detalle.nombre?.takeIf { it.isNotBlank() } ?: "Usuario UPAO")
+                DetalleFila("Código", detalle.usuario)
+                DetalleFila("Rol", if (detalle.isAdmin) "Administrador" else "Estudiante")
+                DetalleFila("Auto-check notas", if (detalle.autoCheckEnabled) "Activado" else "Desactivado")
+                DetalleFila("Intervalo de chequeo", "${detalle.intervaloChequeoMinutos} min")
+                DetalleFila("Primer login", detalle.fechaPrimerLogin?.substringBefore("T") ?: "Nunca")
+                DetalleFila("Última revisión", detalle.ultimaRevision?.substringBefore("T") ?: "Nunca")
+                DetalleFila("Token FCM", if (detalle.tieneFcmToken) "Registrado" else "No registrado")
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Sesión Banner",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(0.45f)
+                    )
+                    val (colorSesion, etiquetaSesion) = when (detalle.estadoSesionBanner) {
+                        "activa" -> UpaoGreen to "Activa"
+                        "nunca_logueado" -> MaterialTheme.colorScheme.primary to "Nunca logueado"
+                        else -> UpaoRed to "Expirada"
+                    }
+                    StatusBadge(text = etiquetaSesion, color = colorSesion)
+                }
+            }
+        }
+
+        PrimaryButton(
+            text = if (actualizandoNotas) "Actualizando notas..." else "Actualizar notas ahora",
+            onClick = onActualizarNotas,
+            loading = actualizandoNotas,
+            height = 46.dp,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun DetalleFila(etiqueta: String, valor: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = etiqueta,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.45f)
+        )
+        Text(
+            text = valor,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(0.55f)
+        )
     }
 }
 

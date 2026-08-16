@@ -80,6 +80,27 @@ data class AdminCuentasResponse(
     @SerializedName("cuentas") val cuentas: List<AdminCuentaItem> = emptyList()
 )
 
+data class AdminCuentaDetalle(
+    @SerializedName("usuario") val usuario: String,
+    @SerializedName("nombre") val nombre: String? = null,
+    @SerializedName("is_admin") val isAdmin: Boolean = false,
+    @SerializedName("auto_check_enabled") val autoCheckEnabled: Boolean = false,
+    @SerializedName("intervalo_chequeo_minutos") val intervaloChequeoMinutos: Int = 10,
+    @SerializedName("tiene_password_guardada") val tienePasswordGuardada: Boolean = false,
+    @SerializedName("tiene_fcm_token") val tieneFcmToken: Boolean = false,
+    @SerializedName("fecha_primer_login") val fechaPrimerLogin: String? = null,
+    @SerializedName("ultima_revision") val ultimaRevision: String? = null,
+    @SerializedName("estado_sesion_banner") val estadoSesionBanner: String? = null
+)
+
+data class AdminActualizarNotasResponse(
+    @SerializedName("success") val success: Boolean = false,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("periodo") val periodo: String? = null,
+    @SerializedName("cambios") val cambios: List<String> = emptyList(),
+    @SerializedName("total_cambios") val totalCambios: Int = 0
+)
+
 data class AdminSugerenciaItem(
     @SerializedName("id") val id: Long,
     @SerializedName("usuario") val usuario: String,
