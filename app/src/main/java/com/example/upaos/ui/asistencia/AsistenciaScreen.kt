@@ -71,6 +71,13 @@ private fun estadoAsistencia(pct: Double): Pair<String, Color> = when {
 private fun formatPct(pct: Double): String =
     if (pct % 1.0 == 0.0) pct.toInt().toString() else pct.toString()
 
+private fun porcentajeCurso(curso: AsistenciaCurso): Double = curso.porcentaje ?: 0.0
+
+private fun porcentajeMinimo(curso: AsistenciaCurso): Double {
+    val comps = curso.componentes.orEmpty().mapNotNull { it.porcentaje }
+    return if (comps.isNotEmpty()) comps.min() else porcentajeCurso(curso)
+}
+
 @Composable
 fun AsistenciaContent(
     token: String,
@@ -83,7 +90,7 @@ fun AsistenciaContent(
     val cache = remember { ApiCache(context) }
     val gson = remember { Gson() }
     val tokenManagerUi = remember { TokenManager(context) }
-    val claveCache = "asistencia_${usuario ?: "anonimo"}"
+    val claveCache = "asistencia_${usuario ?: "anonimo"}_v2"
 
     var registros by remember { mutableStateOf<List<AsistenciaCurso>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
@@ -223,8 +230,8 @@ fun AsistenciaContent(
             else -> {
                 val conNota = registros.mapNotNull { it.porcentaje }
                 val promedio = if (conNota.isNotEmpty()) conNota.average() else 0.0
-                val enRiesgo = registros.filter { (it.porcentaje ?: 0.0) < 70.0 }
-                val optimos = registros.count { (it.porcentaje ?: 0.0) >= 90.0 }
+                val enRiesgo = registros.filter { porcentajeMinimo(it) < 70.0 }
+                val optimos = registros.count { porcentajeCurso(it) >= 90.0 }
                 val resto = registros.filterNot { it in enRiesgo }
 
                 Column(modifier = Modifier.fillMaxSize()) {
@@ -359,6 +366,7 @@ fun AsistenciaCard(item: AsistenciaCurso) {
     val (estado, _) = estadoAsistencia(pct)
     val activos = diasActivos(item.horarioDias)
     val courseColor = cursoColor(item.displayNombre)
+    val componentes = item.componentes.orEmpty()
 
     Row(
         modifier = Modifier
@@ -388,9 +396,16 @@ fun AsistenciaCard(item: AsistenciaCurso) {
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1
                         )
-                        val meta = buildString {
-                            append("CRN ${item.crn ?: "-"}")
-                            item.seccion?.let { append(" · Sec $it") }
+                        val meta = if (componentes.isNotEmpty()) {
+                            buildString {
+                                item.materia?.let { append(it) }
+                                append(" · ${componentes.size} secciones")
+                            }
+                        } else {
+                            buildString {
+                                append("CRN ${item.crn ?: "-"}")
+                                item.seccion?.let { append(" · Sec $it") }
+                            }
                         }
                         Text(
                             text = meta,
@@ -425,6 +440,47 @@ fun AsistenciaCard(item: AsistenciaCurso) {
                         fontWeight = FontWeight.Bold,
                         color = color
                     )
+                }
+
+                if (componentes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    componentes.forEach { comp ->
+                        val compPct = comp.porcentaje ?: 0.0
+                        val compColor = porcentajeColor(compPct)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = buildString {
+                                    append("Sec ${comp.seccion ?: "-"}")
+                                    comp.crn?.let { append(" · CRN $it") }
+                                    comp.hora12h?.let { append(" · $it") }
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "${formatPct(compPct)}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = compColor
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "${comp.faltas ?: 0} faltas",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
