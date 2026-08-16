@@ -106,6 +106,7 @@ data class AdminSugerenciaItem(
     @SerializedName("usuario") val usuario: String,
     @SerializedName("texto") val texto: String,
     @SerializedName("estado") val estado: String = "pendiente",
+    @SerializedName("nota_admin") val notaAdmin: String? = null,
     @SerializedName("fecha_creacion") val fechaCreacion: String? = null
 )
 
@@ -114,7 +115,8 @@ data class AdminSugerenciasResponse(
 )
 
 data class AdminEstadoSugerenciaRequest(
-    @SerializedName("estado") val estado: String
+    @SerializedName("estado") val estado: String? = null,
+    @SerializedName("nota_admin") val notaAdmin: String? = null
 )
 
 data class AdminSemanaRequest(

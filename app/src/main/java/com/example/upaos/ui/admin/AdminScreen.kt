@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -176,7 +177,8 @@ fun AdminScreen(
                         )
                         else -> SugerenciasAdminTab(
                             sugerencias = state.sugerencias,
-                            onCambiarEstado = { id, nuevo -> viewModel.cambiarEstadoSugerencia(id, nuevo, adminToken, adminUsuario) }
+                            onCambiarEstado = { id, nuevo -> viewModel.cambiarEstadoSugerencia(id, nuevo, adminToken, adminUsuario) },
+                            onGuardarNota = { id, nota -> viewModel.guardarNotaSugerencia(id, nota, adminToken, adminUsuario) }
                         )
                     }
                 }
@@ -527,74 +529,134 @@ private fun DetalleFila(etiqueta: String, valor: String) {
 @Composable
 private fun SugerenciasAdminTab(
     sugerencias: List<AdminSugerenciaItem>,
-    onCambiarEstado: (Long, String) -> Unit
+    onCambiarEstado: (Long, String) -> Unit,
+    onGuardarNota: (Long, String) -> Unit
 ) {
-    if (sugerencias.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            EmptyState(icon = Icons.Filled.EmojiObjects, title = "Sin sugerencias registradas", subtitle = "No se ha recibido ninguna sugerencia de los usuarios.")
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(sugerencias, key = { it.id }) { sug ->
-                val (colorEstado, etiquetaEstado) = when (sug.estado) {
-                    "aprobada" -> UpaoGreen to "Aprobada"
-                    "en_revision" -> UpaoAmber to "En revisión"
-                    "rechazada" -> UpaoRed to "Rechazada"
-                    else -> MaterialTheme.colorScheme.primary to "Pendiente"
-                }
+    var filtroEstado by remember { mutableStateOf("todas") }
+    val opcionesFiltro = listOf(
+        "todas" to "Todas",
+        "pendiente" to "Pendiente",
+        "en_revision" to "Revisando",
+        "aprobada" to "Aprobadas",
+        "rechazada" to "Rechazadas"
+    )
+    val filtradas = if (filtroEstado == "todas") sugerencias else sugerencias.filter { it.estado == filtroEstado }
 
-                AppCard(corner = 14.dp, modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Usuario ${sug.usuario}",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            StatusBadge(text = etiquetaEstado, color = colorEstado)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = sug.texto,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        if (sug.fechaCreacion != null) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(opcionesFiltro, key = { it.first }) { (clave, etiqueta) ->
+                FilterChip(
+                    selected = filtroEstado == clave,
+                    onClick = { filtroEstado = clave },
+                    label = { Text(etiqueta, fontSize = 11.sp) }
+                )
+            }
+        }
+
+        if (filtradas.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(
+                    icon = Icons.Filled.EmojiObjects,
+                    title = "Sin sugerencias",
+                    subtitle = if (filtroEstado == "todas") "No se ha recibido ninguna sugerencia de los usuarios." else "No hay sugerencias en este estado."
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filtradas, key = { it.id }) { sug ->
+                    val (colorEstado, etiquetaEstado) = when (sug.estado) {
+                        "aprobada" -> UpaoGreen to "Aprobada"
+                        "en_revision" -> UpaoAmber to "En revisión"
+                        "rechazada" -> UpaoRed to "Rechazada"
+                        else -> MaterialTheme.colorScheme.primary to "Pendiente"
+                    }
+                    var notaLocal by remember(sug.id) { mutableStateOf(sug.notaAdmin ?: "") }
+                    var notaDirty by remember(sug.id) { mutableStateOf(false) }
+
+                    AppCard(corner = 14.dp, modifier = Modifier.fillMaxWidth()) {
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Usuario ${sug.usuario}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                StatusBadge(text = etiquetaEstado, color = colorEstado)
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Enviado: ${sug.fechaCreacion.substringBefore("T")}",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.outline
+                                text = sug.texto,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            FilterChip(
-                                selected = sug.estado == "pendiente",
-                                onClick = { onCambiarEstado(sug.id, "pendiente") },
-                                label = { Text("Pendiente", fontSize = 11.sp) }
+                            if (sug.fechaCreacion != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Enviado: ${sug.fechaCreacion.substringBefore("T")}",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = notaLocal,
+                                onValueChange = { notaLocal = it; notaDirty = true },
+                                label = { Text("Nota interna del admin") },
+                                placeholder = { Text("Opcional: observación para el equipo") },
+                                shape = RoundedCornerShape(12.dp),
+                                minLines = 1,
+                                maxLines = 3,
+                                modifier = Modifier.fillMaxWidth()
                             )
-                            FilterChip(
-                                selected = sug.estado == "en_revision",
-                                onClick = { onCambiarEstado(sug.id, "en_revision") },
-                                label = { Text("Revisando", fontSize = 11.sp) }
-                            )
-                            FilterChip(
-                                selected = sug.estado == "aprobada",
-                                onClick = { onCambiarEstado(sug.id, "aprobada") },
-                                label = { Text("Aprobada", fontSize = 11.sp) }
-                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                FilterChip(
+                                    selected = sug.estado == "pendiente",
+                                    onClick = { onCambiarEstado(sug.id, "pendiente") },
+                                    label = { Text("Pendiente", fontSize = 11.sp) }
+                                )
+                                FilterChip(
+                                    selected = sug.estado == "en_revision",
+                                    onClick = { onCambiarEstado(sug.id, "en_revision") },
+                                    label = { Text("Revisando", fontSize = 11.sp) }
+                                )
+                                FilterChip(
+                                    selected = sug.estado == "aprobada",
+                                    onClick = { onCambiarEstado(sug.id, "aprobada") },
+                                    label = { Text("Aprobada", fontSize = 11.sp) }
+                                )
+                                FilterChip(
+                                    selected = sug.estado == "rechazada",
+                                    onClick = { onCambiarEstado(sug.id, "rechazada") },
+                                    label = { Text("Rechazada", fontSize = 11.sp) }
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                if (notaDirty) {
+                                    TextButton(
+                                        onClick = {
+                                            onGuardarNota(sug.id, notaLocal.trim())
+                                            notaDirty = false
+                                        }
+                                    ) {
+                                        Text("Guardar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

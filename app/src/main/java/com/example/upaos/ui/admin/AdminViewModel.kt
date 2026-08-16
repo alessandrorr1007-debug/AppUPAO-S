@@ -83,6 +83,33 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    fun guardarNotaSugerencia(id: Long, nota: String, token: String, adminUsuario: String = "000000000") {
+        viewModelScope.launch {
+            try {
+                val api = RetrofitClient.apiService
+                val estadoActual = _uiState.value.sugerencias.firstOrNull { it.id == id }?.estado ?: return@launch
+                val res = api.updateAdminSugerenciaEstado(
+                    id,
+                    AdminEstadoSugerenciaRequest(estado = estadoActual, notaAdmin = nota),
+                    "Bearer $token",
+                    adminUsuario
+                )
+                if (res.isSuccessful) {
+                    _uiState.value = _uiState.value.copy(
+                        sugerencias = _uiState.value.sugerencias.map { s ->
+                            if (s.id == id) s.copy(notaAdmin = nota) else s
+                        },
+                        mensajeExito = "Nota del admin guardada"
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(error = "No se pudo guardar la nota (${res.code()})")
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Error de conexión: ${e.localizedMessage}")
+            }
+        }
+    }
+
     fun guardarFechaSemana(fechaInicioIso: String, token: String, adminUsuario: String = "000000000") {
         viewModelScope.launch {
             try {
