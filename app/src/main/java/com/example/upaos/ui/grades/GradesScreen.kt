@@ -37,7 +37,6 @@ import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.GradesResponse
 import com.example.upaos.data.model.PromedioPeriodoResponse
 import com.example.upaos.ui.components.AppCard
-import com.example.upaos.ui.components.CircularGauge
 import com.example.upaos.ui.components.EmptyState
 import com.example.upaos.ui.components.ErrorView
 import com.example.upaos.ui.components.RefreshableContent
@@ -490,41 +489,22 @@ fun PromedioCard(
 
     AppCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         corner = 14.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            CircularGauge(
-                progress = if (pFinal != null) (pFinal / 20.0).toFloat() else 0f,
-                centerValue = notaTexto,
-                centerLabel = "/ 20",
-                size = 50.dp,
-                strokeWidth = 5.dp,
-                gaugeColor = gaugeColor
-            )
-            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Ponderado",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (notaTexto != "--") "$notaTexto / 20" else "--",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (notaTexto != "--") gaugeColor else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    text = "Ponderado",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = fuenteTexto,
@@ -532,6 +512,12 @@ fun PromedioCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Text(
+                text = notaTexto,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (notaTexto != "--") gaugeColor else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
