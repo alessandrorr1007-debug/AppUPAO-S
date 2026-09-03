@@ -418,6 +418,7 @@ private fun HorarioSemanalGrid(cursos: List<HorarioCurso>, modifier: Modifier = 
     Column(
         modifier = modifier
             .fillMaxSize()
+            .padding(bottom = 24.dp)
             .verticalScroll(vertScroll)
     ) {
         Row(modifier = Modifier.horizontalScroll(horScroll)) {

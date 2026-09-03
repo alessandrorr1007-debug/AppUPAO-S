@@ -41,7 +41,6 @@ fun SettingsScreen(
     usuario: String?,
     onBack: () -> Unit,
     onOpenSugerencias: () -> Unit,
-    onOpenRanking: () -> Unit,
     onOpenAdmin: () -> Unit = {}
 ) {
     val context = LocalContext.current

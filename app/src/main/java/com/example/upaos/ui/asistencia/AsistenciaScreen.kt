@@ -357,6 +357,7 @@ fun AsistenciaContent(
                     ) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             if (conDatos.isNotEmpty()) {
@@ -417,6 +418,7 @@ fun AsistenciaContent(
                     ) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             if (enRiesgo.isNotEmpty()) {

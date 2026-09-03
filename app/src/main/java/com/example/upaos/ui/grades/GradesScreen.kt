@@ -416,6 +416,7 @@ fun GradesContent(
                 ) {
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(cursos) { course ->
