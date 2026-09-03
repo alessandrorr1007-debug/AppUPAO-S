@@ -104,13 +104,31 @@ class MainActivity : ComponentActivity() {
                     val savedToken = tokenManager.getToken()
                     val savedUser = tokenManager.getSavedUser()
 
-                    val targetDestination = if (savedToken != null || savedUser != null) {
-                        "home/${savedToken ?: ""}"
-                    } else {
-                        "login"
+                    fun navegarPorTipoCuenta(token: String) {
+                        val user = tokenManager.getSavedUser()
+                        if (user != null) {
+                            scope.launch {
+                                try {
+                                    val res = RetrofitClient.apiService.getCuenta(user)
+                                    if (res.isSuccessful && res.body() != null && res.body()!!.esAdmin) {
+                                        navController.navigate("admin") {
+                                            popUpTo(0) { inclusive = true }
+                                        }
+                                        return@launch
+                                    }
+                                } catch (e: Exception) {
+                                    // Silencioso
+                                }
+                                navController.navigate("home/$token") {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }
+                        } else {
+                            navController.navigate("home/$token") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
                     }
-
-                    val navController = rememberNavController()
 
                     NavHost(
                         navController = navController,
@@ -119,8 +137,12 @@ class MainActivity : ComponentActivity() {
                         composable("splash") {
                             SplashScreen(
                                 onTimeout = {
-                                    navController.navigate(targetDestination) {
-                                        popUpTo("splash") { inclusive = true }
+                                    if (savedToken != null || savedUser != null) {
+                                        navegarPorTipoCuenta(savedToken ?: "")
+                                    } else {
+                                        navController.navigate("login") {
+                                            popUpTo("splash") { inclusive = true }
+                                        }
                                     }
                                 }
                             )
@@ -135,9 +157,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             LoginScreen(
                                 onLoginSuccess = { token ->
-                                    navController.navigate("home/$token") {
-                                        popUpTo("login") { inclusive = true }
-                                    }
+                                    navegarPorTipoCuenta(token)
                                 }
                             )
                         }
@@ -149,9 +169,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             EligeCuentaScreen(
                                 onLoginSuccess = { token ->
-                                    navController.navigate("home/$token") {
-                                        popUpTo(0) { inclusive = true }
-                                    }
+                                    navegarPorTipoCuenta(token)
                                 },
                                 onGoToLogin = {
                                     navController.navigate("login") {
@@ -193,6 +211,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenNotifications = {
                                     navController.navigate("notificaciones")
+                                },
+                                onOpenAdmin = {
+                                    navController.navigate("admin")
                                 },
                                 onOpenCourse = { periodo, carrera, crn, nombre ->
                                     navController.navigate(
@@ -267,7 +288,11 @@ class MainActivity : ComponentActivity() {
                         ) {
                             AdminScreen(
                                 usuario = tokenManager.getSavedUser(),
-                                onBack = { navController.popBackStack() }
+                                onBack = {
+                                    if (!navController.popBackStack()) {
+                                        navController.navigate("home/${savedToken ?: ""}")
+                                    }
+                                }
                             )
                         }
 
