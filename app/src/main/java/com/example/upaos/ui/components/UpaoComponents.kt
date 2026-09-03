@@ -507,7 +507,7 @@ fun gradeColor(value: Any?): Color {
 }
 
 fun estadoNota(value: Any?): String = when {
-    isPendiente(value) -> "Pendiente"
+    isPendiente(value) -> "Por evaluar"
     (gradeValue(value) ?: 0.0) >= 10.5 -> "Aprobado"
     else -> "Desaprobado"
 }

@@ -665,12 +665,12 @@ fun ComponenteRow(componente: ComponenteDetalle) {
 }
 
 fun displayGrade(value: Any?): String = when {
-    value == null || value.toString().isBlank() || value.toString() == "null" -> "Pendiente"
+    value == null || value.toString().isBlank() || value.toString() == "null" -> "--"
     else -> value.toString()
 }
 
 fun formatNota(value: Any?): String {
-    if (isPendiente(value)) return "Pendiente"
+    if (isPendiente(value)) return "--"
     val d = value.toString().trim().toDoubleOrNull() ?: return value.toString()
     val r = (d * 100).roundToInt() / 100.0
     return if (r % 1.0 == 0.0) r.toInt().toString() else r.toString()
