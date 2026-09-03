@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">UPAO S</string>
+    <string name="widget_resumen_notas_desc">Resumen de tus notas UPAO</string>
+    <string name="widget_proximo_curso_desc">Tu próxima clase UPAO</string>
+</resources>
