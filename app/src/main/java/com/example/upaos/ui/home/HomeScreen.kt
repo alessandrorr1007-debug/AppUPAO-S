@@ -1,21 +1,20 @@
 package com.example.upaos.ui.home
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -25,7 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +38,7 @@ import com.example.upaos.ui.asistencia.AsistenciaContent
 import com.example.upaos.ui.grades.GradesContent
 import com.example.upaos.ui.horario.HorarioContent
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +55,8 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val coroutineScope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     var unreadCount by remember { mutableIntStateOf(0) }
     var semanaEtiqueta by remember { mutableStateOf<String?>(null) }
 
@@ -102,7 +103,7 @@ fun HomeScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = when (selectedTab) {
+                        text = when (pagerState.currentPage) {
                             0 -> "Mis Notas"
                             1 -> "Horario"
                             else -> "Asistencia"
@@ -156,7 +157,12 @@ fun HomeScreen(
                             onDismissRequest = { menuExpanded = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text(if (isDarkTheme) "Tema claro" else "Tema oscuro", fontSize = 14.sp) },
+                                text = {
+                                    Text(
+                                        if (isDarkTheme) "Modo claro" else "Modo oscuro",
+                                        fontSize = 14.sp
+                                    )
+                                },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = if (isDarkTheme) Icons.Filled.LightMode else Icons.Filled.DarkMode,
@@ -223,20 +229,26 @@ fun HomeScreen(
                 tonalElevation = 2.dp
             ) {
                 NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    selected = pagerState.currentPage == 0,
+                    onClick = {
+                        coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                    },
                     icon = { Icon(Icons.Filled.Grade, contentDescription = null, modifier = Modifier.size(20.dp)) },
                     label = { Text("Notas", fontSize = 12.sp) }
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    selected = pagerState.currentPage == 1,
+                    onClick = {
+                        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                    },
                     icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
                     label = { Text("Horario", fontSize = 12.sp) }
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
+                    selected = pagerState.currentPage == 2,
+                    onClick = {
+                        coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                    },
                     icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
                     label = { Text("Asistencia", fontSize = 12.sp) }
                 )
@@ -276,15 +288,13 @@ fun HomeScreen(
                     }
                 }
             }
-            Crossfade(
-                targetState = selectedTab,
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-                label = "tabCrossfade",
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
-            ) { tab ->
-                when (tab) {
+            ) { page ->
+                when (page) {
                     0 -> GradesContent(
                         token = token,
                         usuario = usuario,
