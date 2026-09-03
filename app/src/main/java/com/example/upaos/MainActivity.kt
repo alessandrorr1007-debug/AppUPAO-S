@@ -37,6 +37,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.ThemePreferences
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.service.FcmTokenHelper
@@ -103,6 +104,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val savedToken = tokenManager.getToken()
                     val savedUser = tokenManager.getSavedUser()
+                    val navController = rememberNavController()
 
                     fun navegarPorTipoCuenta(token: String) {
                         val user = tokenManager.getSavedUser()
