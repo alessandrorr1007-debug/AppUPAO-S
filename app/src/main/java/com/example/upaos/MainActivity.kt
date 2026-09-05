@@ -85,12 +85,28 @@ class MainActivity : ComponentActivity() {
             val darkTheme by themePreferences.isDarkTheme.collectAsState(initial = true)
             val scope = rememberCoroutineScope()
 
+            var updateInfo by remember { mutableStateOf<com.example.upaos.util.UpdateInfo?>(null) }
+            var isDownloadingUpdate by remember { mutableStateOf(false) }
+
             LaunchedEffect(Unit) {
                 FcmTokenHelper.register(context)
                 val notifPrefs = com.example.upaos.data.local.NotificationPreferences(context)
                 if (notifPrefs.checkAsistenciaEnabled) {
                     com.example.upaos.service.AsistenciaWorker.schedule(context, notifPrefs.intervaloMinutos.toLong())
                 }
+
+                // Comprobar si hay una nueva versión en GitHub
+                kotlinx.coroutines.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val info = com.example.upaos.util.AppUpdater.checkForUpdates(context)
+                        if (info.hasUpdate) {
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                updateInfo = info
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
                 // Actualiza los widgets de la home screen tras cargar la app
                 delay(1500)
                 try {
@@ -329,6 +345,39 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() }
                             )
                         }
+                    }
+
+                    // Diálogo de actualización disponible
+                    updateInfo?.let { info ->
+                        com.example.upaos.ui.components.UpdateDialog(
+                            updateInfo = info,
+                            isDownloading = isDownloadingUpdate,
+                            onDismiss = { updateInfo = null },
+                            onConfirmUpdate = {
+                                if (info.downloadUrl != null) {
+                                    isDownloadingUpdate = true
+                                    com.example.upaos.util.AppUpdater.downloadAndInstall(
+                                        context = context,
+                                        downloadUrl = info.downloadUrl,
+                                        versionName = info.latestVersion
+                                    )
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Descargando actualización en segundo plano...",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                    updateInfo = null
+                                    isDownloadingUpdate = false
+                                } else {
+                                    val browserIntent = android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(info.releasePageUrl)
+                                    )
+                                    context.startActivity(browserIntent)
+                                    updateInfo = null
+                                }
+                            }
+                        )
                     }
                 }
             }
