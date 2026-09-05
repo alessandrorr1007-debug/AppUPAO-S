@@ -87,6 +87,10 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(Unit) {
                 FcmTokenHelper.register(context)
+                val notifPrefs = com.example.upaos.data.local.NotificationPreferences(context)
+                if (notifPrefs.checkAsistenciaEnabled) {
+                    com.example.upaos.service.AsistenciaWorker.schedule(context, notifPrefs.intervaloMinutos.toLong())
+                }
                 // Actualiza los widgets de la home screen tras cargar la app
                 delay(1500)
                 try {
@@ -108,6 +112,7 @@ class MainActivity : ComponentActivity() {
 
                     fun navegarPorTipoCuenta(token: String) {
                         val user = tokenManager.getSavedUser()
+                        val activeToken = token.ifBlank { tokenManager.getToken() ?: "" }
                         if (user != null) {
                             scope.launch {
                                 try {
@@ -121,12 +126,12 @@ class MainActivity : ComponentActivity() {
                                 } catch (e: Exception) {
                                     // Silencioso
                                 }
-                                navController.navigate("home/$token") {
+                                navController.navigate("home/$activeToken") {
                                     popUpTo(0) { inclusive = true }
                                 }
                             }
                         } else {
-                            navController.navigate("home/$token") {
+                            navController.navigate("home/$activeToken") {
                                 popUpTo(0) { inclusive = true }
                             }
                         }
@@ -139,8 +144,10 @@ class MainActivity : ComponentActivity() {
                         composable("splash") {
                             SplashScreen(
                                 onTimeout = {
-                                    if (savedToken != null || savedUser != null) {
-                                        navegarPorTipoCuenta(savedToken ?: "")
+                                    val currentToken = tokenManager.getToken()
+                                    val currentUser = tokenManager.getSavedUser()
+                                    if (!currentUser.isNullOrBlank() || !currentToken.isNullOrBlank()) {
+                                        navegarPorTipoCuenta(currentToken ?: "")
                                     } else {
                                         navController.navigate("login") {
                                             popUpTo("splash") { inclusive = true }

@@ -210,7 +210,7 @@ fun HorarioContent(
             ExposedDropdownMenuBox(
                 expanded = periodosExpanded,
                 onExpandedChange = { periodosExpanded = !periodosExpanded },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 OutlinedTextField(
                     value = selectedPeriodo,
@@ -219,7 +219,9 @@ fun HorarioContent(
                     label = { Text("Periodo", fontSize = 12.sp) },
                     shape = RoundedCornerShape(12.dp),
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = periodosExpanded) },
-                    modifier = Modifier.menuAnchor()
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
                 )
                 ExposedDropdownMenu(
                     expanded = periodosExpanded,
@@ -235,21 +237,6 @@ fun HorarioContent(
                             }
                         )
                     }
-                }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.size(46.dp)
-            ) {
-                IconButton(onClick = { loadHorario() }) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Actualizar Horario",
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
         }
@@ -510,9 +497,16 @@ private fun BloqueColumna(curso: HorarioCurso, bloque: HorarioBloque, esHoy: Boo
             color = if (esHoy) color else MaterialTheme.colorScheme.onSurface,
             maxLines = 2
         )
-        if (curso.displayCodigo.isNotBlank()) {
+        val subtitulo = buildString {
+            if (curso.displayCodigo.isNotBlank()) append(curso.displayCodigo)
+            if (!curso.crn.isNullOrBlank()) {
+                if (isNotEmpty()) append(" · ")
+                append("NRC ${curso.crn}")
+            }
+        }
+        if (subtitulo.isNotBlank()) {
             Text(
-                text = curso.displayCodigo,
+                text = subtitulo,
                 fontSize = 9.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1

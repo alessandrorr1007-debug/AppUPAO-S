@@ -49,7 +49,7 @@ object FcmTokenHelper {
 
 class NotificationService : FirebaseMessagingService() {
 
-    @Suppress("DEPRECATION")
+    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d(TAG, "Nuevo token FCM: ${token.take(20)}...")
@@ -61,50 +61,106 @@ class NotificationService : FirebaseMessagingService() {
 
         val title = message.notification?.title
             ?: message.data["title"]
-            ?: "UPAO Notas"
+            ?: "UPAO Móvil"
         val body = message.notification?.body
             ?: message.data["body"]
-            ?: "Tus notas cambiaron."
+            ?: "Novedades en tus cursos."
 
-        Log.d(TAG, "Mensaje FCM recibido: $title - $body")
-        mostrarNotificacion(title, body)
-    }
+        val tipo = message.data["tipo"] ?: ""
+        val esAsistencia = tipo.equals("asistencia", ignoreCase = true) ||
+                title.contains("asistencia", ignoreCase = true) ||
+                body.contains("asistencia", ignoreCase = true) ||
+                title.contains("falta", ignoreCase = true) ||
+                body.contains("falta", ignoreCase = true)
 
-    private fun mostrarNotificacion(title: String, body: String) {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        Log.d(TAG, "Mensaje FCM recibido: $title - $body (asistencia=$esAsistencia)")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Notas UPAO",
-                NotificationManager.IMPORTANCE_HIGH
-            )
-            notificationManager.createNotificationChannel(channel)
+        if (esAsistencia) {
+            mostrarNotificacionAsistencia(this, title, body)
+        } else {
+            mostrarNotificacionNotas(this, title, body)
         }
-
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        val id = (System.currentTimeMillis() % 100000).toInt()
-        notificationManager.notify(id, notification)
     }
 
     companion object {
         private const val TAG = "UPAO_FCM"
-        private const val CHANNEL_ID = "upaos_notas"
+        const val CHANNEL_NOTAS = "upaos_notas"
+        const val CHANNEL_ASISTENCIA = "upaos_asistencia"
+
+        fun mostrarNotificacionAsistencia(context: Context, title: String, body: String) {
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_ASISTENCIA,
+                    "Asistencias UPAO",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Avisos de asistencias y faltas registradas"
+                    enableVibration(true)
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                1,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_ASISTENCIA)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build()
+
+            val id = (System.currentTimeMillis() % 100000).toInt() + 1000
+            notificationManager.notify(id, notification)
+        }
+
+        fun mostrarNotificacionNotas(context: Context, title: String, body: String) {
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_NOTAS,
+                    "Notas UPAO",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Avisos de publicación y cambio de notas"
+                    enableVibration(true)
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_NOTAS)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build()
+
+            val id = (System.currentTimeMillis() % 100000).toInt()
+            notificationManager.notify(id, notification)
+        }
     }
 }

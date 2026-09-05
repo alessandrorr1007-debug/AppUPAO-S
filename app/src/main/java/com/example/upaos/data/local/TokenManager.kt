@@ -19,6 +19,9 @@ class TokenManager(context: Context) {
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
 
+    private val fallbackPrefs: SharedPreferences =
+        context.getSharedPreferences("upao_session_permanent", Context.MODE_PRIVATE)
+
     private val prefs: SharedPreferences = try {
         EncryptedSharedPreferences.create(
             context,
@@ -28,33 +31,42 @@ class TokenManager(context: Context) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     } catch (e: Exception) {
-        context.getSharedPreferences("upao_prefs_fallback", Context.MODE_PRIVATE)
+        fallbackPrefs
     }
 
     fun saveToken(token: String) {
         prefs.edit().putString("auth_token", token).apply()
+        fallbackPrefs.edit().putString("auth_token", token).apply()
     }
 
     fun getToken(): String? {
         return prefs.getString("auth_token", null)
+            ?: fallbackPrefs.getString("auth_token", null)
     }
 
     fun saveCredentials(user: String, pass: String) {
         prefs.edit().putString("user_id", user).putString("user_pass", pass).apply()
+        fallbackPrefs.edit().putString("user_id", user).putString("user_pass", pass).apply()
     }
 
     fun saveUserId(user: String) {
         prefs.edit().putString("user_id", user).apply()
+        fallbackPrefs.edit().putString("user_id", user).apply()
     }
 
-    fun getSavedUser(): String? = prefs.getString("user_id", null)
-    fun getSavedPass(): String? = prefs.getString("user_pass", null)
+    fun getSavedUser(): String? =
+        prefs.getString("user_id", null) ?: fallbackPrefs.getString("user_id", null)
+
+    fun getSavedPass(): String? =
+        prefs.getString("user_pass", null) ?: fallbackPrefs.getString("user_pass", null)
 
     fun setKeepLoggedIn(keep: Boolean) {
         prefs.edit().putBoolean("keep_logged_in", keep).apply()
+        fallbackPrefs.edit().putBoolean("keep_logged_in", keep).apply()
     }
 
-    fun shouldKeepLoggedIn(): Boolean = prefs.getBoolean("keep_logged_in", false)
+    fun shouldKeepLoggedIn(): Boolean =
+        prefs.getBoolean("keep_logged_in", false) || fallbackPrefs.getBoolean("keep_logged_in", false)
 
     // ---------- Cuentas guardadas (multi-cuenta) ----------
 
@@ -62,11 +74,15 @@ class TokenManager(context: Context) {
         val actuales = getCuentas().toMutableList()
         actuales.removeAll { it.usuario == usuario }
         actuales.add(CuentaGuardada(usuario, password, nombre))
-        prefs.edit().putString("cuentas_guardadas", guardarJson(actuales)).apply()
+        val json = guardarJson(actuales)
+        prefs.edit().putString("cuentas_guardadas", json).apply()
+        fallbackPrefs.edit().putString("cuentas_guardadas", json).apply()
     }
 
     fun getCuentas(): List<CuentaGuardada> {
-        val raw = prefs.getString("cuentas_guardadas", null) ?: return emptyList()
+        val raw = prefs.getString("cuentas_guardadas", null)
+            ?: fallbackPrefs.getString("cuentas_guardadas", null)
+            ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
             (0 until arr.length()).mapNotNull { i ->
@@ -85,7 +101,9 @@ class TokenManager(context: Context) {
     fun removeCuenta(usuario: String) {
         val actuales = getCuentas().toMutableList()
         actuales.removeAll { it.usuario == usuario }
-        prefs.edit().putString("cuentas_guardadas", guardarJson(actuales)).apply()
+        val json = guardarJson(actuales)
+        prefs.edit().putString("cuentas_guardadas", json).apply()
+        fallbackPrefs.edit().putString("cuentas_guardadas", json).apply()
     }
 
     private fun guardarJson(cuentas: List<CuentaGuardada>): String {
@@ -108,9 +126,16 @@ class TokenManager(context: Context) {
             .remove("user_pass")
             .putBoolean("keep_logged_in", false)
             .apply()
+        fallbackPrefs.edit()
+            .remove("auth_token")
+            .remove("user_id")
+            .remove("user_pass")
+            .putBoolean("keep_logged_in", false)
+            .apply()
     }
 
     fun clearAll() {
         prefs.edit().clear().apply()
+        fallbackPrefs.edit().clear().apply()
     }
 }

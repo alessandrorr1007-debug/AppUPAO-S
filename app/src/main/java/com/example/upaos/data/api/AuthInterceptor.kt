@@ -15,47 +15,65 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        val response = chain.proceed(originalRequest)
+        val context = contextProvider()
+        val tokenManager = context?.let { TokenManager(it) }
+        val currentToken = tokenManager?.getToken()
 
-        // Si la respuesta es HTTP 401 y no proviene de la propia ruta /login
+        // Inyectamos siempre el token más reciente de TokenManager si la petición requiere Authorization
+        val initialRequest = if (!currentToken.isNullOrBlank() && originalRequest.header("Authorization") != null) {
+            originalRequest.newBuilder()
+                .header("Authorization", "Bearer $currentToken")
+                .build()
+        } else {
+            originalRequest
+        }
+
+        val response = chain.proceed(initialRequest)
+
+        // Si la respuesta es HTTP 401 y no proviene de /login
         if (response.code == 401 && !originalRequest.url.encodedPath.contains("login")) {
             Log.d("UPAO_APP", "[AuthInterceptor] HTTP 401 recibido en ${originalRequest.url.encodedPath}. Intentando re-login en segundo plano...")
 
-            val context = contextProvider()
-            if (context != null) {
-                val tokenManager = TokenManager(context)
-                val user = tokenManager.getSavedUser()
-                val pass = tokenManager.getSavedPass()
+            try {
+                if (tokenManager != null) {
+                    val user = tokenManager.getSavedUser()
+                    val pass = tokenManager.getSavedPass()
 
-                if (!user.isNullOrBlank() && !pass.isNullOrBlank()) {
-                    synchronized(this) {
-                        val currentToken = tokenManager.getToken()
-                        val requestAuthHeader = originalRequest.header("Authorization")
-                        val requestToken = requestAuthHeader?.replace("Bearer ", "")?.trim()
+                    if (!user.isNullOrBlank() && !pass.isNullOrBlank()) {
+                        synchronized(this) {
+                            val freshToken = tokenManager.getToken()
+                            val requestAuthHeader = initialRequest.header("Authorization")
+                            val requestToken = requestAuthHeader?.replace("Bearer ", "")?.trim()
 
-                        // Si otra petición renovó el token mientras esperábamos en synchronized
-                        if (!currentToken.isNullOrBlank() && currentToken != requestToken) {
-                            Log.d("UPAO_APP", "[AuthInterceptor] Token ya fue actualizado por otro hilo. Reintentando petición...")
-                            response.close()
-                            val newRequest = originalRequest.newBuilder()
-                                .header("Authorization", "Bearer $currentToken")
-                                .build()
-                            return chain.proceed(newRequest)
+                            // Si otro hilo ya renovó el token mientras esperábamos el bloqueo
+                            if (!freshToken.isNullOrBlank() && freshToken != requestToken) {
+                                Log.d("UPAO_APP", "[AuthInterceptor] Token ya fue actualizado por otro hilo. Reintentando petición...")
+                                response.close()
+                                val newRequest = initialRequest.newBuilder()
+                                    .header("Authorization", "Bearer $freshToken")
+                                    .build()
+                                return chain.proceed(newRequest)
+                            }
+
+                            // Intento de re-login automático con credenciales guardadas
+                            val newToken = intentarReLoginSincrono(chain, user, pass, tokenManager)
+                            if (!newToken.isNullOrBlank()) {
+                                Log.d("UPAO_APP", "[AuthInterceptor] Re-login automático exitoso. Reintentando petición original con nuevo token...")
+                                response.close()
+                                val newRequest = initialRequest.newBuilder()
+                                    .header("Authorization", "Bearer $newToken")
+                                    .build()
+                                return chain.proceed(newRequest)
+                            }
+
+                            Log.w("UPAO_APP", "[AuthInterceptor] Re-login automático falló. Sesión mantenida sin cambios.")
                         }
-
-                        val newToken = intentarReLoginSincrono(chain, user, pass, tokenManager)
-                        if (!newToken.isNullOrBlank()) {
-                            Log.d("UPAO_APP", "[AuthInterceptor] Re-login automático exitoso. Reintentando petición original con nuevo token...")
-                            response.close()
-                            val newRequest = originalRequest.newBuilder()
-                                .header("Authorization", "Bearer $newToken")
-                                .build()
-                            return chain.proceed(newRequest)
-                        }
+                    } else {
+                        Log.w("UPAO_APP", "[AuthInterceptor] No se encontraron credenciales guardadas para auto-login. Sesión mantenida.")
                     }
-                } else {
-                    Log.w("UPAO_APP", "[AuthInterceptor] No se encontraron credenciales guardadas para auto-login.")
                 }
+            } catch (e: Exception) {
+                Log.e("UPAO_APP", "[AuthInterceptor] Excepción inesperada en manejo de 401: ${e.localizedMessage}")
             }
         }
 
@@ -69,7 +87,11 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
         tokenManager: TokenManager
     ): String? {
         return try {
-            val loginUrl = chain.request().url.newBuilder().encodedPath("/login").build()
+            val loginUrl = chain.request().url.newBuilder()
+                .encodedPath("/login")
+                .query(null)
+                .build()
+
             val jsonBody = JSONObject().apply {
                 put("usuario", user)
                 put("password", pass)
@@ -81,7 +103,11 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
                 .post(jsonBody.toRequestBody(mediaType))
                 .build()
 
-            val loginClient = OkHttpClient.Builder().build()
+            val loginClient = OkHttpClient.Builder()
+                .connectTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+
             val loginResponse = loginClient.newCall(loginRequest).execute()
 
             if (loginResponse.isSuccessful) {
@@ -89,7 +115,7 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
                 if (!responseBodyStr.isNullOrBlank()) {
                     val jsonObj = JSONObject(responseBodyStr)
                     val success = jsonObj.optBoolean("success", false)
-                    val token = jsonObj.optString("token", null)
+                    val token = jsonObj.optString("token", "")
 
                     if (success && !token.isNullOrBlank()) {
                         tokenManager.saveToken(token)

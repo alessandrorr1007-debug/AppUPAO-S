@@ -19,8 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -548,25 +547,12 @@ fun RefreshableContent(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val pullState = rememberPullToRefreshState()
-    LaunchedEffect(pullState.isRefreshing) {
-        if (pullState.isRefreshing) {
-            onRefresh()
-        }
-    }
-    LaunchedEffect(isRefreshing) {
-        if (!isRefreshing && pullState.isRefreshing) {
-            pullState.endRefresh()
-        }
-    }
-    Box(modifier = modifier.nestedScroll(pullState.nestedScrollConnection)) {
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        modifier = modifier
+    ) {
         content()
-        PullToRefreshContainer(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .alpha(0f),
-            state = pullState
-        )
     }
 }
 

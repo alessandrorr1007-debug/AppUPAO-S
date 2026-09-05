@@ -315,21 +315,6 @@ fun GradesContent(
                     }
                 }
             }
-
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.size(46.dp)
-            ) {
-                IconButton(onClick = { loadGrades() }) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Actualizar Notas",
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))

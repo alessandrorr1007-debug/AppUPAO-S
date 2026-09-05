@@ -23,6 +23,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.NotificationsActive
+import com.example.upaos.data.local.NotificationPreferences
+import com.example.upaos.service.AsistenciaWorker
+import com.example.upaos.service.NotificationService
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.AutoCheckRequest
 import com.example.upaos.data.model.IntervaloRequest
@@ -33,7 +39,7 @@ import com.example.upaos.ui.components.cursoColor
 import com.example.upaos.ui.components.toTitleCase
 import kotlinx.coroutines.launch
 
-private val OPCIONES_INTERVALO = listOf(5, 10, 15, 30)
+private const val INTERVALO_FIJO_MINUTOS = 5
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,9 +51,10 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val notificationPrefs = remember { NotificationPreferences(context) }
 
-    var autoCheckEnabled by remember { mutableStateOf(false) }
-    var intervalo by remember { mutableIntStateOf(10) }
+    var checkNotasEnabled by remember { mutableStateOf(notificationPrefs.checkNotasEnabled) }
+    var checkAsistenciaEnabled by remember { mutableStateOf(notificationPrefs.checkAsistenciaEnabled) }
     var tieneTokenFcm by remember { mutableStateOf(false) }
     var cargando by remember { mutableStateOf(true) }
     var guardando by remember { mutableStateOf(false) }
@@ -65,14 +72,23 @@ fun SettingsScreen(
             val res = RetrofitClient.apiService.getSettings(usuario)
             if (res.isSuccessful && res.body() != null) {
                 val body = res.body()!!
-                autoCheckEnabled = body.autoCheckEnabled
-                intervalo = body.intervaloMinutos.takeIf { it in OPCIONES_INTERVALO } ?: 10
+                checkNotasEnabled = body.autoCheckEnabled
+                notificationPrefs.checkNotasEnabled = body.autoCheckEnabled
                 tieneTokenFcm = body.tieneTokenFcm
-            } else {
-                Toast.makeText(context, "No se pudieron cargar los ajustes (${res.code()})", Toast.LENGTH_SHORT).show()
+                // El servidor revisará siempre cada 5 minutos internamente
+                if (body.intervaloMinutos != INTERVALO_FIJO_MINUTOS) {
+                    try {
+                        RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
+                    } catch (e: Exception) {
+                        // Silencioso
+                    }
+                }
             }
         } catch (e: Exception) {
-            Toast.makeText(context, "Error al cargar ajustes: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            // Silencioso
+        }
+        if (checkAsistenciaEnabled) {
+            AsistenciaWorker.schedule(context, 15)
         }
         try {
             val resCuenta = RetrofitClient.apiService.getCuenta(usuario)
@@ -88,16 +104,32 @@ fun SettingsScreen(
         cargando = false
     }
 
-    fun guardar(cambiarSwitch: Boolean? = null, cambiarIntervalo: Int? = null) {
+    fun guardar(
+        cambiarNotas: Boolean? = null,
+        cambiarAsistencia: Boolean? = null
+    ) {
         if (usuario == null) return
         guardando = true
         scope.launch {
             try {
-                if (cambiarSwitch != null) {
-                    RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(cambiarSwitch))
+                if (cambiarNotas != null) {
+                    checkNotasEnabled = cambiarNotas
+                    notificationPrefs.checkNotasEnabled = cambiarNotas
+                    RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(cambiarNotas))
+                    RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
+                    val msg = if (cambiarNotas) "Notificaciones de notas activadas" else "Notificaciones de notas desactivadas"
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
-                if (cambiarIntervalo != null) {
-                    RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(cambiarIntervalo))
+                if (cambiarAsistencia != null) {
+                    checkAsistenciaEnabled = cambiarAsistencia
+                    notificationPrefs.checkAsistenciaEnabled = cambiarAsistencia
+                    if (cambiarAsistencia) {
+                        AsistenciaWorker.schedule(context, 15)
+                        Toast.makeText(context, "Notificaciones de asistencia activadas", Toast.LENGTH_SHORT).show()
+                    } else {
+                        AsistenciaWorker.cancel(context)
+                        Toast.makeText(context, "Notificaciones de asistencia desactivadas", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error al guardar: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -291,58 +323,154 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(14.dp))
 
             AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Revisión automática en 2do plano",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Revisa tus notas cada cierto tiempo y te notifica cuando un componente cambia. El servidor guarda tu contraseña cifrada.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Activar notificaciones",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Elige qué alertas deseas recibir en tu celular:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Opción 1: Notificaciones de Notas
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Notificaciones de Notas",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Avisa cuando publiquen notas o cambien evaluaciones",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = checkNotasEnabled,
+                            onCheckedChange = { nuevo ->
+                                checkNotasEnabled = nuevo
+                                guardar(cambiarNotas = nuevo)
+                            },
+                            enabled = !guardando
                         )
                     }
-                    Switch(
-                        checked = autoCheckEnabled,
-                        onCheckedChange = { nuevo ->
-                            autoCheckEnabled = nuevo
-                            guardar(cambiarSwitch = nuevo)
-                        },
-                        enabled = !guardando
-                    )
-                }
-            }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Text(
-                        text = "Frecuencia de revisión",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Cada cuánto revisa el servidor si cambiaron tus notas.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OPCIONES_INTERVALO.forEach { opt ->
-                            FilterChip(
-                                selected = intervalo == opt,
-                                onClick = {
-                                    intervalo = opt
-                                    guardar(cambiarIntervalo = opt)
-                                },
-                                enabled = autoCheckEnabled && !guardando,
-                                label = { Text("$opt min") }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Opción 2: Notificaciones de Asistencia
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.FactCheck,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Notificaciones de Asistencias",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
                             )
+                            Text(
+                                text = "Avisa cuando te pongan una asistencia o falta en clase",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = checkAsistenciaEnabled,
+                            onCheckedChange = { nuevo ->
+                                checkAsistenciaEnabled = nuevo
+                                guardar(cambiarAsistencia = nuevo)
+                            },
+                            enabled = !guardando
+                        )
+                    }
+
+                    if (checkNotasEnabled || checkAsistenciaEnabled) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        OutlinedButton(
+                            onClick = {
+                                if (checkAsistenciaEnabled) {
+                                    NotificationService.mostrarNotificacionAsistencia(
+                                        context,
+                                        "✅ Asistencia registrada (Prueba)",
+                                        "Redes y Comunicaciones: ¡Se registró tu asistencia! (8 asistencias, 1 falta)."
+                                    )
+                                } else {
+                                    NotificationService.mostrarNotificacionNotas(
+                                        context,
+                                        "📢 Nueva nota publicada (Prueba)",
+                                        "Redes y Comunicaciones: Se publicó la nota de Evaluación Parcial (17.5)."
+                                    )
+                                }
+                                Toast.makeText(context, "Notificación de prueba enviada al móvil", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Probar notificación en este celular")
                         }
                     }
                 }
@@ -352,13 +480,13 @@ fun SettingsScreen(
 
             if (!tieneTokenFcm) {
                 Text(
-                    text = "Nota: este dispositivo aún no ha registrado su token de notificaciones. Abre la app una vez más o reiníciala para activar las notificaciones.",
+                    text = "Nota: este dispositivo aún no ha registrado su token push. Abre la app con conexión para sincronizarlo.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
             } else {
                 Text(
-                    text = "Tu dispositivo está listo para recibir notificaciones de notas.",
+                    text = "Tu dispositivo está listo para recibir notificaciones de notas y asistencias.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
