@@ -10,7 +10,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.EmojiObjects
 import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Person
@@ -46,8 +45,7 @@ private const val INTERVALO_FIJO_MINUTOS = 5
 fun SettingsScreen(
     usuario: String?,
     onBack: () -> Unit,
-    onOpenSugerencias: () -> Unit,
-    onOpenAdmin: () -> Unit = {}
+    onOpenSugerencias: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -60,7 +58,6 @@ fun SettingsScreen(
     var guardando by remember { mutableStateOf(false) }
 
     var nombreEstudiante by remember { mutableStateOf<String?>(null) }
-    var esAdmin by remember { mutableStateOf(false) }
     var rankingOptin by remember { mutableStateOf(false) }
 
     var buscandoActualizacion by remember { mutableStateOf(false) }
@@ -99,7 +96,6 @@ fun SettingsScreen(
             if (resCuenta.isSuccessful && resCuenta.body() != null) {
                 val cuenta = resCuenta.body()!!
                 nombreEstudiante = cuenta.nombre
-                esAdmin = cuenta.esAdmin
                 rankingOptin = cuenta.rankingOptin
             }
         } catch (e: Exception) {
@@ -258,10 +254,6 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (esAdmin) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        StatusBadge(text = "Administrador", color = MaterialTheme.colorScheme.tertiary)
-                    }
                 }
             }
 
@@ -295,32 +287,6 @@ fun SettingsScreen(
                         trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                         modifier = Modifier.clickable(onClick = onOpenSugerencias)
                     )
-
-                    if (esAdmin) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        ListItem(
-                            headlineContent = { Text("Panel Administrador", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
-                            supportingContent = { Text("Métricas, usuarios registrados y configuración del ciclo") },
-                            leadingContent = {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AdminPanelSettings,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            },
-                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                            modifier = Modifier.clickable(onClick = onOpenAdmin)
-                        )
-                    }
                 }
             }
 

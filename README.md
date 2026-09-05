@@ -1,4 +1,4 @@
-﻿# App UPAO S
+# App UPAO S
 
 Aplicación Android moderna (Kotlin + Jetpack Compose con Material 3) diseñada para consultar **notas, horario y asistencias** de la Universidad Privada Antenor Orrego (Campus UPAO), comunicándose con el backend optimizado de UPAO conectado al sistema Banner.
 
@@ -43,7 +43,7 @@ Puedes descargar e instalar la versión más reciente del APK directamente en tu
 - **⚙️ Ajustes y Multi-cuenta**:
   - Soporte multi-cuenta con cambio rápido de usuario.
   - Tema claro y tema oscuro adaptativo.
-  - Panel de administración y buzón de sugerencias.
+  - Buzón de sugerencias y comprobador de actualizaciones.
 
 ---
 
@@ -83,7 +83,6 @@ app/src/main/java/com/example/upaos/
     ├── calculadora/           # Calculadora predictiva de notas
     ├── settings/              # Ajustes de la app y preferencias
     ├── sugerencias/           # Buzón de sugerencias
-    ├── admin/                 # Panel de administración
     ├── login/                 # Autenticación y selector multi-cuenta
     ├── components/            # Componentes reutilizables de UI
     └── theme/                 # Paleta de colores UPAO, tipografías y temas

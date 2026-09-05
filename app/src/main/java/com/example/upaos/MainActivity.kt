@@ -41,7 +41,6 @@ import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.ThemePreferences
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.service.FcmTokenHelper
-import com.example.upaos.ui.admin.AdminScreen
 import com.example.upaos.ui.calculadora.CalculadoraScreen
 import com.example.upaos.ui.grades.CourseDetailScreen
 import com.example.upaos.ui.home.HomeScreen
@@ -127,29 +126,9 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
 
                     fun navegarPorTipoCuenta(token: String) {
-                        val user = tokenManager.getSavedUser()
                         val activeToken = token.ifBlank { tokenManager.getToken() ?: "" }
-                        if (user != null) {
-                            scope.launch {
-                                try {
-                                    val res = RetrofitClient.apiService.getCuenta(user)
-                                    if (res.isSuccessful && res.body() != null && res.body()!!.esAdmin) {
-                                        navController.navigate("admin") {
-                                            popUpTo(0) { inclusive = true }
-                                        }
-                                        return@launch
-                                    }
-                                } catch (e: Exception) {
-                                    // Silencioso
-                                }
-                                navController.navigate("home/$activeToken") {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }
-                        } else {
-                            navController.navigate("home/$activeToken") {
-                                popUpTo(0) { inclusive = true }
-                            }
+                        navController.navigate("home/$activeToken") {
+                            popUpTo(0) { inclusive = true }
                         }
                     }
 
@@ -237,9 +216,6 @@ class MainActivity : ComponentActivity() {
                                 onOpenNotifications = {
                                     navController.navigate("notificaciones")
                                 },
-                                onOpenAdmin = {
-                                    navController.navigate("admin")
-                                },
                                 onOpenCourse = { periodo, carrera, crn, nombre ->
                                     navController.navigate(
                                         "course-detail/${Uri.encode(periodo)}/${Uri.encode(carrera)}/${Uri.encode(crn)}?nombre=${Uri.encode(nombre)}"
@@ -299,25 +275,7 @@ class MainActivity : ComponentActivity() {
                             SettingsScreen(
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() },
-                                onOpenSugerencias = { navController.navigate("sugerencias") },
-                                onOpenAdmin = { navController.navigate("admin") }
-                            )
-                        }
-
-                        composable(
-                            "admin",
-                            enterTransition = { slideInHorizontally(tween(280)) { it } },
-                            exitTransition = { fadeOut(tween(180)) },
-                            popEnterTransition = { fadeIn(tween(220)) },
-                            popExitTransition = { slideOutHorizontally(tween(280)) { it } }
-                        ) {
-                            AdminScreen(
-                                usuario = tokenManager.getSavedUser(),
-                                onBack = {
-                                    if (!navController.popBackStack()) {
-                                        navController.navigate("home/${savedToken ?: ""}")
-                                    }
-                                }
+                                onOpenSugerencias = { navController.navigate("sugerencias") }
                             )
                         }
 

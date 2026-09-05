@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.EventAvailable
@@ -53,7 +52,6 @@ fun HomeScreen(
     onOpenCalculator: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
-    onOpenAdmin: () -> Unit = {},
     onOpenCourse: (String, String, String, String) -> Unit = { _, _, _, _ -> }
 ) {
     val context = LocalContext.current
@@ -62,7 +60,6 @@ fun HomeScreen(
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     var unreadCount by remember { mutableIntStateOf(0) }
     var semanaEtiqueta by remember { mutableStateOf<String?>(null) }
-    var esAdmin by remember { mutableStateOf(false) }
 
     val usuario = tokenManager.getSavedUser()
 
@@ -73,14 +70,6 @@ fun HomeScreen(
 
     LaunchedEffect(usuario) {
         if (usuario == null) return@LaunchedEffect
-        try {
-            val resCuenta = RetrofitClient.apiService.getCuenta(usuario)
-            if (resCuenta.isSuccessful && resCuenta.body() != null) {
-                esAdmin = resCuenta.body()!!.esAdmin
-            }
-        } catch (e: Exception) {
-            // Silencioso
-        }
         try {
             val res = RetrofitClient.apiService.getSemana()
             if (res.isSuccessful && res.body() != null) {
@@ -128,16 +117,6 @@ fun HomeScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 actions = {
-                    if (esAdmin) {
-                        IconButton(onClick = onOpenAdmin) {
-                            Icon(
-                                imageVector = Icons.Filled.AdminPanelSettings,
-                                contentDescription = "Panel Administrador",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
                     BadgedBox(
                         badge = {
                             if (unreadCount > 0) {
@@ -178,30 +157,6 @@ fun HomeScreen(
                             expanded = menuExpanded,
                             onDismissRequest = { menuExpanded = false }
                         ) {
-                            if (esAdmin) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            "Panel Administrador",
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Filled.AdminPanelSettings,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onOpenAdmin()
-                                    }
-                                )
-                            }
                             DropdownMenuItem(
                                 text = {
                                     Text(

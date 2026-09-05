@@ -121,34 +121,4 @@ interface ApiService {
         @Path("periodo") periodo: String,
         @Header("Authorization") authorization: String
     ): Response<PromedioPeriodoResponse>
-
-    // ---------- Endpoints Panel Administrador ----------
-
-    @GET("admin/cuentas")
-    suspend fun getAdminCuentas(
-        @Query("admin_usuario") adminUsuario: String = "000000000"
-    ): Response<AdminCuentasResponse>
-
-    @GET("admin/sugerencias")
-    suspend fun getAdminSugerencias(
-        @Query("admin_usuario") adminUsuario: String = "000000000"
-    ): Response<AdminSugerenciasResponse>
-
-    @PATCH("admin/sugerencias/{id}/estado")
-    suspend fun updateAdminSugerenciaEstado(
-        @Path("id") id: Long,
-        @Body request: AdminEstadoSugerenciaRequest,
-        @Query("admin_usuario") adminUsuario: String = "000000000"
-    ): Response<Map<String, Any>>
-
-    @POST("admin/semana")
-    suspend fun setAdminSemana(
-        @Body request: AdminSemanaRequest,
-        @Query("admin_usuario") adminUsuario: String = "000000000"
-    ): Response<SemanaInfo>
-
-    @GET("admin/metricas")
-    suspend fun getAdminMetricas(
-        @Query("admin_usuario") adminUsuario: String = "000000000"
-    ): Response<AdminMetricasResponse>
 }
