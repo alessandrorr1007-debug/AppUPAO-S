@@ -1,97 +1,107 @@
-# App UPAO S
+﻿# App UPAO S
 
-Aplicación Android (Kotlin + Jetpack Compose) para consultar **notas, horario y asistencia** del Campus UPAO, consumiendo la API backend de UPAO que se conecta al portal oficial Ellucian Banner SSB / SSO WSO2 (sin captcha).
-
-## 📲 Descargar la App (APK)
-
-Puedes descargar la última versión del APK directamente para instalarlo en tu celular Android:
-
-👉 **[Descargar última versión de UPAO S](https://github.com/alessandrorr1007-debug/AppUPAO-S/releases/latest)**
-
-1. Haz clic en el enlace de arriba.
-2. En la sección **Assets**, pulsa sobre `UPAO-S.apk`.
-3. Ábrelo en tu teléfono Android para instalar o actualizar.
+Aplicación Android moderna (Kotlin + Jetpack Compose con Material 3) diseñada para consultar **notas, horario y asistencias** de la Universidad Privada Antenor Orrego (Campus UPAO), comunicándose con el backend optimizado de UPAO conectado al sistema Banner.
 
 ---
 
-## Características
+## 📲 Descargar la App (APK)
 
-- **Mis Notas**: notas actuales por periodo, promedio general progresivo (EP1/Parcial/EP2/Final ponderados), desglose por componente, selección de periodo y carrera.
-- **Horario**: horario semanal de clases agrupado por curso y día (con bloques fusionados y horas en formato 12h).
-- **Asistencia**: inasistencias y porcentaje por curso desde `getRegisteredSections`.
-- **Sesión transparente**: re-login automático si la sesión de Banner expira; manejo de error `sesion_expirada` con diálogo para volver a iniciar sesión.
-- **Caché local**: las notas se guardan en el dispositivo (DataStore) y se muestran al instante aunque no haya conexión.
-- **Notificaciones push (FCM)**: avisos cuando cambia una nota, con revisión automática configurable en segundo plano.
-- **Semana académica**: etiqueta del ciclo (ej. "Semana 5 de 16", "Semana 17 · Sustitutorios").
-- **Ranking de cursos**: posición relativa anónima por curso (opt-in, mínimo 5 participantes, nunca expone notas).
-- **Buzón de sugerencias**: envía ideas con límite diario anti-spam y sigue su estado.
-- **Calculadora de notas**, temas claro/oscuro y soporte multi-cuenta.
+Puedes descargar e instalar la versión más reciente del APK directamente en tu celular Android:
 
-## Stack técnico
+👉 **[Descargar última versión de UPAO S (Releases)](https://github.com/alessandrorr1007-debug/AppUPAO-S/releases/latest)**
 
-- **Lenguaje/UI**: Kotlin, Jetpack Compose (Material 3), Navigation Compose.
-- **Red**: Retrofit 2 + OkHttp + Gson.
-- **Persistencia local**: DataStore (caché de notas) y EncryptedSharedPreferences (sesión/credenciales).
-- **Push**: Firebase Cloud Messaging.
-- **SDK**: minSdk 24, target/compile 37.
+1. Entra al enlace anterior.
+2. En la sección **Assets**, pulsa sobre **`UPAO-S.apk`**.
+3. Abre el archivo en tu dispositivo Android para instalar o actualizar la app.
 
-## Requisitos
+---
 
-- Android Studio (con el JDK de JetBrains incluido).
-- Android SDK 37.
-- Una cuenta del Campus UPAO para usar la app.
+## ✨ Características Principales
 
-## Configuración y build
+- **📊 Mis Notas**:
+  - Consulta de notas actuales por ciclo y carrera.
+  - Promedio general progresivo ponderado (EP1 / Parcial / EP2 / Final).
+  - Desglose interactivo por curso y componente de evaluación.
 
-1. **Clona el repositorio**:
+- **📅 Horario Semanal**:
+  - Visualización completa por días de la semana con formato de 12 horas.
+  - Bloques de clases fusionados con detalle de curso, aula, docente y sección.
+  - Navegación fluida entre pestañas.
+
+- **📋 Asistencia y Control de Inasistencias**:
+  - Detección y desglose de cursos con **Teoría** y **Laboratorio**.
+  - Cálculo preciso de **veces asistidas** y **veces que faltaste** por componente y consolidado.
+  - Porcentaje de asistencia en tiempo real y alerta de límite de inasistencias.
+
+- **🧮 Calculadora de Notas**:
+  - Simula las notas que necesitas en tus exámenes finales para aprobar según la fórmula ponderada de tu carrera.
+
+- **🔔 Notificaciones y Monitoreo**:
+  - Notificaciones en segundo plano para cambios en notas e inasistencias.
+  - Servicio en background configurable desde Ajustes.
+
+- **⚙️ Ajustes y Multi-cuenta**:
+  - Soporte multi-cuenta con cambio rápido de usuario.
+  - Tema claro y tema oscuro adaptativo.
+  - Panel de administración y buzón de sugerencias.
+
+---
+
+## 🛠️ Stack Tecnológico
+
+- **Lenguaje & UI**: Kotlin, Jetpack Compose, Material 3, Navigation Compose.
+- **Conexión a Red**: Retrofit 2 + OkHttp + Gson.
+- **Almacenamiento Local**: Jetpack DataStore y EncryptedSharedPreferences (credenciales seguras).
+- **Notificaciones**: Firebase Cloud Messaging (FCM) + Android WorkManager.
+- **Versión de SDK**: `minSdk 24` (Android 7.0+) | `targetSdk / compileSdk 37`.
+- **CI/CD**: GitHub Actions para compilación y despliegue automático de APKs en GitHub Releases.
+
+---
+
+## 🔒 Privacidad y Seguridad
+
+- **Cero secretos en el repositorio**: Claves de API, credenciales privadas, keystores y archivos locales (`google-services.json`, `local.properties`) están estrictamente excluidos en `.gitignore`.
+- **Cifrado local**: Las credenciales se guardan de forma local en el dispositivo utilizando almacenamiento cifrado del sistema Android (`EncryptedSharedPreferences`).
+
+---
+
+## 📂 Estructura del Código
+
+```text
+app/src/main/java/com/example/upaos/
+├── MainActivity.kt            # Punto de entrada y navegación (NavHost)
+├── data/
+│   ├── api/                   # RetrofitClient, ApiService, interceptores de sesión
+│   ├── local/                 # TokenManager, preferencias y persistencia local
+│   └── model/                 # Modelos de datos (notas, horario, asistencia, etc.)
+├── service/                   # Notificaciones push (FCM) y sincronización en segundo plano
+└── ui/
+    ├── home/                  # Contenedor principal (HorizontalPager para Notas, Horario, Asistencia)
+    ├── grades/                # Pantalla y detalle de notas
+    ├── horario/               # Pantalla de horario semanal
+    ├── asistencia/            # Pantalla de asistencias con desglose de teoría y laboratorio
+    ├── calculadora/           # Calculadora predictiva de notas
+    ├── settings/              # Ajustes de la app y preferencias
+    ├── sugerencias/           # Buzón de sugerencias
+    ├── admin/                 # Panel de administración
+    ├── login/                 # Autenticación y selector multi-cuenta
+    ├── components/            # Componentes reutilizables de UI
+    └── theme/                 # Paleta de colores UPAO, tipografías y temas
+```
+
+---
+
+## 🚀 Compilación Local
+
+Si eres desarrollador y deseas compilar el código fuente por tu cuenta:
+
+1. Clona el repositorio:
    ```bash
    git clone https://github.com/alessandrorr1007-debug/AppUPAO-S.git
    ```
-
-2. **Agrega `app/google-services.json`** (obligatorio para compilar):
-   Este archivo contiene las credenciales de Firebase y está **excluido del repositorio** por seguridad.
-   Cópialo desde tu proyecto existente o regenéralo en [Firebase Console](https://console.firebase.google.com/)
-   (proyecto con el paquete `com.example.upaos`) y colócalo en `app/`.
-
-3. **Apuntar al backend** (opcional):
-   La `BASE_URL` está definida en `app/src/main/java/com/example/upaos/data/api/RetrofitClient.kt`
-   (por defecto `https://upaos.onrender.com/`).
-
-4. **Compilar el APK**:
+2. Abre el proyecto en **Android Studio**.
+3. Asegúrate de contar con el archivo `google-services.json` de tu proyecto Firebase dentro de la carpeta `app/`.
+4. Compila el APK:
    ```bash
-   ./gradlew.bat :app:assembleDebug   # Windows
-   # o
-   ./gradlew :app:assembleDebug        # Linux/macOS
+   ./gradlew assembleDebug
    ```
-   El APK queda en `app/build/outputs/apk/debug/`.
-
-## Estructura del proyecto
-
-```
-app/src/main/java/com/example/upaos/
-├── MainActivity.kt            # Navegación (NavHost) y splash
-├── data/
-│   ├── api/                   # RetrofitClient, ApiService, manejo de errores
-│   ├── local/                 # TokenManager, GradesCache, ThemePreferences
-│   └── model/                 # Modelos Gson (notas, horario, asistencia, features)
-├── service/                   # Servicio FCM (Notificaciones)
-└── ui/
-    ├── home/                  # Pantalla principal con pestañas
-    ├── grades/                # Notas
-    ├── horario/               # Horario
-    ├── asistencia/            # Asistencia
-    ├── settings/              # Ajustes (auto-check, ranking, perfil)
-    ├── sugerencias/           # Buzón de sugerencias
-    ├── ranking/               # Ranking anónimo
-    ├── calculadora/           # Calculadora de notas
-    ├── notificaciones/        # Historial de notificaciones
-    ├── login/                 # Login y selección de cuenta
-    └── components/            # Utilidades de UI compartidas
-```
-
-## Seguridad
-
-- No se suben credenciales ni claves al repositorio: `google-services.json`, `local.properties`,
-  keystores y outputs de build están en `.gitignore`.
-- La contraseña del campus se guarda cifrada en el dispositivo (EncryptedSharedPreferences) y en el
-  backend se almacena con cifrado Fernet, usada solo para el re-login automático.
