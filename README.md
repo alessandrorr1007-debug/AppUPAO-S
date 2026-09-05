@@ -2,6 +2,18 @@
 
 Aplicación Android (Kotlin + Jetpack Compose) para consultar **notas, horario y asistencia** del Campus UPAO, consumiendo la API backend de UPAO que se conecta al portal oficial Ellucian Banner SSB / SSO WSO2 (sin captcha).
 
+## 📲 Descargar la App (APK)
+
+Puedes descargar la última versión del APK directamente para instalarlo en tu celular Android:
+
+👉 **[Descargar última versión de UPAO S](https://github.com/alessandrorr1007-debug/AppUPAO-S/releases/latest)**
+
+1. Haz clic en el enlace de arriba.
+2. En la sección **Assets**, pulsa sobre `UPAO-S.apk`.
+3. Ábrelo en tu teléfono Android para instalar o actualizar.
+
+---
+
 ## Características
 
 - **Mis Notas**: notas actuales por periodo, promedio general progresivo (EP1/Parcial/EP2/Final ponderados), desglose por componente, selección de periodo y carrera.
