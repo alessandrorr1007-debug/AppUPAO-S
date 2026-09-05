@@ -96,11 +96,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // Comprobar si hay una nueva versión en GitHub
-                kotlinx.coroutines.launch(kotlinx.coroutines.Dispatchers.IO) {
+                launch(kotlinx.coroutines.Dispatchers.IO) {
                     try {
                         val info = com.example.upaos.util.AppUpdater.checkForUpdates(context)
                         if (info.hasUpdate) {
-                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 updateInfo = info
                             }
                         }
