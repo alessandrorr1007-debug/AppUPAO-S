@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Science
@@ -69,16 +70,69 @@ private fun diasActivos(horario: String?): Set<Int> {
     return dayNames.mapIndexedNotNull { index, day -> if (h.contains(day)) index else null }.toSet()
 }
 
-private fun porcentajeColor(pct: Double): Color = when {
-    pct >= 90 -> UpaoGreen
-    pct >= 70 -> UpaoAmber
-    else -> UpaoRed
+private fun porcentajeColor(pct: Double?, tieneRegistro: Boolean = true): Color {
+    if (!tieneRegistro || pct == null) return Color(0xFF64748B)
+    return when {
+        pct >= 90 -> UpaoGreen
+        pct >= 70 -> UpaoAmber
+        else -> UpaoRed
+    }
 }
 
-private fun estadoAsistencia(pct: Double): Pair<String, Color> = when {
-    pct >= 90 -> "Óptimo" to UpaoGreen
-    pct >= 70 -> "Aceptable" to UpaoAmber
-    else -> "En riesgo" to UpaoRed
+private fun estadoAsistencia(
+    pct: Double?,
+    faltas: Int = 0,
+    tieneRegistro: Boolean = true
+): Pair<String, Color> {
+    if (!tieneRegistro || pct == null) {
+        return "Pendiente de lista" to Color(0xFF64748B)
+    }
+    if (faltas == 0) {
+        return "0 faltas · 100%" to UpaoGreen
+    }
+    return when {
+        pct >= 90 -> "Óptimo" to UpaoGreen
+        pct >= 70 -> "Aceptable" to UpaoAmber
+        else -> "En riesgo" to UpaoRed
+    }
+}
+
+private fun diaHoy(): Int = (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
+
+private fun calcularClasesHastaHoy(
+    diasHorario: String?,
+    semanaActual: Int,
+    periodoSeleccionado: String
+): Int {
+    if (periodoSeleccionado != "202620") {
+        val count = maxOf(1, contarDiasHorario(diasHorario))
+        return 16 * count
+    }
+    val activos = diasActivos(diasHorario)
+    val diasCount = maxOf(1, if (activos.isNotEmpty()) activos.size else contarDiasHorario(diasHorario))
+    val semanasPrevias = (semanaActual - 1).coerceAtLeast(0)
+    val hoyDia = diaHoy() // 0 = LUN, 1 = MAR, 2 = MIE, 3 = JUE, 4 = VIE, 5 = SAB
+    val diasPasadosEstaSemana = if (activos.isNotEmpty()) {
+        activos.count { it <= hoyDia }
+    } else {
+        1
+    }
+    val clases = (semanasPrevias * diasCount) + diasPasadosEstaSemana
+    return maxOf(1, clases)
+}
+
+private fun obtenerSemanaCiclo(periodo: String, semanaApi: Int?): Int {
+    if (semanaApi != null && semanaApi in 1..16) return semanaApi
+    if (periodo != "202620") return 16
+    val inicio = java.util.Calendar.getInstance().apply {
+        set(2026, java.util.Calendar.AUGUST, 31, 0, 0, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+    val hoy = java.util.Calendar.getInstance()
+    val diff = hoy.timeInMillis - inicio.timeInMillis
+    if (diff < 0) return 1
+    val sem = (diff / (1000L * 60 * 60 * 24 * 7)).toInt() + 1
+    return sem.coerceIn(1, 16)
 }
 
 private fun formatPct(pct: Double): String =
@@ -112,38 +166,29 @@ private fun diasDelHorario(h: HorarioCurso): String {
 }
 
 private fun procesarCursosAsistencia(
-    registros: List<AsistenciaCurso>,
+    todosRegistros: List<AsistenciaCurso>,
     horario: List<HorarioCurso>,
-    semanaActual: Int? = null
+    semanaActual: Int? = null,
+    periodoSeleccionado: String
 ): List<AsistenciaCurso> {
-    if (registros.isEmpty() && horario.isEmpty()) return emptyList()
+    if (todosRegistros.isEmpty() && horario.isEmpty()) return emptyList()
 
-    // 1. Estimar semanas de clase transcurridas analizando registros con faltas > 0
-    val semanasDetectadas = mutableListOf<Int>()
-    for (r in registros) {
-        val f = r.faltas ?: 0
-        val p = r.porcentaje ?: 0.0
-        if (f > 0 && p > 0.0 && p < 100.0) {
-            val a = kotlin.math.round((p * f) / (100.0 - p)).toInt()
-            val total = a + f
-            val dias = maxOf(1, contarDiasHorario(r.horarioDias))
-            val sem = (total.toDouble() / dias).roundToInt()
-            if (sem in 1..18) semanasDetectadas.add(sem)
+    // 1. Filtrar registros por el periodo seleccionado
+    val registrosPeriodo = todosRegistros.filter { r ->
+        val p = r.periodo?.trim()
+        if (!p.isNullOrBlank()) {
+            p == periodoSeleccionado
+        } else {
+            true
         }
     }
 
-    val semanasValidas = if (semanasDetectadas.isNotEmpty()) {
-        semanasDetectadas.sorted()[semanasDetectadas.size / 2]
-    } else {
-        semanaActual?.takeIf { it in 1..18 } ?: 4
-    }
+    val semanaActualCalculada = obtenerSemanaCiclo(periodoSeleccionado, semanaActual)
 
-    // 2. Agrupar registros de asistencia por curso (nombre o código).
-    // Cuando la API bota 2 registros del mismo curso, uno es Teoría y el otro es Laboratorio.
+    // 3. Agrupar registros ÚNICAMENTE por nombre del curso (nunca por codigoMateria de carrera)
     val gruposRegistros = mutableMapOf<String, MutableList<AsistenciaCurso>>()
-    for (r in registros) {
-        val clave = r.codigoMateria?.takeIf { it.isNotBlank() }?.let { normalizarNombre(it) }
-            ?: normalizarNombre(r.displayNombre)
+    for (r in registrosPeriodo) {
+        val clave = normalizarNombre(r.displayNombre)
         gruposRegistros.getOrPut(clave) { mutableListOf() }.add(r)
     }
 
@@ -152,9 +197,13 @@ private fun procesarCursosAsistencia(
 
     for ((clave, listaRegs) in gruposRegistros) {
         val hCoincidente = horarioRestante.firstOrNull { h ->
-            val codH = h.codigoMateria?.let { normalizarNombre(it) } ?: ""
+            val crnH = h.crn?.trim()
+            val crnMatch = !crnH.isNullOrBlank() && listaRegs.any { reg ->
+                reg.crn?.trim() == crnH || reg.componentes.any { it.crn?.trim() == crnH }
+            }
+            if (crnMatch) return@firstOrNull true
             val nomH = normalizarNombre(h.displayNombre)
-            clave == codH || clave == nomH || nomH.contains(clave) || clave.contains(nomH)
+            clave == nomH || nomH.contains(clave) || clave.contains(nomH)
         }
         if (hCoincidente != null) {
             horarioRestante.remove(hCoincidente)
@@ -163,71 +212,156 @@ private fun procesarCursosAsistencia(
         val nombreFinal = hCoincidente?.displayNombre ?: listaRegs.first().displayNombre
         val codMateriaFinal = hCoincidente?.codigoMateria ?: listaRegs.first().codigoMateria
 
-        val componentes = listaRegs.mapIndexed { index, reg ->
-            val dias = reg.horarioDias?.takeIf { it.isNotBlank() }
-                ?: hCoincidente?.let { diasDelHorario(it) }?.takeIf { it.isNotBlank() }
-            val diasCount = maxOf(1, contarDiasHorario(dias))
-            val clasesEstimadas = semanasValidas * diasCount
+        // Extraer todos los componentes de los registros del curso
+        val rawComponentes = mutableListOf<AsistenciaComponente>()
+        for (reg in listaRegs) {
+            if (reg.componentes.isNotEmpty()) {
+                rawComponentes.addAll(reg.componentes)
+            } else {
+                rawComponentes.add(
+                    AsistenciaComponente(
+                        crn = reg.crn,
+                        seccion = reg.seccion,
+                        tipo = reg.tipo ?: reg.tipoComponente,
+                        tipoComponente = reg.tipoComponente ?: reg.tipo,
+                        porcentaje = reg.porcentaje,
+                        faltas = reg.faltas,
+                        asistencias = reg.asistencias,
+                        vecesAsistio = reg.vecesAsistio,
+                        totalClases = reg.totalClases,
+                        horarioDias = reg.horarioDias,
+                        hora = reg.hora,
+                        hora12h = reg.hora12h,
+                        aula = reg.aula,
+                        docente = reg.docente,
+                        profesor = reg.profesor,
+                        instructor = reg.instructor
+                    )
+                )
+            }
+        }
 
-            val tipoClasificado = clasificarTipo(
-                tipoApi = reg.tipo ?: reg.tipoComponente,
-                seccion = reg.seccion,
-                nombreCurso = nombreFinal,
-                index = index,
-                totalComponentes = listaRegs.size
-            )
+        // Tipificar componentes:
+        // Si hay exactamente 2 componentes (o 2 registros para el mismo curso), uno es Teoría y el otro es Laboratorio
+        val componentesTipificados = if (rawComponentes.size == 2) {
+            val c1 = rawComponentes[0]
+            val c2 = rawComponentes[1]
+            val sec1 = c1.seccion?.uppercase() ?: ""
+            val sec2 = c2.seccion?.uppercase() ?: ""
+            val tip1 = (c1.tipo ?: c1.tipoComponente)?.uppercase() ?: ""
+            val tip2 = (c2.tipo ?: c2.tipoComponente)?.uppercase() ?: ""
 
-            val asistenciasCalculadas = reg.calcularVecesAsistidas(clasesEstimadas)
-                ?: reg.asistencias
-                ?: reg.vecesAsistio
-                ?: run {
-                    val p = reg.porcentaje ?: 100.0
-                    val f = reg.faltas ?: 0
-                    if (p <= 0.0) 0
-                    else if (f > 0 && p < 100.0) kotlin.math.round((p * f) / (100.0 - p)).toInt().coerceAtLeast(0)
-                    else (clasesEstimadas - f).coerceAtLeast(1)
+            val esLab1 = sec1.contains("LAB") || sec1.endsWith("L") || tip1.contains("LAB")
+            val esLab2 = sec2.contains("LAB") || sec2.endsWith("L") || tip2.contains("LAB")
+            val esTeor1 = sec1.contains("TEOR") || sec1.endsWith("T") || tip1.contains("TEOR")
+            val esTeor2 = sec2.contains("TEOR") || sec2.endsWith("T") || tip2.contains("TEOR")
+
+            val (teoriaComp, labComp) = when {
+                esLab2 || esTeor1 -> c1 to c2
+                esLab1 || esTeor2 -> c2 to c1
+                else -> {
+                    if (sec1 <= sec2) c1 to c2 else c2 to c1
                 }
+            }
+            listOf(
+                teoriaComp.copy(tipo = "Teoría", tipoComponente = "Teoría"),
+                labComp.copy(tipo = "Laboratorio", tipoComponente = "Laboratorio")
+            )
+        } else {
+            rawComponentes.mapIndexed { index, comp ->
+                val tipoFinal = comp.tipo?.takeIf { it.isNotBlank() } ?: clasificarTipo(
+                    tipoApi = comp.tipo ?: comp.tipoComponente,
+                    seccion = comp.seccion,
+                    nombreCurso = nombreFinal,
+                    index = index,
+                    totalComponentes = rawComponentes.size
+                )
+                comp.copy(tipo = tipoFinal, tipoComponente = tipoFinal)
+            }
+        }
 
-            val totalClasesComp = reg.totalClases
-                ?: (asistenciasCalculadas + (reg.faltas ?: 0)).takeIf { it > 0 }
-                ?: clasesEstimadas
+        // Calcular datos detallados para cada componente con lógica de semanas real
+        val componentesProcesados = componentesTipificados.mapIndexed { idx, comp ->
+            // Priorizar siempre los días reales del Horario del alumno:
+            val dias = if (hCoincidente != null) {
+                if (hCoincidente.bloques.size == componentesTipificados.size && idx < hCoincidente.bloques.size) {
+                    hCoincidente.bloques[idx].diaNombre ?: diasDelHorario(hCoincidente)
+                } else {
+                    diasDelHorario(hCoincidente)
+                }
+            } else {
+                comp.horarioDias?.takeIf { it.isNotBlank() }
+            }
+            val clasesEstimadas = calcularClasesHastaHoy(dias, semanaActualCalculada, periodoSeleccionado)
 
-            AsistenciaComponente(
-                crn = reg.crn,
-                seccion = reg.seccion,
-                tipo = tipoClasificado,
-                tipoComponente = tipoClasificado,
-                porcentaje = reg.porcentaje,
-                faltas = reg.faltas ?: 0,
+            val tieneRegistro = comp.tieneRegistroAsistencia
+            val faltasComp = comp.faltas ?: 0
+
+            val asistenciasCalculadas = if (tieneRegistro) {
+                comp.asistencias
+                    ?: comp.vecesAsistio
+                    ?: comp.calcularVecesAsistidas(clasesEstimadas)
+                    ?: run {
+                        val p = comp.porcentaje ?: 100.0
+                        if (p <= 0.0) 0
+                        else if (faltasComp > 0 && p < 100.0) kotlin.math.round((p * faltasComp) / (100.0 - p)).toInt().coerceAtLeast(0)
+                        else (clasesEstimadas - faltasComp).coerceAtLeast(1)
+                    }
+            } else {
+                null
+            }
+
+            val totalClasesComp = if (tieneRegistro) {
+                comp.totalClases
+                    ?: asistenciasCalculadas?.let { it + faltasComp }?.takeIf { it > 0 }
+                    ?: clasesEstimadas
+            } else {
+                null
+            }
+
+            comp.copy(
+                faltas = faltasComp,
                 asistencias = asistenciasCalculadas,
                 vecesAsistio = asistenciasCalculadas,
                 totalClases = totalClasesComp,
                 horarioDias = dias,
-                hora = reg.hora,
-                hora12h = reg.hora12h,
-                aula = reg.aula
+                porcentaje = if (tieneRegistro) comp.porcentaje else null
             )
         }
 
-        val totalFaltasCurso = componentes.sumOf { it.faltas ?: 0 }
-        val totalAsistenciasCurso = componentes.sumOf { it.asistencias ?: it.vecesAsistio ?: 0 }
-        val totalClasesCurso = componentes.sumOf { it.totalClases ?: 0 }
-
-        val porcentajeGlobal = if (totalClasesCurso > 0) {
-            ((totalAsistenciasCurso.toDouble() / totalClasesCurso.toDouble()) * 100.0)
+        val componentesConRegistro = componentesProcesados.filter { it.tieneRegistroAsistencia }
+        val totalFaltasCurso = componentesProcesados.sumOf { it.faltas ?: 0 }
+        val totalAsistenciasCurso = if (componentesConRegistro.isNotEmpty()) {
+            componentesConRegistro.sumOf { it.asistencias ?: it.vecesAsistio ?: it.vecesAsistidas ?: 0 }
         } else {
-            val pcts = componentes.mapNotNull { it.porcentaje }
-            if (pcts.isNotEmpty()) pcts.average() else 100.0
+            listaRegs.firstOrNull()?.asistencias
+                ?: listaRegs.firstOrNull()?.vecesAsistio
+                ?: componentesProcesados.firstOrNull()?.asistencias
+        }
+        val totalClasesCurso = if (componentesConRegistro.isNotEmpty()) {
+            componentesConRegistro.sumOf { it.totalClases ?: it.totalClasesCalculadas ?: 0 }
+        } else null
+
+        val porcentajeGlobal = if (componentesConRegistro.isNotEmpty()) {
+            val totalClasesVal = totalClasesCurso ?: 0
+            if (totalClasesVal > 0 && totalAsistenciasCurso != null) {
+                ((totalAsistenciasCurso.toDouble() / totalClasesVal.toDouble()) * 100.0)
+            } else {
+                val pcts = componentesConRegistro.mapNotNull { it.porcentaje }
+                if (pcts.isNotEmpty()) pcts.average() else 100.0
+            }
+        } else {
+            null
         }
 
-        val todosLosDias = componentes.mapNotNull { it.horarioDias }
+        val todosLosDias = componentesProcesados.mapNotNull { it.horarioDias }
             .flatMap { it.split(",", "·").map { d -> d.trim() } }
             .filter { it.isNotBlank() }
             .distinct()
             .joinToString(", ")
 
-        val crnConsolidado = componentes.mapNotNull { it.crn }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
-        val seccionConsolidada = componentes.mapNotNull { it.seccion }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
+        val crnConsolidado = componentesProcesados.mapNotNull { it.crn }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
+        val seccionConsolidada = componentesProcesados.mapNotNull { it.seccion }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
 
         resultado.add(
             AsistenciaCurso(
@@ -236,23 +370,23 @@ private fun procesarCursosAsistencia(
                 codigoMateria = codMateriaFinal,
                 nombreCurso = nombreFinal,
                 seccion = seccionConsolidada.ifBlank { listaRegs.first().seccion },
-                periodo = listaRegs.firstOrNull { !it.periodo.isNullOrBlank() }?.periodo,
+                periodo = periodoSeleccionado,
                 faltas = totalFaltasCurso,
                 asistencias = totalAsistenciasCurso,
                 vecesAsistio = totalAsistenciasCurso,
                 totalClases = totalClasesCurso,
                 porcentaje = porcentajeGlobal,
-                horarioDias = todosLosDias.ifBlank { hCoincidente?.let { diasDelHorario(it) } ?: listaRegs.first().horarioDias },
+                horarioDias = hCoincidente?.let { diasDelHorario(it) }?.takeIf { it.isNotBlank() } ?: todosLosDias.ifBlank { listaRegs.first().horarioDias },
                 hora = listaRegs.firstOrNull { !it.hora.isNullOrBlank() }?.hora,
                 hora12h = listaRegs.firstOrNull { !it.hora12h.isNullOrBlank() }?.hora12h,
                 aula = listaRegs.firstOrNull { !it.aula.isNullOrBlank() }?.aula,
-                componentes = componentes,
-                totalSecciones = componentes.size
+                componentes = componentesProcesados,
+                totalSecciones = componentesProcesados.size
             )
         )
     }
 
-    // Cursos del horario que aún no registran asistencia
+    // Cursos del horario del periodo seleccionado que aún no registran asistencia
     for (h in horarioRestante) {
         val diasTxt = diasDelHorario(h)
         resultado.add(
@@ -262,7 +396,7 @@ private fun procesarCursosAsistencia(
                 codigoMateria = h.codigoMateria,
                 nombreCurso = h.displayNombre,
                 seccion = null,
-                periodo = null,
+                periodo = periodoSeleccionado,
                 faltas = null,
                 asistencias = null,
                 vecesAsistio = null,
@@ -282,6 +416,7 @@ private fun procesarCursosAsistencia(
 }
 
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AsistenciaContent(
     token: String,
@@ -294,6 +429,10 @@ fun AsistenciaContent(
     val gson = remember { Gson() }
     val claveCache = "asistencia_${usuario ?: "anonimo"}"
 
+    var periodos by remember { mutableStateOf(listOf("202620", "202610")) }
+    var selectedPeriodo by remember { mutableStateOf("202620") }
+    var periodosExpanded by remember { mutableStateOf(false) }
+
     var registros by remember { mutableStateOf<List<AsistenciaCurso>>(emptyList()) }
     var horarioCursos by remember { mutableStateOf<List<HorarioCurso>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
@@ -303,6 +442,21 @@ fun AsistenciaContent(
     var cursoSeleccionado by remember { mutableStateOf<AsistenciaCurso?>(null) }
     var semanaActual by remember { mutableStateOf<Int?>(null) }
 
+    fun actualizarPeriodos(
+        listaAsistencia: List<AsistenciaCurso>,
+        periodosApi: List<String> = emptyList(),
+        periodoActualApi: String? = null
+    ) {
+        val periodosDeAsistencia = listaAsistencia.mapNotNull { it.periodo?.trim() }.filter { it.isNotBlank() }
+        val todos = (periodosApi + periodosDeAsistencia).distinct().filter { it.isNotBlank() }.sortedDescending()
+        if (todos.isNotEmpty()) {
+            periodos = todos
+            if (!todos.contains(selectedPeriodo)) {
+                selectedPeriodo = if (todos.contains("202620")) "202620" else detectarPeriodoActual(todos, periodoActualApi)
+            }
+        }
+    }
+
     fun aplicarCache() {
         scope.launch {
             try {
@@ -310,9 +464,44 @@ fun AsistenciaContent(
                 val json = cache.cargar(claveCache) ?: return@launch
                 val body = gson.fromJson(json, AsistenciaResponse::class.java)
                 registros = body.asistencia
+                actualizarPeriodos(body.asistencia)
                 Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${registros.size} registros de asistencia")
             } catch (e: Exception) {
                 Log.e("UPAO_APP", "[Android UI] Error leyendo caché de asistencia: ${e.localizedMessage}", e)
+            }
+        }
+    }
+
+    fun cargarHorario(term: String) {
+        scope.launch {
+            try {
+                val cacheJson = cache.cargar("horario_${usuario ?: "anonimo"}_$term")
+                if (cacheJson != null) {
+                    val cuerpo = gson.fromJson(cacheJson, HorarioResponse::class.java)
+                    horarioCursos = cuerpo.cursos
+                }
+                val res = RetrofitClient.apiService.getHorario("Bearer $token", term)
+                if (res.isSuccessful && res.body() != null) {
+                    val body = res.body()!!
+                    horarioCursos = body.cursos
+                    scope.launch { cache.guardar("horario_${usuario ?: "anonimo"}_$term", gson.toJson(body)) }
+                }
+            } catch (e: Exception) {
+                Log.e("UPAO_APP", "[Android UI] Error cargando horario para asistencia: ${e.localizedMessage}", e)
+                try {
+                    val prefijo = "horario_${usuario ?: "anonimo"}_"
+                    val cacheMap = cache.listarPorPrefijo(prefijo)
+                    val cacheJson = cacheMap[prefijo + term] ?: cacheMap.values.lastOrNull()
+                    if (cacheJson != null) {
+                        val cuerpo = gson.fromJson(cacheJson, HorarioResponse::class.java)
+                        if (cuerpo.cursos.isNotEmpty()) {
+                            horarioCursos = cuerpo.cursos
+                            offline = true
+                        }
+                    }
+                } catch (e2: Exception) {
+                    Log.e("UPAO_APP", "[Android UI] Error leyendo caché de horario: ${e2.localizedMessage}", e2)
+                }
             }
         }
     }
@@ -323,6 +512,19 @@ fun AsistenciaContent(
         offline = false
         scope.launch {
             try {
+                try {
+                    val sRes = RetrofitClient.apiService.getSemana()
+                    if (sRes.isSuccessful && sRes.body() != null) {
+                        semanaActual = sRes.body()?.semana
+                    }
+                } catch (_: Exception) {}
+
+                if (!usuario.isNullOrBlank()) {
+                    try {
+                        RetrofitClient.apiService.actualizarAhora(usuario)
+                    } catch (_: Exception) {}
+                }
+
                 Log.d("UPAO_APP", "[Android UI] Consultando asistencia...")
                 val res = RetrofitClient.apiService.getAsistencia("Bearer $token")
                 isLoading = false
@@ -331,6 +533,7 @@ fun AsistenciaContent(
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     registros = body.asistencia
+                    actualizarPeriodos(body.asistencia)
                     scope.launch { cache.guardar(claveCache, gson.toJson(body)) }
                 } else {
                     val err = errBody ?: "Error desconocido"
@@ -349,52 +552,18 @@ fun AsistenciaContent(
         }
     }
 
-    fun cargarHorario() {
-        scope.launch {
-            try {
-                val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
-                val periodo = if (periodosRes.isSuccessful && periodosRes.body() != null) {
-                    val p = periodosRes.body()!!
-                    detectarPeriodoActual(p.periodos, p.periodoActual)
-                } else {
-                    "202610"
-                }
-                if (horarioCursos.isNotEmpty()) {
-                    val cacheJson = cache.cargar("horario_${usuario ?: "anonimo"}_$periodo")
-                    if (cacheJson != null) {
-                        val cuerpo = gson.fromJson(cacheJson, HorarioResponse::class.java)
-                        horarioCursos = cuerpo.cursos
-                        return@launch
-                    }
-                }
-                val res = RetrofitClient.apiService.getHorario("Bearer $token", periodo)
-                if (res.isSuccessful && res.body() != null) {
-                    val body = res.body()!!
-                    horarioCursos = body.cursos
-                    scope.launch { cache.guardar("horario_${usuario ?: "anonimo"}_$periodo", gson.toJson(body)) }
-                }
-            } catch (e: Exception) {
-                Log.e("UPAO_APP", "[Android UI] Error cargando horario para asistencia: ${e.localizedMessage}", e)
-                try {
-                    val prefijo = "horario_${usuario ?: "anonimo"}_"
-                    val cacheJson = cache.listarPorPrefijo(prefijo).values.lastOrNull()
-                    if (cacheJson != null) {
-                        val cuerpo = gson.fromJson(cacheJson, HorarioResponse::class.java)
-                        if (cuerpo.cursos.isNotEmpty()) {
-                            horarioCursos = cuerpo.cursos
-                            offline = true
-                        }
-                    }
-                } catch (e2: Exception) {
-                    Log.e("UPAO_APP", "[Android UI] Error leyendo caché de horario: ${e2.localizedMessage}", e2)
-                }
-            }
-        }
-    }
-
     LaunchedEffect(Unit) {
         aplicarCache()
-        cargarHorario()
+        try {
+            val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
+            if (periodosRes.isSuccessful && periodosRes.body() != null) {
+                val p = periodosRes.body()!!
+                actualizarPeriodos(registros, p.periodos, p.periodoActual)
+            }
+        } catch (e: Exception) {
+            Log.e("UPAO_APP", "Error cargando periodos: ${e.localizedMessage}")
+        }
+        cargarHorario(selectedPeriodo)
         scope.launch {
             try {
                 val sRes = RetrofitClient.apiService.getSemana()
@@ -406,8 +575,8 @@ fun AsistenciaContent(
         load()
     }
 
-    val cursosVisibles = remember(registros, horarioCursos, semanaActual) {
-        procesarCursosAsistencia(registros, horarioCursos, semanaActual)
+    val cursosVisibles = remember(registros, horarioCursos, semanaActual, selectedPeriodo) {
+        procesarCursosAsistencia(registros, horarioCursos, semanaActual, selectedPeriodo)
     }
 
     Column(
@@ -419,16 +588,52 @@ fun AsistenciaContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "Asistencia",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "Resumen de inasistencias del periodo",
+                text = "Resumen de inasistencias del periodo $selectedPeriodo",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Selector de Periodo (igual que en Notas y Horario)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ExposedDropdownMenuBox(
+                expanded = periodosExpanded,
+                onExpandedChange = { periodosExpanded = !periodosExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = selectedPeriodo,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Periodo", fontSize = 12.sp) },
+                    shape = RoundedCornerShape(12.dp),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = periodosExpanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = periodosExpanded,
+                    onDismissRequest = { periodosExpanded = false }
+                ) {
+                    periodos.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(item, fontSize = 13.sp) },
+                            onClick = {
+                                selectedPeriodo = item
+                                periodosExpanded = false
+                                cargarHorario(item)
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -472,15 +677,14 @@ fun AsistenciaContent(
             cursosVisibles.isNotEmpty() -> {
                 val conDatos = cursosVisibles.filter { it.porcentaje != null }
                 val sinDatos = cursosVisibles.filter { it.porcentaje == null }
-                val conNota = conDatos.mapNotNull { it.porcentaje }
-                val promedio = if (conNota.isNotEmpty()) conNota.average() else 0.0
                 val enRiesgo = conDatos.filter { (it.porcentaje ?: 0.0) < 70.0 }
-                val optimos = conDatos.count { (it.porcentaje ?: 0.0) >= 90.0 }
-                val totalAsistencias = conDatos.sumOf { it.vecesAsistidas ?: 0 }
-                val totalFaltas = conDatos.sumOf { it.totalFaltasCalculadas }
+                val semanaCiclo = obtenerSemanaCiclo(selectedPeriodo, semanaActual)
 
                 Column(modifier = Modifier.fillMaxSize()) {
-                    ResumenAsistencia(promedio, conDatos.size, enRiesgo.size, optimos, totalAsistencias, totalFaltas)
+                    ResumenAsistencia(
+                        semanaCiclo = semanaCiclo,
+                        periodo = selectedPeriodo
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                     RefreshableContent(
                         isRefreshing = isRefreshing,
@@ -560,51 +764,53 @@ fun AsistenciaContent(
 
 @Composable
 private fun ResumenAsistencia(
-    promedio: Double,
-    totalCursos: Int,
-    enRiesgo: Int,
-    optimos: Int,
-    totalAsistencias: Int = 0,
-    totalFaltas: Int = 0
+    semanaCiclo: Int = 2,
+    periodo: String = "202620"
 ) {
-    val color = porcentajeColor(promedio)
-    val (estado, _) = estadoAsistencia(promedio)
     AppCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
         corner = 14.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularGauge(
-                progress = (promedio / 100f).toFloat().coerceIn(0f, 1f),
-                centerValue = "${formatPct(promedio)}%",
-                size = 52.dp,
-                strokeWidth = 6.dp,
-                gaugeColor = color
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Promedio de asistencia",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Schedule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                StatusBadge(text = estado, color = color)
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Semana $semanaCiclo de 16",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (periodo == "202620") "Periodo $periodo · En curso" else "Periodo $periodo · Culminado",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                StatChip(label = "Asistí", value = "$totalAsistencias", color = UpaoGreen)
-                StatChip(
-                    label = "Falté",
-                    value = "$totalFaltas",
-                    color = if (totalFaltas > 0) UpaoRed else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                StatChip(
-                    label = "Riesgo",
-                    value = "$enRiesgo",
-                    color = if (enRiesgo > 0) UpaoRed else MaterialTheme.colorScheme.onSurfaceVariant
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            ) {
+                Text(
+                    text = "Semana $semanaCiclo/16",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                 )
             }
         }
@@ -643,9 +849,11 @@ fun AsistenciaCard(
     sinDatos: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
-    val pct = item.porcentaje ?: 0.0
-    val color = if (sinDatos) MaterialTheme.colorScheme.outline else porcentajeColor(pct)
-    val (estado, _) = estadoAsistencia(pct)
+    val tieneRegistro = item.tieneRegistroAsistencia && !sinDatos
+    val pct = item.porcentaje
+    val color = porcentajeColor(pct, tieneRegistro)
+    val faltas = item.totalFaltasCalculadas
+    val (estado, _) = estadoAsistencia(pct, faltas, tieneRegistro)
     val activos = diasActivos(item.horarioDias)
     val courseColor = cursoColor(item.displayNombre)
     val diasNombres = if (activos.isNotEmpty()) {
@@ -653,9 +861,6 @@ fun AsistenciaCard(
     } else {
         null
     }
-    val asistencias = item.vecesAsistidas
-    val faltas = item.totalFaltasCalculadas
-    val totalClases = item.totalClasesCalculadas
     val tieneComponentesMultiples = item.componentes.size > 1
 
     Row(
@@ -685,26 +890,7 @@ fun AsistenciaCard(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1
-                        )
-                        val meta = if (tieneComponentesMultiples) {
-                            item.componentes.joinToString(" · ") { comp ->
-                                val t = comp.tipo ?: "Comp"
-                                val nrc = comp.crn?.let { "NRC $it" } ?: ""
-                                val sec = comp.seccion?.let { "Sec $it" } ?: ""
-                                listOf(t, nrc, sec).filter { it.isNotBlank() }.joinToString(" ")
-                            }
-                        } else {
-                            buildString {
-                                append("NRC ${item.crn ?: "-"}")
-                                item.seccion?.let { append(" · Sec $it") }
-                            }
-                        }
-                        Text(
-                            text = meta,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            maxLines = 2
                         )
                         if (diasNombres != null) {
                             Text(
@@ -717,11 +903,7 @@ fun AsistenciaCard(
                         }
                     }
                     Spacer(modifier = Modifier.width(6.dp))
-                    if (sinDatos) {
-                        StatusBadge(text = "Sin registros", color = MaterialTheme.colorScheme.outline)
-                    } else {
-                        StatusBadge(text = estado, color = color)
-                    }
+                    StatusBadge(text = estado, color = color)
                     if (onClick != null) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
@@ -735,20 +917,21 @@ fun AsistenciaCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (sinDatos) {
+                if (!tieneRegistro) {
                     Text(
-                        text = "Aún no hay registros de asistencia para este curso.",
+                        text = "Aún no pasaron lista o no hay registro de asistencia (0 faltas).",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.outline
                     )
                 } else {
+                    val pctVal = pct ?: 100.0
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         LinearProgressIndicator(
-                            progress = { (pct / 100f).toFloat().coerceIn(0f, 1f) },
+                            progress = { (pctVal / 100f).toFloat().coerceIn(0f, 1f) },
                             color = color,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier
@@ -757,7 +940,7 @@ fun AsistenciaCard(
                                 .clip(RoundedCornerShape(4.dp))
                         )
                         Text(
-                            text = "${formatPct(pct)}%",
+                            text = "${formatPct(pctVal)}%",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = color
@@ -782,6 +965,7 @@ fun AsistenciaCard(
                                 val isLab = tipoComp.contains("Lab", ignoreCase = true)
                                 val compColor = if (isTeoria) UpaoBlue else if (isLab) Color(0xFF7C3AED) else UpaoOrange
                                 val compIcon = if (isTeoria) Icons.Filled.MenuBook else if (isLab) Icons.Filled.Science else Icons.Filled.Assignment
+                                val compTieneRegistro = comp.tieneRegistroAsistencia
                                 val compPct = comp.porcentaje ?: 100.0
                                 val cAsist = comp.vecesAsistidas ?: 0
                                 val cFalt = comp.faltas ?: 0
@@ -813,33 +997,32 @@ fun AsistenciaCard(
                                             )
                                         }
                                     }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
+
+                                    if (!compTieneRegistro) {
                                         Text(
-                                            text = "$cAsist Asistí",
+                                            text = "0 Faltas (100%)",
                                             fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = UpaoGreen
-                                        )
-                                        Text(
-                                            text = "·",
-                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
                                             color = MaterialTheme.colorScheme.outline
                                         )
-                                        Text(
-                                            text = "$cFalt Falté",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (cFalt > 0) UpaoRed else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = "(${formatPct(compPct)}%)",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = porcentajeColor(compPct)
-                                        )
+                                    } else {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = if (cFalt == 1) "1 Falta" else "$cFalt Faltas",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (cFalt > 0) UpaoRed else UpaoGreen
+                                            )
+                                            Text(
+                                                text = "(${formatPct(compPct)}%)",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = porcentajeColor(compPct, compTieneRegistro)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -848,80 +1031,30 @@ fun AsistenciaCard(
                         Spacer(modifier = Modifier.height(6.dp))
                     }
 
-                    // Fila destacada: Veces que asistí y veces que falté en total
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Fila destacada: Faltas
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (faltas > 0) UpaoRed.copy(alpha = 0.12f) else UpaoGreen.copy(alpha = 0.10f),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        // Badge veces que asistió
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = UpaoGreen.copy(alpha = 0.12f),
-                            modifier = Modifier.weight(1f)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.CheckCircle,
-                                    contentDescription = null,
-                                    tint = UpaoGreen,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (asistencias != null) "$asistencias Asistí${if (tieneComponentesMultiples) " Total" else ""}" else "Asistí",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = UpaoGreen
-                                )
-                            }
-                        }
-
-                        // Badge veces que faltó
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (faltas > 0) UpaoRed.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Cancel,
-                                    contentDescription = null,
-                                    tint = if (faltas > 0) UpaoRed else MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "$faltas Falté${if (tieneComponentesMultiples) " Total" else ""}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (faltas > 0) UpaoRed else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        // Total de clases si está disponible
-                        if (totalClases != null && totalClases > 0) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            ) {
-                                Text(
-                                    text = "$totalClases clases",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                )
-                            }
+                            Icon(
+                                imageVector = if (faltas > 0) Icons.Filled.Cancel else Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = if (faltas > 0) UpaoRed else UpaoGreen,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (faltas == 1) "1 Falta" else "$faltas Faltas",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (faltas > 0) UpaoRed else UpaoGreen
+                            )
                         }
                     }
                 }
@@ -1030,30 +1163,35 @@ private fun AsistenciaDetalleModal(
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = colorGlobal.copy(alpha = 0.12f),
-                    modifier = Modifier.padding(start = 8.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "${formatPct(curso.porcentaje ?: 0.0)}%",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = colorGlobal
-                        )
-                        Text(
-                            text = estadoGlobal,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = colorGlobal
-                        )
+                    val tieneRegistroCurso = curso.tieneRegistroAsistencia
+                    if (!tieneRegistroCurso) {
+                        StatusBadge(text = "Pendiente de lista", color = MaterialTheme.colorScheme.outline)
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = colorGlobal.copy(alpha = 0.12f),
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "${formatPct(curso.porcentaje ?: 100.0)}%",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = colorGlobal
+                                )
+                                Text(
+                                    text = estadoGlobal,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colorGlobal
+                                )
+                            }
+                        }
                     }
                 }
-            }
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -1069,34 +1207,17 @@ private fun AsistenciaDetalleModal(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "Total del Curso",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        val totalClasesTxt = curso.totalClasesCalculadas?.let { "$it clases registradas" } ?: ""
-                        if (totalClasesTxt.isNotBlank()) {
-                            Text(
-                                text = totalClasesTxt,
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        StatChip(
-                            label = "Asistí",
-                            value = "${curso.vecesAsistidas ?: 0}",
-                            color = UpaoGreen
-                        )
-                        StatChip(
-                            label = "Falté",
-                            value = "${curso.totalFaltasCalculadas}",
-                            color = if (curso.totalFaltasCalculadas > 0) UpaoRed else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "Total del Curso",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    StatChip(
+                        label = "Faltas",
+                        value = "${curso.totalFaltasCalculadas}",
+                        color = if (curso.totalFaltasCalculadas > 0) UpaoRed else UpaoGreen
+                    )
                 }
             }
 
@@ -1135,11 +1256,10 @@ private fun ComponenteCard(
         else -> MaterialTheme.colorScheme.primary to Icons.Filled.CheckCircle
     }
 
-    val pct = componente.porcentaje ?: 100.0
-    val (_, colorEstado) = estadoAsistencia(pct)
-    val asistidas = componente.vecesAsistidas
+    val tieneRegistro = componente.tieneRegistroAsistencia
+    val pct = componente.porcentaje
+    val colorEstado = porcentajeColor(pct, tieneRegistro)
     val faltas = componente.faltas ?: 0
-    val total = componente.totalClasesCalculadas
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -1194,96 +1314,62 @@ private fun ComponenteCard(
                     }
                 }
 
-                Text(
-                    text = "${formatPct(pct)}%",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = colorEstado
-                )
+                if (!tieneRegistro) {
+                    StatusBadge(text = "Pendiente de lista", color = MaterialTheme.colorScheme.outline)
+                } else {
+                    Text(
+                        text = "${formatPct(pct ?: 100.0)}%",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = colorEstado
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            LinearProgressIndicator(
-                progress = { (pct / 100f).toFloat().coerceIn(0f, 1f) },
-                color = colorEstado,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-            )
+            if (!tieneRegistro) {
+                Text(
+                    text = "Aún no se ha registrado asistencia para esta sección.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            } else {
+                val pctVal = pct ?: 100.0
+                LinearProgressIndicator(
+                    progress = { (pctVal / 100f).toFloat().coerceIn(0f, 1f) },
+                    color = colorEstado,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                )
 
-            Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = UpaoGreen.copy(alpha = 0.12f),
-                    modifier = Modifier.weight(1f)
+                    color = (if (faltas > 0) UpaoRed else UpaoGreen).copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.CheckCircle,
+                            imageVector = if (faltas > 0) Icons.Filled.Cancel else Icons.Filled.CheckCircle,
                             contentDescription = null,
-                            tint = UpaoGreen,
+                            tint = if (faltas > 0) UpaoRed else UpaoGreen,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "$asistidas Asistí",
+                            text = if (faltas == 1) "1 Falta" else "$faltas Faltas",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = UpaoGreen
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = (if (faltas > 0) UpaoRed else MaterialTheme.colorScheme.outline).copy(alpha = 0.12f),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Cancel,
-                            contentDescription = null,
-                            tint = if (faltas > 0) UpaoRed else MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "$faltas Falté",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (faltas > 0) UpaoRed else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                if (total != null && total > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                    ) {
-                        Text(
-                            text = "$total clases",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            color = if (faltas > 0) UpaoRed else UpaoGreen
                         )
                     }
                 }
@@ -1304,17 +1390,43 @@ private fun ComponenteCard(
                     color = MaterialTheme.colorScheme.outline
                 )
             }
+
+            val doc = componente.displayDocente
+            if (!doc.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = "Docente",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Docente: ${toTitleCase(doc)}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
-    val pct = curso.porcentaje ?: 100.0
-    val (_, colorEstado) = estadoAsistencia(pct)
-    val asistidas = curso.vecesAsistidas ?: 0
+    val tieneRegistro = curso.tieneRegistroAsistencia
+    val pct = curso.porcentaje
+    val colorEstado = porcentajeColor(pct, tieneRegistro)
     val faltas = curso.totalFaltasCalculadas
-    val total = curso.totalClasesCalculadas
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -1351,96 +1463,62 @@ private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
                         )
                     }
                 }
-                Text(
-                    text = "${formatPct(pct)}%",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = colorEstado
-                )
+                if (!tieneRegistro) {
+                    StatusBadge(text = "Pendiente de lista", color = MaterialTheme.colorScheme.outline)
+                } else {
+                    Text(
+                        text = "${formatPct(pct ?: 100.0)}%",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = colorEstado
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            LinearProgressIndicator(
-                progress = { (pct / 100f).toFloat().coerceIn(0f, 1f) },
-                color = colorEstado,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-            )
+            if (!tieneRegistro) {
+                Text(
+                    text = "Aún no se ha registrado asistencia.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            } else {
+                val pctVal = pct ?: 100.0
+                LinearProgressIndicator(
+                    progress = { (pctVal / 100f).toFloat().coerceIn(0f, 1f) },
+                    color = colorEstado,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                )
 
-            Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = UpaoGreen.copy(alpha = 0.12f),
-                    modifier = Modifier.weight(1f)
+                    color = (if (faltas > 0) UpaoRed else UpaoGreen).copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.CheckCircle,
+                            imageVector = if (faltas > 0) Icons.Filled.Cancel else Icons.Filled.CheckCircle,
                             contentDescription = null,
-                            tint = UpaoGreen,
+                            tint = if (faltas > 0) UpaoRed else UpaoGreen,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "$asistidas Asistí",
+                            text = if (faltas == 1) "1 Falta" else "$faltas Faltas",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = UpaoGreen
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = (if (faltas > 0) UpaoRed else MaterialTheme.colorScheme.outline).copy(alpha = 0.12f),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Cancel,
-                            contentDescription = null,
-                            tint = if (faltas > 0) UpaoRed else MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "$faltas Falté",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (faltas > 0) UpaoRed else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                if (total != null && total > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                    ) {
-                        Text(
-                            text = "$total clases",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            color = if (faltas > 0) UpaoRed else UpaoGreen
                         )
                     }
                 }
@@ -1454,6 +1532,33 @@ private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.outline
                 )
+            }
+
+            val doc = curso.displayDocente
+            if (!doc.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = "Docente",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Docente: ${toTitleCase(doc)}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
         }
     }

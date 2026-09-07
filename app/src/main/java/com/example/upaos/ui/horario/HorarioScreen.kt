@@ -3,19 +3,23 @@ package com.example.upaos.ui.horario
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.Class
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Room
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.ApiCache
+import com.example.upaos.data.model.AsistenciaComponente
+import com.example.upaos.data.model.AsistenciaCurso
+import com.example.upaos.data.model.AsistenciaResponse
 import com.example.upaos.data.model.HorarioBloque
 import com.example.upaos.data.model.HorarioCurso
 import com.example.upaos.data.model.HorarioResponse
@@ -40,6 +47,8 @@ import com.example.upaos.ui.components.SkeletonBox
 import com.example.upaos.ui.components.cursoColor
 import com.example.upaos.ui.components.toTitleCase
 import com.example.upaos.ui.grades.detectarPeriodoActual
+import com.example.upaos.ui.theme.UpaoBlue
+import com.example.upaos.ui.theme.UpaoOrange
 import com.example.upaos.widget.ProximoCursoWidget
 import com.google.gson.Gson
 import java.util.Calendar
@@ -57,6 +66,106 @@ private fun minutosDe(hhmm: String?): Int? {
     val partes = hhmm.split(":")
     if (partes.size < 2) return null
     return (partes[0].toIntOrNull() ?: return null) * 60 + (partes[1].toIntOrNull() ?: return null)
+}
+
+private fun normalizarNombre(nombre: String): String =
+    nombre.uppercase()
+        .replace("Á", "A").replace("É", "E").replace("Í", "I")
+        .replace("Ó", "O").replace("Ú", "U")
+        .replace(Regex("[^A-Z0-9\\s]"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private data class InfoBloqueComponente(
+    val tipo: String, // "Teoría", "Laboratorio", "Práctica" o "Clase"
+    val nrc: String?,
+    val seccion: String?,
+    val docente: String?
+)
+
+/**
+ * Deduce el componente correspondiente a un bloque específico de un curso,
+ * buscando la coincidencia con los registros de asistencia para asociar el NRC exacto
+ * de Teoría o Laboratorio y el docente.
+ */
+private fun deducirInfoComponente(
+    curso: HorarioCurso,
+    bloque: HorarioBloque,
+    asistenciaCursos: List<AsistenciaCurso>
+): InfoBloqueComponente {
+    val nomNormalizado = normalizarNombre(curso.displayNombre)
+    val codMateria = curso.codigoMateria?.trim()?.uppercase() ?: ""
+
+    // Buscar el curso en la lista de asistencia
+    val asisMatch = asistenciaCursos.firstOrNull { a ->
+        val crnA = a.crn?.trim()
+        val crnH = curso.crn?.trim()
+        if (!crnA.isNullOrBlank() && !crnH.isNullOrBlank() && (crnA == crnH || a.componentes.any { it.crn?.trim() == crnH })) return@firstOrNull true
+        val codA = a.codigoMateria?.trim()?.uppercase() ?: ""
+        val nomA = normalizarNombre(a.displayNombre)
+        if (codMateria.isNotBlank() && codA.isNotBlank() && codMateria == codA) {
+            nomA == nomNormalizado || nomA.contains(nomNormalizado) || nomNormalizado.contains(nomA)
+        } else {
+            nomA == nomNormalizado || nomA.contains(nomNormalizado) || nomNormalizado.contains(nomA)
+        }
+    }
+
+    val componentes = asisMatch?.componentes ?: emptyList()
+    val totalBloques = curso.bloques.size
+    val indiceBloque = curso.bloques.indexOf(bloque).let { if (it >= 0) it else 0 }
+
+    if (componentes.size == 2) {
+        val c1 = componentes[0]
+        val c2 = componentes[1]
+        val sec1 = c1.seccion?.uppercase() ?: ""
+        val sec2 = c2.seccion?.uppercase() ?: ""
+        val tip1 = (c1.tipo ?: c1.tipoComponente)?.uppercase() ?: ""
+        val tip2 = (c2.tipo ?: c2.tipoComponente)?.uppercase() ?: ""
+
+        val esLab1 = sec1.contains("LAB") || sec1.endsWith("L") || tip1.contains("LAB")
+        val esLab2 = sec2.contains("LAB") || sec2.endsWith("L") || tip2.contains("LAB")
+        val esTeor1 = sec1.contains("TEOR") || sec1.endsWith("T") || tip1.contains("TEOR")
+        val esTeor2 = sec2.contains("TEOR") || sec2.endsWith("T") || tip2.contains("TEOR")
+
+        val (teoriaComp, labComp) = when {
+            esLab2 || esTeor1 -> c1 to c2
+            esLab1 || esTeor2 -> c2 to c1
+            else -> if (sec1 <= sec2) c1 to c2 else c2 to c1
+        }
+
+        val compElegido = if (indiceBloque == 0) teoriaComp else labComp
+        val tipoNombre = if (indiceBloque == 0) "Teoría" else "Laboratorio"
+        return InfoBloqueComponente(
+            tipo = tipoNombre,
+            nrc = compElegido.crn?.takeIf { it.isNotBlank() } ?: curso.crn,
+            seccion = compElegido.seccion?.takeIf { it.isNotBlank() } ?: asisMatch?.seccion,
+            docente = compElegido.displayDocente ?: asisMatch?.displayDocente
+        )
+    } else if (componentes.isNotEmpty()) {
+        val comp = if (indiceBloque < componentes.size) componentes[indiceBloque] else componentes.first()
+        val tipoNombre = comp.tipo?.takeIf { it.isNotBlank() }
+            ?: comp.tipoComponente?.takeIf { it.isNotBlank() }
+            ?: if (indiceBloque == 0) "Teoría" else "Laboratorio"
+        return InfoBloqueComponente(
+            tipo = tipoNombre,
+            nrc = comp.crn?.takeIf { it.isNotBlank() } ?: curso.crn,
+            seccion = comp.seccion?.takeIf { it.isNotBlank() } ?: asisMatch?.seccion,
+            docente = comp.displayDocente ?: asisMatch?.displayDocente
+        )
+    }
+
+    // Si no hay desglose en asistencia, deducir por la posición del bloque
+    val tipoDefecto = if (totalBloques >= 2) {
+        if (indiceBloque == 0) "Teoría" else "Laboratorio"
+    } else {
+        "Teoría"
+    }
+    return InfoBloqueComponente(
+        tipo = tipoDefecto,
+        nrc = curso.crn,
+        seccion = null,
+        docente = asisMatch?.displayDocente
+    )
 }
 
 private data class ProximaClase(
@@ -110,6 +219,9 @@ fun HorarioContent(
     var periodosExpanded by remember { mutableStateOf(false) }
 
     var cursos by remember { mutableStateOf<List<HorarioCurso>>(emptyList()) }
+    var asistenciaCursos by remember { mutableStateOf<List<AsistenciaCurso>>(emptyList()) }
+    var bloqueSeleccionado by remember { mutableStateOf<Pair<HorarioCurso, HorarioBloque>?>(null) }
+
     var isLoading by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -119,6 +231,13 @@ fun HorarioContent(
     fun aplicarCache() {
         scope.launch {
             try {
+                // Cargar asistencia de caché para asociar docentes y NRCs específicos de componentes
+                val asisJson = cache.cargar("asistencia_${usuario ?: "anonimo"}")
+                if (asisJson != null) {
+                    val asisBody = gson.fromJson(asisJson, AsistenciaResponse::class.java)
+                    asistenciaCursos = asisBody.asistencia
+                }
+
                 if (cursos.isNotEmpty()) return@launch
                 var json = cache.cargar(claveCache())
                 if (json == null) {
@@ -181,6 +300,20 @@ fun HorarioContent(
         }
     }
 
+    fun cargarAsistencia() {
+        scope.launch {
+            try {
+                val res = RetrofitClient.apiService.getAsistencia("Bearer $token")
+                if (res.isSuccessful && res.body() != null) {
+                    asistenciaCursos = res.body()!!.asistencia
+                    cache.guardar("asistencia_${usuario ?: "anonimo"}", gson.toJson(res.body()!!))
+                }
+            } catch (_: Exception) {
+                // Si falla la red, ya se cargó de la caché en aplicarCache()
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         try {
             val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
@@ -191,9 +324,11 @@ fun HorarioContent(
             }
             aplicarCache()
             loadHorario()
+            cargarAsistencia()
         } catch (e: Exception) {
             aplicarCache()
             loadHorario()
+            cargarAsistencia()
         }
     }
 
@@ -294,31 +429,52 @@ fun HorarioContent(
                     onRefresh = {
                         isRefreshing = true
                         loadHorario()
+                        cargarAsistencia()
                     },
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         if (proxima != null) {
-                            ProximaClaseCard(proxima)
+                            ProximaClaseCard(
+                                proxima = proxima,
+                                onClick = {
+                                    bloqueSeleccionado = proxima.curso to proxima.bloque
+                                }
+                            )
                             Spacer(modifier = Modifier.height(10.dp))
                         }
-                        HorarioSemanalGrid(cursos, Modifier.weight(1f))
+                        HorarioSemanalGrid(
+                            cursos = cursos,
+                            asistenciaCursos = asistenciaCursos,
+                            onBloqueClick = { curso, bloque ->
+                                bloqueSeleccionado = curso to bloque
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
         }
     }
+
+    bloqueSeleccionado?.let { (curso, bloque) ->
+        val infoComp = deducirInfoComponente(curso, bloque, asistenciaCursos)
+        HorarioDetalleModal(
+            curso = curso,
+            bloque = bloque,
+            infoComponente = infoComp,
+            onDismiss = { bloqueSeleccionado = null }
+        )
+    }
 }
 
 @Composable
-private fun ProximaClaseCard(proxima: ProximaClase) {
+private fun ProximaClaseCard(
+    proxima: ProximaClase,
+    onClick: () -> Unit
+) {
     val color = cursoColor(proxima.curso.displayNombre)
     val bloque = proxima.bloque
-    val etiqueta = when {
-        proxima.esAhora -> "• En curso ahora"
-        proxima.diasRestantes == 0 -> "• Hoy"
-        else -> "• ${bloque.diaNombre ?: ""}"
-    }
     val hora = listOf(
         bloque.horaInicio12h ?: bloque.horaInicio,
         bloque.horaFin12h ?: bloque.horaFin
@@ -327,6 +483,7 @@ private fun ProximaClaseCard(proxima: ProximaClase) {
         color = MaterialTheme.colorScheme.primaryContainer,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         corner = 12.dp,
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -391,7 +548,12 @@ private data class BloqueProgramado(
 )
 
 @Composable
-private fun HorarioSemanalGrid(cursos: List<HorarioCurso>, modifier: Modifier = Modifier) {
+private fun HorarioSemanalGrid(
+    cursos: List<HorarioCurso>,
+    asistenciaCursos: List<AsistenciaCurso>,
+    onBloqueClick: (HorarioCurso, HorarioBloque) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val hoy = diaHoy() // 0 = Lun, 1 = Mar, ..., 5 = Sáb, 6 = Dom
     val horScroll = rememberScrollState()
     val vertScroll = rememberScrollState()
@@ -470,7 +632,14 @@ private fun HorarioSemanalGrid(cursos: List<HorarioCurso>, modifier: Modifier = 
                         }
                     } else {
                         clases.sortedBy { minutosDe(it.bloque.horaInicio) ?: 0 }.forEach { c ->
-                            BloqueColumna(c.curso, c.bloque, esHoy = index == hoy)
+                            val infoComp = deducirInfoComponente(c.curso, c.bloque, asistenciaCursos)
+                            BloqueColumna(
+                                curso = c.curso,
+                                bloque = c.bloque,
+                                infoComponente = infoComp,
+                                esHoy = index == hoy,
+                                onClick = { onBloqueClick(c.curso, c.bloque) }
+                            )
                             Spacer(modifier = Modifier.height(6.dp))
                         }
                     }
@@ -481,15 +650,54 @@ private fun HorarioSemanalGrid(cursos: List<HorarioCurso>, modifier: Modifier = 
 }
 
 @Composable
-private fun BloqueColumna(curso: HorarioCurso, bloque: HorarioBloque, esHoy: Boolean) {
+private fun BloqueColumna(
+    curso: HorarioCurso,
+    bloque: HorarioBloque,
+    infoComponente: InfoBloqueComponente,
+    esHoy: Boolean,
+    onClick: () -> Unit
+) {
     val color = cursoColor(curso.displayNombre)
+    val esLab = infoComponente.tipo.contains("LAB", ignoreCase = true)
+    val badgeColor = if (esLab) Color(0xFF7C3AED) else UpaoBlue
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(if (esHoy) color.copy(alpha = 0.12f) else color.copy(alpha = 0.06f))
+            .clickable { onClick() }
             .padding(8.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = badgeColor.copy(alpha = 0.15f)
+            ) {
+                Text(
+                    text = infoComponente.tipo.uppercase(),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = badgeColor,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+            }
+            if (!infoComponente.nrc.isNullOrBlank()) {
+                Text(
+                    text = "NRC ${infoComponente.nrc}",
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(3.dp))
+
         Text(
             text = toTitleCase(curso.displayNombre),
             fontSize = 11.sp,
@@ -497,21 +705,16 @@ private fun BloqueColumna(curso: HorarioCurso, bloque: HorarioBloque, esHoy: Boo
             color = if (esHoy) color else MaterialTheme.colorScheme.onSurface,
             maxLines = 2
         )
-        val subtitulo = buildString {
-            if (curso.displayCodigo.isNotBlank()) append(curso.displayCodigo)
-            if (!curso.crn.isNullOrBlank()) {
-                if (isNotEmpty()) append(" · ")
-                append("NRC ${curso.crn}")
-            }
-        }
-        if (subtitulo.isNotBlank()) {
+
+        if (curso.displayCodigo.isNotBlank()) {
             Text(
-                text = subtitulo,
+                text = curso.displayCodigo,
                 fontSize = 9.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1
             )
         }
+
         Spacer(modifier = Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -548,3 +751,267 @@ private fun BloqueColumna(curso: HorarioCurso, bloque: HorarioBloque, esHoy: Boo
         }
     }
 }
+
+/**
+ * Modal BottomSheet interactivo que se despliega al pulsar un bloque del horario.
+ * Muestra el desglose detallado con distinción de Teoría / Laboratorio,
+ * NRC específico del componente, aula, horario y nombre del docente.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HorarioDetalleModal(
+    curso: HorarioCurso,
+    bloque: HorarioBloque,
+    infoComponente: InfoBloqueComponente,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val esLab = infoComponente.tipo.contains("LAB", ignoreCase = true)
+    val compColor = if (esLab) Color(0xFF7C3AED) else UpaoBlue
+    val compIcon = if (esLab) Icons.Filled.Science else Icons.Filled.MenuBook
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            // Header del Curso
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = toTitleCase(curso.displayNombre),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = curso.displayCodigo.ifBlank { "Curso Universitario" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = compColor.copy(alpha = 0.15f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = compIcon,
+                            contentDescription = null,
+                            tint = compColor,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = infoComponente.tipo.uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = compColor
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Tarjeta de Información Detallada del Componente
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "Detalles de la Clase",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // NRC y Sección
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                Text(
+                                    text = "NRC COMPONENTE",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = infoComponente.nrc ?: curso.crn ?: "—",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        if (!infoComponente.seccion.isNullOrBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                    Text(
+                                        text = "SECCIÓN",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Sec. ${infoComponente.seccion}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Horario y Día
+                    val horaTxt = listOfNotNull(
+                        bloque.horaInicio12h ?: bloque.horaInicio,
+                        bloque.horaFin12h ?: bloque.horaFin
+                    ).joinToString(" - ")
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AccessTime,
+                            contentDescription = "Horario",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Día y Horario",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = "${bloque.diaNombre ?: "Día programado"} · $horaTxt",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    // Aula
+                    if (!bloque.aula.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Room,
+                                contentDescription = "Aula",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Ubicación / Aula",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                Text(
+                                    text = bloque.aula!!,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    // Nombre del Profesor / Docente
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val docNombre = infoComponente.docente?.takeIf { it.isNotBlank() }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (docNombre != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Person,
+                            contentDescription = "Docente",
+                            tint = if (docNombre != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Docente / Profesor",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = if (docNombre != null) toTitleCase(docNombre) else "Docente no asignado en el sistema",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (docNombre != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -78,13 +78,22 @@ class AsistenciaWorker(
                 apiCache.guardar(cacheKey, gson.toJson(res.body()!!))
                 notificationPrefs.ultimaRevisionAsistencia = System.currentTimeMillis()
                 Log.d(TAG, "Revisión de asistencia completada con éxito.")
+                if (notificationPrefs.checkAsistenciaEnabled) {
+                    scheduleFiveMinuteCheck(applicationContext)
+                }
                 return Result.success()
             } else {
                 Log.w(TAG, "Respuesta no exitosa al consultar asistencia: ${res.code()}")
+                if (notificationPrefs.checkAsistenciaEnabled) {
+                    scheduleFiveMinuteCheck(applicationContext)
+                }
                 return Result.retry()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error en AsistenciaWorker: ${e.localizedMessage}", e)
+            if (notificationPrefs.checkAsistenciaEnabled) {
+                scheduleFiveMinuteCheck(applicationContext)
+            }
             return Result.retry()
         }
     }
@@ -106,8 +115,7 @@ class AsistenciaWorker(
 
         for (curso in nuevosCursos) {
             val key = curso.crn?.takeIf { it.isNotBlank() }
-                ?: curso.codigoMateria?.takeIf { it.isNotBlank() }
-                ?: curso.displayNombre
+                ?: "${curso.displayNombre}_${curso.seccion ?: ""}_${curso.periodo ?: ""}"
 
             val faltasActuales = curso.faltas ?: 0
             val pctActual = curso.porcentaje ?: 0.0
@@ -174,13 +182,16 @@ class AsistenciaWorker(
     companion object {
         private const val TAG = "UPAO_AsistenciaWorker"
         private const val UNIQUE_WORK_NAME = "upao_asistencia_check"
+        private const val UNIQUE_5MIN_WORK_NAME = "upao_asistencia_5min_check"
 
-        fun schedule(context: Context, intervalMinutes: Long = 15) {
+        fun schedule(context: Context, intervalMinutes: Long = 5) {
+            scheduleFiveMinuteCheck(context)
+
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            // WorkManager impone un mínimo de 15 minutos para PeriodicWorkRequest
+            // WorkManager impone un mínimo de 15 minutos para PeriodicWorkRequest (como respaldo)
             val minInterval = intervalMinutes.coerceAtLeast(15)
 
             val request = PeriodicWorkRequestBuilder<AsistenciaWorker>(
@@ -195,12 +206,31 @@ class AsistenciaWorker(
                 ExistingPeriodicWorkPolicy.UPDATE,
                 request
             )
-            Log.d(TAG, "Programada revisión de asistencia cada $minInterval minutos.")
+            Log.d(TAG, "Programada revisión de asistencia cada 5 min (con respaldo periódico cada $minInterval min).")
+        }
+
+        fun scheduleFiveMinuteCheck(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val request = OneTimeWorkRequestBuilder<AsistenciaWorker>()
+                .setConstraints(constraints)
+                .setInitialDelay(5, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                UNIQUE_5MIN_WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
+                request
+            )
+            Log.d(TAG, "Programada próxima revisión de asistencia en 5 minutos.")
         }
 
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK_NAME)
-            Log.d(TAG, "Cancelada revisión periódica de asistencia.")
+            WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_5MIN_WORK_NAME)
+            Log.d(TAG, "Canceladas todas las revisiones de asistencia.")
         }
 
         fun runOnce(context: Context) {

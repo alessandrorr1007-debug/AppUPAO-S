@@ -45,28 +45,43 @@ class TokenManager(context: Context) {
     }
 
     fun saveCredentials(user: String, pass: String) {
-        prefs.edit().putString("user_id", user).putString("user_pass", pass).apply()
-        fallbackPrefs.edit().putString("user_id", user).putString("user_pass", pass).apply()
+        prefs.edit().putString("user_id", user).putString("user_pass", pass).putBoolean("keep_logged_in", true).apply()
+        fallbackPrefs.edit().putString("user_id", user).putString("user_pass", pass).putBoolean("keep_logged_in", true).apply()
     }
 
     fun saveUserId(user: String) {
-        prefs.edit().putString("user_id", user).apply()
-        fallbackPrefs.edit().putString("user_id", user).apply()
+        prefs.edit().putString("user_id", user).putBoolean("keep_logged_in", true).apply()
+        fallbackPrefs.edit().putString("user_id", user).putBoolean("keep_logged_in", true).apply()
     }
 
     fun getSavedUser(): String? =
         prefs.getString("user_id", null) ?: fallbackPrefs.getString("user_id", null)
 
-    fun getSavedPass(): String? =
-        prefs.getString("user_pass", null) ?: fallbackPrefs.getString("user_pass", null)
+    fun getSavedPass(): String? {
+        val pass = prefs.getString("user_pass", null) ?: fallbackPrefs.getString("user_pass", null)
+        if (!pass.isNullOrBlank()) return pass
+        // Respaldo: buscar en las cuentas guardadas
+        val user = getSavedUser()
+        if (!user.isNullOrBlank()) {
+            val cuenta = getCuentas().firstOrNull { it.usuario.equals(user, ignoreCase = true) }
+            if (cuenta != null && cuenta.password.isNotBlank()) {
+                saveCredentials(user, cuenta.password)
+                return cuenta.password
+            }
+        }
+        return null
+    }
 
     fun setKeepLoggedIn(keep: Boolean) {
         prefs.edit().putBoolean("keep_logged_in", keep).apply()
         fallbackPrefs.edit().putBoolean("keep_logged_in", keep).apply()
     }
 
-    fun shouldKeepLoggedIn(): Boolean =
-        prefs.getBoolean("keep_logged_in", false) || fallbackPrefs.getBoolean("keep_logged_in", false)
+    fun shouldKeepLoggedIn(): Boolean {
+        val user = getSavedUser()
+        if (user.isNullOrBlank()) return false
+        return prefs.getBoolean("keep_logged_in", true) && fallbackPrefs.getBoolean("keep_logged_in", true)
+    }
 
     // ---------- Cuentas guardadas (multi-cuenta) ----------
 

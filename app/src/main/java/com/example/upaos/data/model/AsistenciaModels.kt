@@ -17,43 +17,57 @@ data class AsistenciaComponente(
     @SerializedName("hora") val hora: String? = null,
     @SerializedName("hora_12h") val hora12h: String? = null,
     @SerializedName("aula") val aula: String? = null,
+    @SerializedName("docente") val docente: String? = null,
+    @SerializedName("profesor") val profesor: String? = null,
+    @SerializedName("instructor") val instructor: String? = null,
     @SerializedName("sectionMeetingId") val sectionMeetingId: Long? = null
 ) {
+    val displayDocente: String?
+        get() = docente?.takeIf { it.isNotBlank() }
+            ?: profesor?.takeIf { it.isNotBlank() }
+            ?: instructor?.takeIf { it.isNotBlank() }
+
+    val tieneRegistroAsistencia: Boolean
+        get() = !(faltas == 0 && (porcentaje == null || porcentaje <= 0.0))
+
     /**
      * Calcula o deduce la cantidad de asistencias de este componente.
      */
     fun calcularVecesAsistidas(clasesEstimadas: Int? = null): Int? {
         if (asistencias != null) return asistencias
         if (vecesAsistio != null) return vecesAsistio
-        val p = porcentaje ?: return null
+        val p = porcentaje
         val f = faltas ?: 0
 
-        if (p <= 0.0) return 0
+        // Si no hay faltas y el porcentaje es nulo o 0, el docente aún no pasó asistencia
+        if (f == 0 && (p == null || p <= 0.0)) return null
+
+        val pct = p ?: 100.0
+        if (pct <= 0.0) return 0
 
         // Si hay faltas y el porcentaje es menor al 100%, la fórmula matemática es exacta:
         // p = (A / (A + F)) * 100  =>  A = round((p * F) / (100 - p))
-        if (f > 0 && p < 100.0) {
-            val calculadas = kotlin.math.round((p * f) / (100.0 - p)).toInt()
+        if (f > 0 && pct < 100.0) {
+            val calculadas = kotlin.math.round((pct * f) / (100.0 - pct)).toInt()
             return calculadas.coerceAtLeast(0)
         }
 
         // Si la asistencia es 100% (o faltas == 0)
-        if (p >= 100.0 || f == 0) {
+        if (pct >= 100.0 || f == 0) {
             if (totalClases != null && totalClases > 0) return (totalClases - f).coerceAtLeast(0)
             if (clasesEstimadas != null && clasesEstimadas > 0) return (clasesEstimadas - f).coerceAtLeast(1)
-            // Estimación por frecuencia semanal si no hay otro dato
-            val dias = contarDiasHorario(horarioDias)
-            return (dias * 4).coerceAtLeast(1)
+            return 1
         }
 
         return clasesEstimadas ?: totalClases ?: 0
     }
 
     val vecesAsistidas: Int?
-        get() = calcularVecesAsistidas(null)
+        get() = asistencias ?: vecesAsistio ?: calcularVecesAsistidas(null)
 
     val totalClasesCalculadas: Int?
         get() {
+            if (!tieneRegistroAsistencia) return null
             if (totalClases != null && totalClases > 0) return totalClases
             val a = vecesAsistidas
             val f = faltas ?: 0
@@ -79,31 +93,47 @@ data class AsistenciaCurso(
     @SerializedName("aula") val aula: String? = null,
     @SerializedName("tipo") val tipo: String? = null,
     @SerializedName("tipo_componente") val tipoComponente: String? = null,
+    @SerializedName("docente") val docente: String? = null,
+    @SerializedName("profesor") val profesor: String? = null,
+    @SerializedName("instructor") val instructor: String? = null,
     @SerializedName("componentes") val componentes: List<AsistenciaComponente> = emptyList(),
     @SerializedName("total_secciones") val totalSecciones: Int? = null
 ) {
+    val displayDocente: String?
+        get() = docente?.takeIf { it.isNotBlank() }
+            ?: profesor?.takeIf { it.isNotBlank() }
+            ?: instructor?.takeIf { it.isNotBlank() }
     val displayNombre: String
         get() = nombreCurso ?: materia ?: "Curso"
 
-    fun calcularVecesAsistidas(clasesEstimadas: Int? = null): Int? {
-        if (componentes.isNotEmpty()) {
-            val suma = componentes.sumOf { it.calcularVecesAsistidas(clasesEstimadas) ?: 0 }
-            return if (suma > 0 || componentes.any { it.vecesAsistidas != null }) suma else null
+    val tieneRegistroAsistencia: Boolean
+        get() = if (componentes.isNotEmpty()) {
+            componentes.any { it.tieneRegistroAsistencia }
+        } else {
+            !(faltas == 0 && (porcentaje == null || porcentaje <= 0.0))
         }
+
+    fun calcularVecesAsistidas(clasesEstimadas: Int? = null): Int? {
         if (asistencias != null) return asistencias
         if (vecesAsistio != null) return vecesAsistio
-        val p = porcentaje ?: return null
+        if (componentes.isNotEmpty()) {
+            val evaluados = componentes.filter { it.tieneRegistroAsistencia }
+            val suma = evaluados.sumOf { it.asistencias ?: it.vecesAsistio ?: it.calcularVecesAsistidas(clasesEstimadas) ?: 0 }
+            return if (suma > 0 || evaluados.any { it.asistencias != null || it.vecesAsistio != null || it.vecesAsistidas != null }) suma else null
+        }
+        val p = porcentaje
         val f = faltas ?: 0
-        if (p <= 0.0) return 0
-        if (f > 0 && p < 100.0) {
-            val calculadas = kotlin.math.round((p * f) / (100.0 - p)).toInt()
+        if (f == 0 && (p == null || p <= 0.0)) return null
+        val pct = p ?: 100.0
+        if (pct <= 0.0) return 0
+        if (f > 0 && pct < 100.0) {
+            val calculadas = kotlin.math.round((pct * f) / (100.0 - pct)).toInt()
             return calculadas.coerceAtLeast(0)
         }
-        if (p >= 100.0 || f == 0) {
+        if (pct >= 100.0 || f == 0) {
             if (totalClases != null && totalClases > 0) return (totalClases - f).coerceAtLeast(0)
             if (clasesEstimadas != null && clasesEstimadas > 0) return (clasesEstimadas - f).coerceAtLeast(1)
-            val dias = contarDiasHorario(horarioDias)
-            return (dias * 4).coerceAtLeast(1)
+            return 1
         }
         return clasesEstimadas ?: totalClases ?: 0
     }
@@ -112,7 +142,7 @@ data class AsistenciaCurso(
      * Veces que el alumno asistió a clases en todo el curso (sumando componentes si existen).
      */
     val vecesAsistidas: Int?
-        get() = calcularVecesAsistidas(null)
+        get() = asistencias ?: vecesAsistio ?: calcularVecesAsistidas(null)
 
     /**
      * Total de faltas acumuladas en el curso (sumando componentes si existen).
@@ -211,22 +241,9 @@ fun clasificarTipo(
 
     if (totalComponentes <= 1) return "Teoría"
 
-    // Si hay 2 componentes: el 1ro es Teoría y el 2do es Laboratorio (o Práctica si el nombre no tiene lab)
+    // Si hay 2 componentes: el 1ro es Teoría y el 2do es Laboratorio
     if (totalComponentes == 2) {
-        val nombreMayus = nombreCurso.uppercase()
-        val tieneLab = nombreMayus.contains("LAB") ||
-                nombreMayus.contains("COMPUT") ||
-                nombreMayus.contains("SISTEM") ||
-                nombreMayus.contains("REDES") ||
-                nombreMayus.contains("PROGRAM") ||
-                nombreMayus.contains("DATOS") ||
-                nombreMayus.contains("FISICA") ||
-                nombreMayus.contains("QUIMICA") ||
-                nombreMayus.contains("BIOLOG") ||
-                nombreMayus.contains("ELECTR") ||
-                nombreMayus.contains("DESARROLLO") ||
-                nombreMayus.contains("INTELIG")
-        return if (index == 0) "Teoría" else if (tieneLab) "Laboratorio" else "Práctica"
+        return if (index == 0) "Teoría" else "Laboratorio"
     }
 
     return when (index) {

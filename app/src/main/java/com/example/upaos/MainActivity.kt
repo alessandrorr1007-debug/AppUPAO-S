@@ -141,8 +141,15 @@ class MainActivity : ComponentActivity() {
                                 onTimeout = {
                                     val currentToken = tokenManager.getToken()
                                     val currentUser = tokenManager.getSavedUser()
+                                    val savedAccounts = tokenManager.getCuentas()
                                     if (!currentUser.isNullOrBlank() || !currentToken.isNullOrBlank()) {
                                         navegarPorTipoCuenta(currentToken ?: "")
+                                    } else if (savedAccounts.isNotEmpty()) {
+                                        val primera = savedAccounts.first()
+                                        tokenManager.saveCredentials(primera.usuario, primera.password)
+                                        tokenManager.saveUserId(primera.usuario)
+                                        tokenManager.setKeepLoggedIn(true)
+                                        navegarPorTipoCuenta(tokenManager.getToken() ?: "")
                                     } else {
                                         navController.navigate("login") {
                                             popUpTo("splash") { inclusive = true }
@@ -398,7 +405,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Notas, Horario y Asistencia",
+                text = "Cursos, Horario y Asistencia",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -17,7 +17,7 @@ class NotificationPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_CHECK_ASISTENCIA, value).apply()
 
     var intervaloMinutos: Int
-        get() = prefs.getInt(KEY_INTERVALO_MINUTOS, 15)
+        get() = prefs.getInt(KEY_INTERVALO_MINUTOS, 5)
         set(value) = prefs.edit().putInt(KEY_INTERVALO_MINUTOS, value).apply()
 
     var ultimaRevisionAsistencia: Long

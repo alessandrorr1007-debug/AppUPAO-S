@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.EventNote
@@ -13,12 +15,14 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,6 +89,7 @@ fun HomeScreen(
 
     LaunchedEffect(usuario) {
         if (usuario == null) return@LaunchedEffect
+        var ciclos = 0
         while (true) {
             try {
                 val res = RetrofitClient.apiService.getNotificaciones(usuario)
@@ -94,168 +99,219 @@ fun HomeScreen(
             } catch (e: Exception) {
                 // Silencioso
             }
+            ciclos++
+            // Cada 5 minutos (10 ciclos de 30s) revisamos asistencia si está habilitado
+            if (ciclos >= 10) {
+                ciclos = 0
+                val notifPrefs = com.example.upaos.data.local.NotificationPreferences(context)
+                if (notifPrefs.checkAsistenciaEnabled) {
+                    com.example.upaos.service.AsistenciaWorker.runOnce(context)
+                }
+            }
             delay(30_000)
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = when (pagerState.currentPage) {
-                            0 -> "Mis Notas"
-                            1 -> "Horario"
-                            else -> "Asistencia"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                ),
-                actions = {
-                    BadgedBox(
-                        badge = {
-                            if (unreadCount > 0) {
-                                Badge {
-                                    Text(if (unreadCount > 9) "9+" else "$unreadCount")
-                                }
-                            }
-                        }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width(300.dp),
+                drawerContainerColor = MaterialTheme.colorScheme.surface
+            ) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
                     ) {
-                        IconButton(onClick = onOpenNotifications) {
-                            Icon(
-                                imageVector = Icons.Filled.Notifications,
-                                contentDescription = "Notificaciones",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                    IconButton(onClick = onOpenSettings) {
                         Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Ajustes",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
+                            imageVector = Icons.Filled.Person,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(32.dp)
                         )
                     }
-                    var menuExpanded by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "Más opciones",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (isDarkTheme) "Modo claro" else "Modo oscuro",
-                                        fontSize = 14.sp
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = if (isDarkTheme) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    onToggleTheme()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Calculadora de notas", fontSize = 14.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Calculate,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    onOpenCalculator()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Cambiar de cuenta", fontSize = 14.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Person,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    onSwitchAccount()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Cerrar sesión", fontSize = 14.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Logout,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    cerrarSesion()
-                                }
-                            )
-                        }
-                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = usuario ?: "Estudiante UPAO",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "UPAO S",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            )
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                tonalElevation = 2.dp
-            ) {
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 0,
-                    onClick = {
-                        coroutineScope.launch { pagerState.animateScrollToPage(0) }
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+
+                NavigationDrawerItem(
+                    label = { Text("Cambiar de cuenta", fontWeight = FontWeight.Medium) },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
                     },
-                    icon = { Icon(Icons.Filled.Grade, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                    label = { Text("Notas", fontSize = 12.sp) }
+                    selected = false,
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onSwitchAccount()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 1,
-                    onClick = {
-                        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+
+                NavigationDrawerItem(
+                    label = {
+                        Text(
+                            "Cerrar sesión",
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     },
-                    icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                    label = { Text("Horario", fontSize = 12.sp) }
-                )
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 2,
-                    onClick = {
-                        coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                    icon = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(22.dp)
+                        )
                     },
-                    icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                    label = { Text("Asistencia", fontSize = 12.sp) }
+                    selected = false,
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        cerrarSesion()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
             }
         }
-    ) { padding ->
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (drawerState.isClosed) drawerState.open() else drawerState.close()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Menu,
+                                contentDescription = "Menú principal",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    },
+                    title = {
+                        Text(
+                            text = when (pagerState.currentPage) {
+                                0 -> "Mis Cursos"
+                                1 -> "Horario"
+                                else -> "Asistencia"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    ),
+                    actions = {
+                        IconButton(onClick = onToggleTheme) {
+                            Icon(
+                                imageVector = if (isDarkTheme) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                contentDescription = if (isDarkTheme) "Modo claro" else "Modo oscuro",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        IconButton(onClick = onOpenCalculator) {
+                            Icon(
+                                imageVector = Icons.Filled.Calculate,
+                                contentDescription = "Calculadora",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        BadgedBox(
+                            badge = {
+                                if (unreadCount > 0) {
+                                    Badge {
+                                        Text(if (unreadCount > 9) "9+" else "$unreadCount")
+                                    }
+                                }
+                            }
+                        ) {
+                            IconButton(onClick = onOpenNotifications) {
+                                Icon(
+                                    imageVector = Icons.Filled.Notifications,
+                                    contentDescription = "Notificaciones",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Ajustes",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                )
+            },
+            bottomBar = {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    tonalElevation = 2.dp
+                ) {
+                    NavigationBarItem(
+                        selected = pagerState.currentPage == 0,
+                        onClick = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                        },
+                        icon = { Icon(Icons.Filled.School, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Cursos", fontSize = 12.sp) }
+                    )
+                    NavigationBarItem(
+                        selected = pagerState.currentPage == 1,
+                        onClick = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                        },
+                        icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Horario", fontSize = 12.sp) }
+                    )
+                    NavigationBarItem(
+                        selected = pagerState.currentPage == 2,
+                        onClick = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                        },
+                        icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Asistencia", fontSize = 12.sp) }
+                    )
+                }
+            }
+        ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -316,3 +372,5 @@ fun HomeScreen(
         }
     }
 }
+}
+

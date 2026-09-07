@@ -73,10 +73,20 @@ fun SettingsScreen(
             val res = RetrofitClient.apiService.getSettings(usuario)
             if (res.isSuccessful && res.body() != null) {
                 val body = res.body()!!
-                checkNotasEnabled = body.autoCheckEnabled
-                notificationPrefs.checkNotasEnabled = body.autoCheckEnabled
+                // Si el usuario ya lo activó localmente, se mantiene siempre activo
+                if (notificationPrefs.checkNotasEnabled) {
+                    checkNotasEnabled = true
+                    if (!body.autoCheckEnabled) {
+                        try {
+                            RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(true))
+                        } catch (_: Exception) {}
+                    }
+                } else {
+                    checkNotasEnabled = body.autoCheckEnabled
+                    notificationPrefs.checkNotasEnabled = body.autoCheckEnabled
+                }
                 tieneTokenFcm = body.tieneTokenFcm
-                // El servidor revisará siempre cada 5 minutos internamente
+                // El servidor revisará siempre cada 5 minutos
                 if (body.intervaloMinutos != INTERVALO_FIJO_MINUTOS) {
                     try {
                         RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
@@ -88,8 +98,9 @@ fun SettingsScreen(
         } catch (e: Exception) {
             // Silencioso
         }
+        checkAsistenciaEnabled = notificationPrefs.checkAsistenciaEnabled
         if (checkAsistenciaEnabled) {
-            AsistenciaWorker.schedule(context, 15)
+            AsistenciaWorker.schedule(context, 5)
         }
         try {
             val resCuenta = RetrofitClient.apiService.getCuenta(usuario)
@@ -117,15 +128,16 @@ fun SettingsScreen(
                     notificationPrefs.checkNotasEnabled = cambiarNotas
                     RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(cambiarNotas))
                     RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
-                    val msg = if (cambiarNotas) "Notificaciones de notas activadas" else "Notificaciones de notas desactivadas"
+                    val msg = if (cambiarNotas) "Notificaciones de notas activadas (cada 5 min)" else "Notificaciones de notas desactivadas"
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
                 if (cambiarAsistencia != null) {
                     checkAsistenciaEnabled = cambiarAsistencia
                     notificationPrefs.checkAsistenciaEnabled = cambiarAsistencia
                     if (cambiarAsistencia) {
-                        AsistenciaWorker.schedule(context, 15)
-                        Toast.makeText(context, "Notificaciones de asistencia activadas", Toast.LENGTH_SHORT).show()
+                        AsistenciaWorker.schedule(context, 5)
+                        AsistenciaWorker.runOnce(context)
+                        Toast.makeText(context, "Notificaciones de asistencias activadas (cada 5 min)", Toast.LENGTH_SHORT).show()
                     } else {
                         AsistenciaWorker.cancel(context)
                         Toast.makeText(context, "Notificaciones de asistencia desactivadas", Toast.LENGTH_SHORT).show()
@@ -243,13 +255,13 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Estudiante: ${nombreEstudiante?.let { toTitleCase(it) } ?: usuario}",
+                            text = if (!nombreEstudiante.isNullOrBlank()) toTitleCase(nombreEstudiante!!) else "Estudiante",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (nombreEstudiante != null) "Código: $usuario" else usuario!!,
+                            text = "Código: $usuario",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

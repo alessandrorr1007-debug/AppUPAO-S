@@ -109,9 +109,10 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
                 .build()
 
             val loginResponse = loginClient.newCall(loginRequest).execute()
+            val responseBodyStr = loginResponse.body?.string()
+            Log.d("UPAO_APP", "[AuthInterceptor] Re-login HTTP code=${loginResponse.code}, body=$responseBodyStr")
 
             if (loginResponse.isSuccessful) {
-                val responseBodyStr = loginResponse.body?.string()
                 if (!responseBodyStr.isNullOrBlank()) {
                     val jsonObj = JSONObject(responseBodyStr)
                     val success = jsonObj.optBoolean("success", false)
@@ -126,7 +127,7 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
             }
             null
         } catch (e: Exception) {
-            Log.e("UPAO_APP", "[AuthInterceptor] Error en re-login automático: ${e.localizedMessage}")
+            Log.e("UPAO_APP", "[AuthInterceptor] Error en re-login automático: ${e.localizedMessage}", e)
             null
         }
     }
