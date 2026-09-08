@@ -17,15 +17,21 @@ data class AsistenciaComponente(
     @SerializedName("hora") val hora: String? = null,
     @SerializedName("hora_12h") val hora12h: String? = null,
     @SerializedName("aula") val aula: String? = null,
-    @SerializedName("docente") val docente: String? = null,
-    @SerializedName("profesor") val profesor: String? = null,
-    @SerializedName("instructor") val instructor: String? = null,
+    @SerializedName("docente") val docente: Any? = null,
+    @SerializedName("profesor") val profesor: Any? = null,
+    @SerializedName("instructor") val instructor: Any? = null,
+    @SerializedName("docentes") val docentes: Any? = null,
+    @SerializedName("profesores") val profesores: Any? = null,
+    @SerializedName("instructores") val instructores: Any? = null,
     @SerializedName("sectionMeetingId") val sectionMeetingId: Long? = null
 ) {
     val displayDocente: String?
-        get() = docente?.takeIf { it.isNotBlank() }
-            ?: profesor?.takeIf { it.isNotBlank() }
-            ?: instructor?.takeIf { it.isNotBlank() }
+        get() = extraerNombreDocente(docente)
+            ?: extraerNombreDocente(profesor)
+            ?: extraerNombreDocente(instructor)
+            ?: extraerNombreDocente(docentes)
+            ?: extraerNombreDocente(profesores)
+            ?: extraerNombreDocente(instructores)
 
     val tieneRegistroAsistencia: Boolean
         get() = !(faltas == 0 && (porcentaje == null || porcentaje <= 0.0))
@@ -93,16 +99,22 @@ data class AsistenciaCurso(
     @SerializedName("aula") val aula: String? = null,
     @SerializedName("tipo") val tipo: String? = null,
     @SerializedName("tipo_componente") val tipoComponente: String? = null,
-    @SerializedName("docente") val docente: String? = null,
-    @SerializedName("profesor") val profesor: String? = null,
-    @SerializedName("instructor") val instructor: String? = null,
+    @SerializedName("docente") val docente: Any? = null,
+    @SerializedName("profesor") val profesor: Any? = null,
+    @SerializedName("instructor") val instructor: Any? = null,
+    @SerializedName("docentes") val docentes: Any? = null,
+    @SerializedName("profesores") val profesores: Any? = null,
+    @SerializedName("instructores") val instructores: Any? = null,
     @SerializedName("componentes") val componentes: List<AsistenciaComponente> = emptyList(),
     @SerializedName("total_secciones") val totalSecciones: Int? = null
 ) {
     val displayDocente: String?
-        get() = docente?.takeIf { it.isNotBlank() }
-            ?: profesor?.takeIf { it.isNotBlank() }
-            ?: instructor?.takeIf { it.isNotBlank() }
+        get() = extraerNombreDocente(docente)
+            ?: extraerNombreDocente(profesor)
+            ?: extraerNombreDocente(instructor)
+            ?: extraerNombreDocente(docentes)
+            ?: extraerNombreDocente(profesores)
+            ?: extraerNombreDocente(instructores)
     val displayNombre: String
         get() = nombreCurso ?: materia ?: "Curso"
 

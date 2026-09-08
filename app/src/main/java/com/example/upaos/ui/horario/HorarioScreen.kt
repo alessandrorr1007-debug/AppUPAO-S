@@ -83,10 +83,19 @@ private data class InfoBloqueComponente(
     val docente: String?
 )
 
+private fun formatDocente(docente: String?): String {
+    if (docente.isNullOrBlank()) return "Docente no asignado en el sistema"
+    return if (docente.contains(" / ")) {
+        docente.split(" / ").map { toTitleCase(it.trim()) }.filter { it.isNotBlank() }.joinToString(" / ")
+    } else {
+        toTitleCase(docente)
+    }
+}
+
 /**
  * Deduce el componente correspondiente a un bloque específico de un curso,
- * buscando la coincidencia con los registros de asistencia para asociar el NRC exacto
- * de Teoría o Laboratorio y el docente.
+ * priorizando los datos directos del horario (docente, tipo, aula, NRC) extraídos por el backend,
+ * y complementando con los registros de asistencia.
  */
 private fun deducirInfoComponente(
     curso: HorarioCurso,
@@ -95,6 +104,13 @@ private fun deducirInfoComponente(
 ): InfoBloqueComponente {
     val nomNormalizado = normalizarNombre(curso.displayNombre)
     val codMateria = curso.codigoMateria?.trim()?.uppercase() ?: ""
+
+    // 1. Datos directos del bloque o del curso en horario (extraídos por el backend)
+    val docBloque = bloque.displayDocente?.takeIf { it.isNotBlank() }
+    val docCurso = curso.displayDocente?.takeIf { it.isNotBlank() }
+    val tipoDirecto = bloque.displayTipo?.takeIf { it.isNotBlank() }
+    val nrcDirecto = (bloque.nrc ?: bloque.crn)?.takeIf { it.isNotBlank() }
+    val secDirecta = (bloque.seccion ?: curso.seccion)?.takeIf { it.isNotBlank() }
 
     // Buscar el curso en la lista de asistencia
     val asisMatch = asistenciaCursos.firstOrNull { a ->
@@ -134,37 +150,52 @@ private fun deducirInfoComponente(
         }
 
         val compElegido = if (indiceBloque == 0) teoriaComp else labComp
-        val tipoNombre = if (indiceBloque == 0) "Teoría" else "Laboratorio"
+        val tipoNombre = tipoDirecto ?: if (indiceBloque == 0) "Teoría" else "Laboratorio"
+        val docenteFinal = docBloque
+            ?: compElegido.displayDocente
+            ?: docCurso
+            ?: asisMatch?.displayDocente
+
         return InfoBloqueComponente(
             tipo = tipoNombre,
-            nrc = compElegido.crn?.takeIf { it.isNotBlank() } ?: curso.crn,
-            seccion = compElegido.seccion?.takeIf { it.isNotBlank() } ?: asisMatch?.seccion,
-            docente = compElegido.displayDocente ?: asisMatch?.displayDocente
+            nrc = nrcDirecto ?: compElegido.crn?.takeIf { it.isNotBlank() } ?: curso.crn,
+            seccion = secDirecta ?: compElegido.seccion?.takeIf { it.isNotBlank() } ?: asisMatch?.seccion,
+            docente = docenteFinal
         )
     } else if (componentes.isNotEmpty()) {
         val comp = if (indiceBloque < componentes.size) componentes[indiceBloque] else componentes.first()
-        val tipoNombre = comp.tipo?.takeIf { it.isNotBlank() }
+        val tipoNombre = tipoDirecto
+            ?: comp.tipo?.takeIf { it.isNotBlank() }
             ?: comp.tipoComponente?.takeIf { it.isNotBlank() }
             ?: if (indiceBloque == 0) "Teoría" else "Laboratorio"
+        val docenteFinal = docBloque
+            ?: comp.displayDocente
+            ?: docCurso
+            ?: asisMatch?.displayDocente
+
         return InfoBloqueComponente(
             tipo = tipoNombre,
-            nrc = comp.crn?.takeIf { it.isNotBlank() } ?: curso.crn,
-            seccion = comp.seccion?.takeIf { it.isNotBlank() } ?: asisMatch?.seccion,
-            docente = comp.displayDocente ?: asisMatch?.displayDocente
+            nrc = nrcDirecto ?: comp.crn?.takeIf { it.isNotBlank() } ?: curso.crn,
+            seccion = secDirecta ?: comp.seccion?.takeIf { it.isNotBlank() } ?: asisMatch?.seccion,
+            docente = docenteFinal
         )
     }
 
-    // Si no hay desglose en asistencia, deducir por la posición del bloque
-    val tipoDefecto = if (totalBloques >= 2) {
+    // Si no hay desglose en asistencia, deducir por la información directa del horario o por la posición del bloque
+    val tipoDefecto = tipoDirecto ?: if (totalBloques >= 2) {
         if (indiceBloque == 0) "Teoría" else "Laboratorio"
     } else {
         "Teoría"
     }
+    val docenteFinal = docBloque
+        ?: docCurso
+        ?: asisMatch?.displayDocente
+
     return InfoBloqueComponente(
         tipo = tipoDefecto,
-        nrc = curso.crn,
-        seccion = null,
-        docente = asisMatch?.displayDocente
+        nrc = nrcDirecto ?: curso.crn,
+        seccion = secDirecta ?: asisMatch?.seccion,
+        docente = docenteFinal
     )
 }
 
@@ -254,7 +285,7 @@ fun HorarioContent(
                 }
                 if (json == null) return@launch
                 val body = gson.fromJson(json, HorarioResponse::class.java)
-                cursos = body.cursos
+                cursos = body.listaCursos
                 Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${cursos.size} cursos de horario")
             } catch (e: Exception) {
                 Log.e("UPAO_APP", "[Android UI] Error leyendo caché de horario: ${e.localizedMessage}", e)
@@ -275,7 +306,7 @@ fun HorarioContent(
                 val errBody = res.errorBody()?.string()
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
-                    cursos = body.cursos
+                    cursos = body.listaCursos
                     scope.launch { cache.guardar(claveCache(), gson.toJson(body)) }
                     // Actualiza el widget de próxima clase
                     try {
@@ -749,6 +780,26 @@ private fun BloqueColumna(
                 )
             }
         }
+        val docenteBloque = infoComponente.docente?.takeIf { it.isNotBlank() }
+        if (docenteBloque != null) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(11.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = formatDocente(docenteBloque),
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 
@@ -980,30 +1031,40 @@ private fun HorarioDetalleModal(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(
                                 if (docNombre != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                             )
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Person,
-                            contentDescription = "Docente",
-                            tint = if (docNombre != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (docNombre != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Person,
+                                    contentDescription = "Docente",
+                                    tint = if (docNombre != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Docente / Profesor",
+                                text = "DOCENTE / PROFESOR",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.outline
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (docNombre != null) toTitleCase(docNombre) else "Docente no asignado en el sistema",
-                                fontSize = 12.sp,
+                                text = formatDocente(docNombre),
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (docNombre != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )

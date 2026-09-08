@@ -63,7 +63,7 @@ object ProximoCursoWidget : GlanceAppWidget() {
             val json = cargarHorarioFavorito(cache, usuario)
                 ?: return ProximoCursoWidgetData("Inicia sesión para ver tu próxima clase")
             val body = gson.fromJson(json, HorarioResponse::class.java)
-            val proxima = calcularProximaClase(body.cursos)
+            val proxima = calcularProximaClase(body.listaCursos)
             if (proxima == null) {
                 ProximoCursoWidgetData("Sin clases próximas")
             } else {
