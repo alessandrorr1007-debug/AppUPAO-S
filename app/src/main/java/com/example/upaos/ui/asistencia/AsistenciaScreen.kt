@@ -861,7 +861,6 @@ fun AsistenciaCard(
     } else {
         null
     }
-    val tieneComponentesMultiples = item.componentes.size > 1
 
     Row(
         modifier = Modifier
@@ -948,88 +947,6 @@ fun AsistenciaCard(
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
-
-                    // Si tiene múltiples componentes (Teoría y Laboratorio), mostramos desglose
-                    if (tieneComponentesMultiples) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            item.componentes.forEach { comp ->
-                                val tipoComp = comp.tipo ?: "Componente"
-                                val isTeoria = tipoComp.contains("Teor", ignoreCase = true)
-                                val isLab = tipoComp.contains("Lab", ignoreCase = true)
-                                val compColor = if (isTeoria) UpaoBlue else if (isLab) Color(0xFF7C3AED) else UpaoOrange
-                                val compIcon = if (isTeoria) Icons.Filled.MenuBook else if (isLab) Icons.Filled.Science else Icons.Filled.Assignment
-                                val compTieneRegistro = comp.tieneRegistroAsistencia
-                                val compPct = comp.porcentaje ?: 100.0
-                                val cAsist = comp.vecesAsistidas ?: 0
-                                val cFalt = comp.faltas ?: 0
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = compIcon,
-                                            contentDescription = null,
-                                            tint = compColor,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = tipoComp.uppercase(),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = compColor
-                                        )
-                                        if (!comp.seccion.isNullOrBlank()) {
-                                            Text(
-                                                text = " (${comp.seccion})",
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    if (!compTieneRegistro) {
-                                        Text(
-                                            text = "0 Faltas (100%)",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.outline
-                                        )
-                                    } else {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = if (cFalt == 1) "1 Falta" else "$cFalt Faltas",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (cFalt > 0) UpaoRed else UpaoGreen
-                                            )
-                                            Text(
-                                                text = "(${formatPct(compPct)}%)",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = porcentajeColor(compPct, compTieneRegistro)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
 
                     // Fila destacada: Faltas
                     Surface(

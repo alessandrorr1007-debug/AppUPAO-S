@@ -90,8 +90,8 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 FcmTokenHelper.register(context)
                 val notifPrefs = com.example.upaos.data.local.NotificationPreferences(context)
-                if (notifPrefs.checkAsistenciaEnabled) {
-                    com.example.upaos.service.AsistenciaWorker.schedule(context, notifPrefs.intervaloMinutos.toLong())
+                if (notifPrefs.checkAsistenciaEnabled || notifPrefs.checkNotasEnabled) {
+                    com.example.upaos.service.SyncScheduler.start(context)
                 }
 
                 // Comprobar si hay una nueva versión en GitHub
@@ -127,6 +127,10 @@ class MainActivity : ComponentActivity() {
 
                     fun navegarPorTipoCuenta(token: String) {
                         val activeToken = token.ifBlank { tokenManager.getToken() ?: "" }
+                        val nPrefs = com.example.upaos.data.local.NotificationPreferences(context)
+                        if (nPrefs.checkAsistenciaEnabled || nPrefs.checkNotasEnabled) {
+                            com.example.upaos.service.SyncScheduler.start(context)
+                        }
                         navController.navigate("home/$activeToken") {
                             popUpTo(0) { inclusive = true }
                         }

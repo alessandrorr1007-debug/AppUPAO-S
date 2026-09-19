@@ -25,9 +25,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Refresh
 import com.example.upaos.data.local.NotificationPreferences
 import com.example.upaos.service.AsistenciaWorker
 import com.example.upaos.service.NotificationService
+import com.example.upaos.service.SyncScheduler
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.AutoCheckRequest
 import com.example.upaos.data.model.IntervaloRequest
@@ -99,8 +101,9 @@ fun SettingsScreen(
             // Silencioso
         }
         checkAsistenciaEnabled = notificationPrefs.checkAsistenciaEnabled
-        if (checkAsistenciaEnabled) {
-            AsistenciaWorker.schedule(context, 5)
+        checkNotasEnabled = notificationPrefs.checkNotasEnabled
+        if (checkAsistenciaEnabled || checkNotasEnabled) {
+            SyncScheduler.start(context)
         }
         try {
             val resCuenta = RetrofitClient.apiService.getCuenta(usuario)
@@ -126,20 +129,28 @@ fun SettingsScreen(
                 if (cambiarNotas != null) {
                     checkNotasEnabled = cambiarNotas
                     notificationPrefs.checkNotasEnabled = cambiarNotas
-                    RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(cambiarNotas))
-                    RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
+                    try {
+                        RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(cambiarNotas))
+                        RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
+                    } catch (_: Exception) {}
+
+                    if (cambiarNotas || checkAsistenciaEnabled) {
+                        SyncScheduler.start(context)
+                    } else {
+                        SyncScheduler.cancel(context)
+                    }
                     val msg = if (cambiarNotas) "Notificaciones de notas activadas (cada 5 min)" else "Notificaciones de notas desactivadas"
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
                 if (cambiarAsistencia != null) {
                     checkAsistenciaEnabled = cambiarAsistencia
                     notificationPrefs.checkAsistenciaEnabled = cambiarAsistencia
-                    if (cambiarAsistencia) {
-                        AsistenciaWorker.schedule(context, 5)
-                        AsistenciaWorker.runOnce(context)
+                    if (cambiarAsistencia || checkNotasEnabled) {
+                        SyncScheduler.start(context)
+                        SyncScheduler.runNow(context)
                         Toast.makeText(context, "Notificaciones de asistencias activadas (cada 5 min)", Toast.LENGTH_SHORT).show()
                     } else {
-                        AsistenciaWorker.cancel(context)
+                        SyncScheduler.cancel(context)
                         Toast.makeText(context, "Notificaciones de asistencia desactivadas", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -433,6 +444,22 @@ fun SettingsScreen(
 
                     if (checkNotasEnabled || checkAsistenciaEnabled) {
                         Spacer(modifier = Modifier.height(14.dp))
+
+                        // Botón de sincronización manual inmediata
+                        Button(
+                            onClick = {
+                                SyncScheduler.runNow(context)
+                                Toast.makeText(context, "Sincronizando notas y asistencias en segundo plano...", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Sincronizar ahora (comprobar notas y asistencias)")
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         OutlinedButton(
                             onClick = {
                                 if (checkAsistenciaEnabled) {
@@ -453,6 +480,64 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Probar notificación en este celular")
+                        }
+
+                        // Verificación de optimización de batería
+                        val powerManager = remember {
+                            context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+                        }
+                        val isIgnoringBattery = remember(powerManager) {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && powerManager != null) {
+                                powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                            } else true
+                        }
+
+                        if (!isIgnoringBattery) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = "⚡ Ahorro de batería detectado",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Para que el teléfono no detenga la revisión cada 5 minutos cuando la pantalla está apagada (Xiaomi, Samsung, etc.), desactiva el ahorro de batería para UPAO S.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            try {
+                                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                                    val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                                        data = android.net.Uri.parse("package:${context.packageName}")
+                                                    }
+                                                    context.startActivity(intent)
+                                                }
+                                            } catch (_: Exception) {
+                                                try {
+                                                    val intent = android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                                    context.startActivity(intent)
+                                                } catch (_: Exception) {
+                                                    Toast.makeText(context, "Abre Ajustes > Batería > UPAO S y desactiva el ahorro de batería", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Desactivar ahorro de batería")
+                                    }
+                                }
+                            }
                         }
                     }
                 }

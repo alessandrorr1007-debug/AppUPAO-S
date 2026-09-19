@@ -104,7 +104,7 @@ fun HomeScreen(
             if (ciclos >= 10) {
                 ciclos = 0
                 val notifPrefs = com.example.upaos.data.local.NotificationPreferences(context)
-                if (notifPrefs.checkAsistenciaEnabled) {
+                if (notifPrefs.checkAsistenciaEnabled || notifPrefs.checkNotasEnabled) {
                     com.example.upaos.service.AsistenciaWorker.runOnce(context)
                 }
             }
