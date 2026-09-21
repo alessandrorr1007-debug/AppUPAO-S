@@ -587,7 +587,13 @@ fun TaskItemCard(
                 }
 
                 // Recordatorio activo
-                if (tarea.recordatorioMinutosAntes >= 0 && !tarea.completada) {
+                val recordatorioMillis = when {
+                    tarea.recordatorioFechaHoraMillis != null && tarea.recordatorioFechaHoraMillis > 0 -> tarea.recordatorioFechaHoraMillis
+                    tarea.recordatorioMinutosAntes >= 0 -> tarea.fechaEntregaMillis - (tarea.recordatorioMinutosAntes * 60 * 1000L)
+                    else -> null
+                }
+
+                if (recordatorioMillis != null && !tarea.completada) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -598,15 +604,7 @@ fun TaskItemCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = when (tarea.recordatorioMinutosAntes) {
-                                0 -> "Recordatorio al momento"
-                                120 -> "Recordatorio 2 horas antes"
-                                60 -> "Recordatorio 1h antes"
-                                1440 -> "Recordatorio 1 día antes"
-                                2880 -> "Recordatorio 2 días antes"
-                                4320 -> "Recordatorio 3 días antes"
-                                else -> "Recordatorio programado"
-                            },
+                            text = "Aviso: ${formatoFechaHora(recordatorioMillis)}",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (esExamen) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary,
                             fontSize = 11.sp
@@ -690,8 +688,31 @@ fun TaskFormDialog(
     }
 
     var fechaMillis by remember { mutableLongStateOf(calendar.timeInMillis) }
-    var recordatorioMinutos by remember {
-        mutableIntStateOf(taskToEdit?.recordatorioMinutosAntes ?: if (esExamen) 2880 else 1440)
+
+    var activarAviso by remember {
+        mutableStateOf(
+            taskToEdit?.recordatorioFechaHoraMillis != null && taskToEdit.recordatorioFechaHoraMillis > 0 ||
+                    (taskToEdit?.recordatorioMinutosAntes ?: -1) >= 0 ||
+                    taskToEdit == null
+        )
+    }
+
+    var fechaAvisoMillis by remember {
+        val inicial = taskToEdit?.recordatorioFechaHoraMillis
+            ?: if (taskToEdit != null && taskToEdit.recordatorioMinutosAntes >= 0) {
+                taskToEdit.fechaEntregaMillis - (taskToEdit.recordatorioMinutosAntes * 60 * 1000L)
+            } else {
+                val calAviso = Calendar.getInstance().apply {
+                    timeInMillis = calendar.timeInMillis
+                    add(Calendar.HOUR_OF_DAY, -2)
+                }
+                if (calAviso.timeInMillis <= System.currentTimeMillis()) {
+                    Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, 1) }.timeInMillis
+                } else {
+                    calAviso.timeInMillis
+                }
+            }
+        mutableLongStateOf(inicial)
     }
 
     fun abrirDatePicker() {
@@ -724,6 +745,43 @@ fun TaskFormDialog(
                     set(Calendar.MINUTE, minute)
                 }
                 fechaMillis = nuevoCal.timeInMillis
+            },
+            c.get(Calendar.HOUR_OF_DAY),
+            c.get(Calendar.MINUTE),
+            false
+        ).show()
+    }
+
+    fun abrirDatePickerAviso() {
+        val c = Calendar.getInstance().apply { timeInMillis = fechaAvisoMillis }
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val nuevoCal = Calendar.getInstance().apply {
+                    timeInMillis = fechaAvisoMillis
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                }
+                fechaAvisoMillis = nuevoCal.timeInMillis
+            },
+            c.get(Calendar.YEAR),
+            c.get(Calendar.MONTH),
+            c.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    fun abrirTimePickerAviso() {
+        val c = Calendar.getInstance().apply { timeInMillis = fechaAvisoMillis }
+        TimePickerDialog(
+            context,
+            { _, hourOfDay, minute ->
+                val nuevoCal = Calendar.getInstance().apply {
+                    timeInMillis = fechaAvisoMillis
+                    set(Calendar.HOUR_OF_DAY, hourOfDay)
+                    set(Calendar.MINUTE, minute)
+                }
+                fechaAvisoMillis = nuevoCal.timeInMillis
             },
             c.get(Calendar.HOUR_OF_DAY),
             c.get(Calendar.MINUTE),
@@ -772,20 +830,14 @@ fun TaskFormDialog(
                 ) {
                     FilterChip(
                         selected = tipo == "TAREA",
-                        onClick = {
-                            tipo = "TAREA"
-                            if (recordatorioMinutos == 4320) recordatorioMinutos = 1440
-                        },
+                        onClick = { tipo = "TAREA" },
                         label = { Text("📘 Tarea / Trabajo", fontWeight = if (tipo == "TAREA") FontWeight.Bold else FontWeight.Normal) },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
                     FilterChip(
                         selected = tipo == "EXAMEN",
-                        onClick = {
-                            tipo = "EXAMEN"
-                            if (recordatorioMinutos == 60) recordatorioMinutos = 2880
-                        },
+                        onClick = { tipo = "EXAMEN" },
                         label = { Text("🎯 Examen / Evaluación", fontWeight = if (tipo == "EXAMEN") FontWeight.Bold else FontWeight.Normal) },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
@@ -961,42 +1013,91 @@ fun TaskFormDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Recordatorio anticipado
-                Text(
-                    text = "Avisarme al celular:",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.fillMaxWidth()
+                // Avisarme al celular: Switch y Selectores exactos de Fecha y Hora
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    val opciones = if (esExamen) {
-                        listOf(
-                            4320 to "3 días antes",
-                            2880 to "2 días antes",
-                            1440 to "1 día antes",
-                            120 to "2 horas antes",
-                            -1 to "Sin aviso"
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Avisarme al celular:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                    } else {
-                        listOf(
-                            -1 to "Sin aviso",
-                            60 to "1h antes",
-                            1440 to "1 día antes",
-                            2880 to "2 días antes"
+                        Text(
+                            text = if (activarAviso) "Notificación en la fecha y hora que elijas" else "Sin recordatorio automático",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
                         )
                     }
-                    items(opciones) { (minutos, texto) ->
-                        FilterChip(
-                            selected = recordatorioMinutos == minutos,
-                            onClick = { recordatorioMinutos = minutos },
-                            label = { Text(texto, fontSize = 12.sp) },
-                            shape = RoundedCornerShape(10.dp)
-                        )
+                    Switch(
+                        checked = activarAviso,
+                        onCheckedChange = { activarAviso = it }
+                    )
+                }
+
+                if (activarAviso) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Fecha y hora del aviso:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedCard(
+                            onClick = { abrirDatePickerAviso() },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Event, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(fechaAvisoMillis)),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        OutlinedCard(
+                            onClick = { abrirTimePickerAviso() },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Alarm, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(fechaAvisoMillis)),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Te llegará el aviso: ${formatoFechaHora(fechaAvisoMillis)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(22.dp))
@@ -1020,13 +1121,19 @@ fun TaskFormDialog(
                                 Toast.makeText(context, "Por favor selecciona el curso", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
+                            val avisoFinal = if (activarAviso) fechaAvisoMillis else null
+                            if (activarAviso && fechaAvisoMillis <= System.currentTimeMillis()) {
+                                Toast.makeText(context, "La fecha y hora del aviso deben ser posteriores a este momento", Toast.LENGTH_LONG).show()
+                                return@Button
+                            }
                             val tarea = taskToEdit?.copy(
                                 tipo = tipo,
                                 titulo = titulo.trim(),
                                 curso = curso.trim(),
                                 descripcion = descripcion.trim(),
                                 fechaEntregaMillis = fechaMillis,
-                                recordatorioMinutosAntes = recordatorioMinutos
+                                recordatorioFechaHoraMillis = avisoFinal,
+                                recordatorioMinutosAntes = -1
                             ) ?: TaskModel(
                                 usuario = "",
                                 tipo = tipo,
@@ -1034,7 +1141,8 @@ fun TaskFormDialog(
                                 curso = curso.trim(),
                                 descripcion = descripcion.trim(),
                                 fechaEntregaMillis = fechaMillis,
-                                recordatorioMinutosAntes = recordatorioMinutos
+                                recordatorioFechaHoraMillis = avisoFinal,
+                                recordatorioMinutosAntes = -1
                             )
                             onSave(tarea)
                         },

@@ -53,7 +53,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         val tasks = TasksPreferences(context).getTasks(user)
-                        tasks.filter { !it.completada && it.recordatorioMinutosAntes >= 0 }.forEach { task ->
+                        tasks.filter { !it.completada && ((it.recordatorioFechaHoraMillis != null && it.recordatorioFechaHoraMillis > 0) || it.recordatorioMinutosAntes >= 0) }.forEach { task ->
                             TaskReminderManager.scheduleReminder(context, task)
                         }
                     } catch (e: Exception) {

@@ -9,7 +9,8 @@ data class TaskModel(
     val curso: String = "",
     val descripcion: String = "",
     val fechaEntregaMillis: Long,
-    val recordatorioMinutosAntes: Int = 1440, // -1: Desactivado, 60: 1 hora antes, 1440: 24 horas antes, 2880: 2 días antes
+    val recordatorioFechaHoraMillis: Long? = null, // Fecha y hora exacta programada para el aviso en el celular
+    val recordatorioMinutosAntes: Int = -1, // retrocompatibilidad
     val completada: Boolean = false,
     val tipo: String = "TAREA", // "TAREA" o "EXAMEN"
     val fechaCreacionMillis: Long = System.currentTimeMillis()

@@ -19,9 +19,13 @@ object TaskReminderManager {
     fun scheduleReminder(context: Context, task: TaskModel) {
         cancelReminder(context, task.id)
 
-        if (task.completada || task.recordatorioMinutosAntes < 0) return
+        if (task.completada) return
 
-        val reminderTimeMillis = task.fechaEntregaMillis - (task.recordatorioMinutosAntes * 60 * 1000L)
+        val reminderTimeMillis = when {
+            task.recordatorioFechaHoraMillis != null && task.recordatorioFechaHoraMillis > 0 -> task.recordatorioFechaHoraMillis
+            task.recordatorioMinutosAntes >= 0 -> task.fechaEntregaMillis - (task.recordatorioMinutosAntes * 60 * 1000L)
+            else -> return
+        }
         val now = System.currentTimeMillis()
 
         if (reminderTimeMillis <= now) {
