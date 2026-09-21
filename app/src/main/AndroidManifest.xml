@@ -52,6 +52,20 @@
             </intent-filter>
         </receiver>
 
+        <!-- Receptor de recordatorios de tareas de los estudiantes -->
+        <receiver
+            android:name=".service.TaskReminderReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.example.upaos.ACTION_REMIND_TASK" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
         <!-- Widget: Resumen de Notas -->
         <receiver
             android:name=".widget.ResumenNotasWidgetReceiver"

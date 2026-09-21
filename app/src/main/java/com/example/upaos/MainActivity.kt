@@ -49,6 +49,7 @@ import com.example.upaos.ui.login.LoginScreen
 import com.example.upaos.ui.notificaciones.NotificacionesScreen
 import com.example.upaos.ui.settings.SettingsScreen
 import com.example.upaos.ui.sugerencias.SugerenciasScreen
+import com.example.upaos.ui.tareas.TareasScreen
 import com.example.upaos.ui.theme.UPAOSTheme
 import com.example.upaos.widget.ProximoCursoWidget
 import com.example.upaos.widget.ResumenNotasWidget
@@ -218,6 +219,9 @@ class MainActivity : ComponentActivity() {
                                         popUpTo(0) { inclusive = true }
                                     }
                                 },
+                                onOpenTasks = {
+                                    navController.navigate("tareas")
+                                },
                                 onOpenCalculator = {
                                     navController.navigate("calculadora")
                                 },
@@ -311,6 +315,19 @@ class MainActivity : ComponentActivity() {
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
                         ) {
                             CalculadoraScreen(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable(
+                            "tareas",
+                            enterTransition = { slideInHorizontally(tween(280)) { it } },
+                            exitTransition = { fadeOut(tween(180)) },
+                            popEnterTransition = { fadeIn(tween(220)) },
+                            popExitTransition = { slideOutHorizontally(tween(280)) { it } }
+                        ) {
+                            TareasScreen(
+                                usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() }
                             )
                         }

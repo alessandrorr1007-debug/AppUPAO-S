@@ -86,6 +86,47 @@ class NotificationService : FirebaseMessagingService() {
         private const val TAG = "UPAO_FCM"
         const val CHANNEL_NOTAS = "upaos_notas"
         const val CHANNEL_ASISTENCIA = "upaos_asistencia"
+        const val CHANNEL_TAREAS = "upaos_tareas"
+
+        fun mostrarNotificacionTarea(context: Context, title: String, body: String, taskId: String = "") {
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_TAREAS,
+                    "Tareas y Entregas UPAO",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Recordatorios de deberes académicos y tareas por entregar"
+                    enableVibration(true)
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                2,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_TAREAS)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setColor(0xFF7C4DFF.toInt())
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build()
+
+            val id = (taskId.hashCode() and 0x7FFFFFFF)
+            notificationManager.notify(id, notification)
+        }
 
         fun mostrarNotificacionAsistencia(context: Context, title: String, body: String) {
             val notificationManager =
