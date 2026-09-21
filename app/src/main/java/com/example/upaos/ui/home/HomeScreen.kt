@@ -171,7 +171,7 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Mis Tareas", fontWeight = FontWeight.Medium)
+                            Text("Tareas y Exámenes", fontWeight = FontWeight.Medium)
                             if (pendingTasksCount > 0) {
                                 Badge(
                                     containerColor = MaterialTheme.colorScheme.primary,

@@ -327,6 +327,7 @@ class MainActivity : ComponentActivity() {
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
                         ) {
                             TareasScreen(
+                                token = savedToken ?: "",
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() }
                             )

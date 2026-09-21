@@ -2,34 +2,34 @@ package com.example.upaos.ui.tareas
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
-import android.content.Context
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AssignmentTurnedIn
 import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,14 +44,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.local.TasksPreferences
-import com.example.upaos.data.model.GradesResponse
 import com.example.upaos.data.model.TaskModel
 import com.example.upaos.service.TaskReminderManager
 import com.example.upaos.ui.components.AppCard
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -80,7 +82,7 @@ private fun formatoFechaHora(millis: Long): String {
     }
 }
 
-private fun calcularEstadoVencimiento(millis: Long, completada: Boolean): Triple<String, Color, Color> {
+private fun calcularEstadoVencimiento(millis: Long, completada: Boolean, esExamen: Boolean): Triple<String, Color, Color> {
     if (completada) {
         return Triple("Completada", Color(0xFF4CAF50), Color(0xFFE8F5E9))
     }
@@ -88,9 +90,15 @@ private fun calcularEstadoVencimiento(millis: Long, completada: Boolean): Triple
     val diff = millis - ahora
 
     return when {
-        diff < 0 -> Triple("Vencida", Color(0xFFD32F2F), Color(0xFFFFEBEE))
-        diff <= 24 * 3600 * 1000L -> Triple("Vence pronto", Color(0xFFE65100), Color(0xFFFFF3E0))
-        diff <= 48 * 3600 * 1000L -> Triple("En 2 días", Color(0xFFF57C00), Color(0xFFFFF8E1))
+        diff < 0 -> Triple("Vencido", Color(0xFFD32F2F), Color(0xFFFFEBEE))
+        diff <= 24 * 3600 * 1000L -> {
+            if (esExamen) Triple("¡Examen hoy!", Color(0xFFD32F2F), Color(0xFFFFEBEE))
+            else Triple("Vence pronto", Color(0xFFE65100), Color(0xFFFFF3E0))
+        }
+        diff <= 48 * 3600 * 1000L -> {
+            if (esExamen) Triple("Examen mañana", Color(0xFFE65100), Color(0xFFFFF3E0))
+            else Triple("En 2 días", Color(0xFFF57C00), Color(0xFFFFF8E1))
+        }
         else -> {
             val dias = (diff / (24 * 3600 * 1000L)).toInt()
             Triple("En $dias días", Color(0xFF1976D2), Color(0xFFE3F2FD))
@@ -101,6 +109,7 @@ private fun calcularEstadoVencimiento(millis: Long, completada: Boolean): Triple
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TareasScreen(
+    token: String = "",
     usuario: String?,
     onBack: () -> Unit
 ) {
@@ -111,40 +120,57 @@ fun TareasScreen(
 
     val tasks by tasksPrefs.getTasksFlow(safeUser).collectAsState(initial = emptyList())
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Pendientes, 1: Completadas, 2: Todas
+    var filterType by remember { mutableStateOf<String?>(null) } // null: todos, "TAREA", "EXAMEN"
 
     var showDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<TaskModel?>(null) }
     var taskToDelete by remember { mutableStateOf<TaskModel?>(null) }
 
-    // Cursos disponibles para sugerir
+    // Cursos disponibles del ciclo actual
     var cursosDisponibles by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loadingCursos by remember { mutableStateOf(true) }
 
-    LaunchedEffect(safeUser) {
-        try {
+    // Cargar cursos desde la caché local o API
+    LaunchedEffect(safeUser, token) {
+        withContext(Dispatchers.IO) {
             val cache = GradesCache(context)
-            val periodos = listOf("202610", "202620", "202520", "202510")
-            for (p in periodos) {
-                val json = cache.cargar("${p}_UG") ?: cache.cargar("${p}_EPG")
-                if (!json.isNullOrBlank()) {
-                    val resp = Gson().fromJson(json, GradesResponse::class.java)
-                    val nombres = resp.cursos.mapNotNull { it.displayNombre }.filter { it.isNotBlank() }
-                    if (nombres.isNotEmpty()) {
-                        cursosDisponibles = nombres
-                        break
+            var lista = cache.obtenerCursosActuales(safeUser)
+
+            if (lista.isEmpty() && token.isNotBlank()) {
+                try {
+                    val req = mapOf("periodo" to "202610", "carrera" to "UG")
+                    val res = RetrofitClient.apiService.buscarNotas("Bearer $token", req)
+                    if (res.isSuccessful && res.body() != null) {
+                        val body = res.body()!!
+                        val nombres = body.cursos.mapNotNull { it.displayNombre.trim() }.filter { it.isNotBlank() }
+                        if (nombres.isNotEmpty()) {
+                            lista = nombres
+                            cache.guardar("notas_$safeUser", Gson().toJson(body))
+                        }
                     }
-                }
+                } catch (_: Exception) {}
             }
-        } catch (_: Exception) {}
+
+            withContext(Dispatchers.Main) {
+                cursosDisponibles = lista
+                loadingCursos = false
+            }
+        }
     }
 
-    val tareasPendientes = remember(tasks) { tasks.filter { !it.completada }.sortedBy { it.fechaEntregaMillis } }
-    val tareasCompletadas = remember(tasks) { tasks.filter { it.completada }.sortedByDescending { it.fechaEntregaMillis } }
-
-    val tareasFiltradas = when (selectedTab) {
-        0 -> tareasPendientes
-        1 -> tareasCompletadas
+    val tareasFiltradasPorEstado = when (selectedTab) {
+        0 -> tasks.filter { !it.completada }.sortedBy { it.fechaEntregaMillis }
+        1 -> tasks.filter { it.completada }.sortedByDescending { it.fechaEntregaMillis }
         else -> tasks.sortedBy { it.fechaEntregaMillis }
     }
+
+    val tareasFinales = remember(tareasFiltradasPorEstado, filterType) {
+        if (filterType == null) tareasFiltradasPorEstado
+        else tareasFiltradasPorEstado.filter { it.tipo.equals(filterType, ignoreCase = true) }
+    }
+
+    val totalPendientes = remember(tasks) { tasks.count { !it.completada } }
+    val examenesPendientes = remember(tasks) { tasks.count { !it.completada && it.tipo.equals("EXAMEN", ignoreCase = true) } }
 
     Scaffold(
         topBar = {
@@ -161,18 +187,19 @@ fun TareasScreen(
                 title = {
                     Column {
                         Text(
-                            text = "Mis Tareas",
+                            text = "Tareas y Exámenes",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (tareasPendientes.isNotEmpty()) {
-                                "${tareasPendientes.size} pendiente${if (tareasPendientes.size > 1) "s" else ""}"
+                            text = if (totalPendientes > 0) {
+                                val detalleExamenes = if (examenesPendientes > 0) " ($examenesPendientes examen${if (examenesPendientes > 1) "es" else ""})" else ""
+                                "$totalPendientes pendiente${if (totalPendientes > 1) "s" else ""}$detalleExamenes"
                             } else {
-                                "Al día"
+                                "¡Todo al día!"
                             },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (examenesPendientes > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
@@ -195,9 +222,9 @@ fun TareasScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Nueva tarea")
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Nuevo pendiente")
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Nueva Tarea", fontWeight = FontWeight.SemiBold)
+                    Text("Agregar", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -207,7 +234,7 @@ fun TareasScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Tabs de filtro
+            // Tabs principales (Pendientes / Completadas / Todas)
             PrimaryTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = MaterialTheme.colorScheme.background,
@@ -219,10 +246,10 @@ fun TareasScreen(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Pendientes", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal)
-                            if (tareasPendientes.isNotEmpty()) {
+                            if (totalPendientes > 0) {
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Badge(containerColor = MaterialTheme.colorScheme.primary) {
-                                    Text("${tareasPendientes.size}")
+                                    Text("$totalPendientes")
                                 }
                             }
                         }
@@ -232,15 +259,7 @@ fun TareasScreen(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Completadas", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal)
-                            if (tareasCompletadas.isNotEmpty()) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Badge(containerColor = MaterialTheme.colorScheme.surfaceVariant) {
-                                    Text("${tareasCompletadas.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
+                        Text("Completadas", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal)
                     }
                 )
                 Tab(
@@ -252,9 +271,36 @@ fun TareasScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // Filtros rápidos por Tipo (Todas, Tareas, Exámenes)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = filterType == null,
+                    onClick = { filterType = null },
+                    label = { Text("Todo", fontSize = 12.sp) },
+                    shape = RoundedCornerShape(8.dp)
+                )
+                FilterChip(
+                    selected = filterType == "TAREA",
+                    onClick = { filterType = if (filterType == "TAREA") null else "TAREA" },
+                    label = { Text("📘 Solo Tareas", fontSize = 12.sp) },
+                    shape = RoundedCornerShape(8.dp)
+                )
+                FilterChip(
+                    selected = filterType == "EXAMEN",
+                    onClick = { filterType = if (filterType == "EXAMEN") null else "EXAMEN" },
+                    label = { Text("🎯 Solo Exámenes", fontSize = 12.sp) },
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
 
-            if (tareasFiltradas.isEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (tareasFinales.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -281,10 +327,12 @@ fun TareasScreen(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = when (selectedTab) {
-                                1 -> "Aún no tienes tareas completadas"
-                                0 -> "¡Estás al día!"
-                                else -> "No hay tareas registradas"
+                            text = when {
+                                selectedTab == 1 -> "No hay elementos completados"
+                                filterType == "EXAMEN" -> "¡No tienes exámenes pendientes!"
+                                filterType == "TAREA" -> "¡No tienes tareas pendientes!"
+                                selectedTab == 0 -> "¡Estás completamente al día!"
+                                else -> "No hay registros aún"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
@@ -292,11 +340,8 @@ fun TareasScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = when (selectedTab) {
-                                1 -> "Las tareas que marques como terminadas aparecerán aquí."
-                                0 -> "No tienes deberes pendientes por ahora."
-                                else -> "Crea una nueva tarea con el botón de abajo para recordar tus entregas."
-                            },
+                            text = if (selectedTab == 0) "Usa el botón Agregar para anotar tus tareas y exámenes con recordatorio."
+                            else "Las tareas y exámenes que marques aparecerán organizados aquí.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -309,7 +354,7 @@ fun TareasScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(tareasFiltradas, key = { it.id }) { tarea ->
+                    items(tareasFinales, key = { it.id }) { tarea ->
                         TaskItemCard(
                             tarea = tarea,
                             onToggleComplete = {
@@ -340,11 +385,12 @@ fun TareasScreen(
         }
     }
 
-    // Modal para crear / editar tarea
+    // Modal para registrar o editar tarea / examen
     if (showDialog) {
         TaskFormDialog(
             taskToEdit = taskToEdit,
             cursosSugeridos = cursosDisponibles,
+            loadingCursos = loadingCursos,
             onDismiss = {
                 showDialog = false
                 taskToEdit = null
@@ -356,7 +402,8 @@ fun TareasScreen(
                     TaskReminderManager.scheduleReminder(context, tareaFinal)
                     showDialog = false
                     taskToEdit = null
-                    Toast.makeText(context, "Tarea guardada", Toast.LENGTH_SHORT).show()
+                    val tipoMsg = if (tareaFinal.tipo == "EXAMEN") "Examen guardado" else "Tarea guardada"
+                    Toast.makeText(context, tipoMsg, Toast.LENGTH_SHORT).show()
                 }
             }
         )
@@ -364,10 +411,11 @@ fun TareasScreen(
 
     // Diálogo de confirmación para eliminar
     taskToDelete?.let { tarea ->
+        val esExamen = tarea.tipo.equals("EXAMEN", ignoreCase = true)
         AlertDialog(
             onDismissRequest = { taskToDelete = null },
-            title = { Text("Eliminar tarea", fontWeight = FontWeight.Bold) },
-            text = { Text("¿Estás seguro de que deseas eliminar '${tarea.titulo}'?") },
+            title = { Text(if (esExamen) "Eliminar examen" else "Eliminar tarea", fontWeight = FontWeight.Bold) },
+            text = { Text("¿Deseas eliminar '${tarea.titulo}'?") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -375,7 +423,7 @@ fun TareasScreen(
                             TaskReminderManager.cancelReminder(context, tarea.id)
                             tasksPrefs.deleteTask(tarea.id, safeUser)
                             taskToDelete = null
-                            Toast.makeText(context, "Tarea eliminada", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Eliminado correctamente", Toast.LENGTH_SHORT).show()
                         }
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
@@ -400,7 +448,8 @@ fun TaskItemCard(
     onDelete: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val (estadoTexto, estadoColor, estadoBg) = calcularEstadoVencimiento(tarea.fechaEntregaMillis, tarea.completada)
+    val esExamen = tarea.tipo.equals("EXAMEN", ignoreCase = true)
+    val (estadoTexto, estadoColor, estadoBg) = calcularEstadoVencimiento(tarea.fechaEntregaMillis, tarea.completada, esExamen)
 
     AppCard(
         modifier = Modifier.fillMaxWidth(),
@@ -411,12 +460,11 @@ fun TaskItemCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top
         ) {
-            // Checkbox para completar
             Checkbox(
                 checked = tarea.completada,
                 onCheckedChange = { onToggleComplete() },
                 colors = CheckboxDefaults.colors(
-                    checkedColor = MaterialTheme.colorScheme.primary,
+                    checkedColor = if (esExamen) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary,
                     uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ),
                 modifier = Modifier.padding(top = 2.dp)
@@ -425,6 +473,59 @@ fun TaskItemCard(
             Spacer(modifier = Modifier.width(8.dp))
 
             Column(modifier = Modifier.weight(1f)) {
+                // Fila con Etiqueta de Tipo (EXAMEN o TAREA) y el Curso
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (esExamen) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFFEBEE)
+                        ) {
+                            Text(
+                                text = "🎯 EXAMEN",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFC62828),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        ) {
+                            Text(
+                                text = "📘 TAREA",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    if (tarea.curso.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                        ) {
+                            Text(
+                                text = tarea.curso,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 // Título
                 Text(
                     text = tarea.titulo,
@@ -436,37 +537,7 @@ fun TaskItemCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Curso si está presente
-                if (tarea.curso.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Book,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = tarea.curso,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-
-                // Descripción
+                // Descripción si tiene
                 if (tarea.descripcion.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -501,7 +572,6 @@ fun TaskItemCard(
                         )
                     }
 
-                    // Badge de urgencia / completado
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = estadoBg
@@ -523,27 +593,28 @@ fun TaskItemCard(
                         Icon(
                             imageVector = Icons.Default.Alarm,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (esExamen) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = when (tarea.recordatorioMinutosAntes) {
                                 0 -> "Recordatorio al momento"
+                                120 -> "Recordatorio 2 horas antes"
                                 60 -> "Recordatorio 1h antes"
                                 1440 -> "Recordatorio 1 día antes"
                                 2880 -> "Recordatorio 2 días antes"
+                                4320 -> "Recordatorio 3 días antes"
                                 else -> "Recordatorio programado"
                             },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = if (esExamen) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary,
                             fontSize = 11.sp
                         )
                     }
                 }
             }
 
-            // Menú de opciones (Editar / Eliminar)
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
                     Icon(
@@ -590,15 +661,21 @@ fun TaskItemCard(
 fun TaskFormDialog(
     taskToEdit: TaskModel?,
     cursosSugeridos: List<String>,
+    loadingCursos: Boolean,
     onDismiss: () -> Unit,
     onSave: (TaskModel) -> Unit
 ) {
     val context = LocalContext.current
+    var tipo by remember { mutableStateOf(taskToEdit?.tipo ?: "TAREA") }
+    val esExamen = tipo == "EXAMEN"
+
     var titulo by remember { mutableStateOf(taskToEdit?.titulo ?: "") }
     var curso by remember { mutableStateOf(taskToEdit?.curso ?: "") }
     var descripcion by remember { mutableStateOf(taskToEdit?.descripcion ?: "") }
 
-    // Fecha por defecto: hoy a las 23:59 o la guardada
+    var showCoursePicker by remember { mutableStateOf(false) }
+    var manualCourseInput by remember { mutableStateOf(false) }
+
     val calendar = remember {
         Calendar.getInstance().apply {
             if (taskToEdit != null) {
@@ -613,8 +690,9 @@ fun TaskFormDialog(
     }
 
     var fechaMillis by remember { mutableLongStateOf(calendar.timeInMillis) }
-    var recordatorioMinutos by remember { mutableIntStateOf(taskToEdit?.recordatorioMinutosAntes ?: 1440) }
-    var cursoMenuExpanded by remember { mutableStateOf(false) }
+    var recordatorioMinutos by remember {
+        mutableIntStateOf(taskToEdit?.recordatorioMinutosAntes ?: if (esExamen) 2880 else 1440)
+    }
 
     fun abrirDatePicker() {
         val c = Calendar.getInstance().apply { timeInMillis = fechaMillis }
@@ -661,95 +739,170 @@ fun TaskFormDialog(
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier
-                .fillMaxWidth(0.94f)
+                .fillMaxWidth(0.95f)
                 .wrapContentHeight()
-                .padding(vertical = 24.dp)
+                .padding(vertical = 16.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
                 Text(
-                    text = if (taskToEdit == null) "Nueva Tarea" else "Editar Tarea",
+                    text = if (taskToEdit == null) "Nuevo Pendiente" else "Editar Pendiente",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Selector de Tipo: TAREA vs EXAMEN
+                Text(
+                    text = "Tipo de actividad:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = tipo == "TAREA",
+                        onClick = {
+                            tipo = "TAREA"
+                            if (recordatorioMinutos == 4320) recordatorioMinutos = 1440
+                        },
+                        label = { Text("📘 Tarea / Trabajo", fontWeight = if (tipo == "TAREA") FontWeight.Bold else FontWeight.Normal) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    FilterChip(
+                        selected = tipo == "EXAMEN",
+                        onClick = {
+                            tipo = "EXAMEN"
+                            if (recordatorioMinutos == 60) recordatorioMinutos = 2880
+                        },
+                        label = { Text("🎯 Examen / Evaluación", fontWeight = if (tipo == "EXAMEN") FontWeight.Bold else FontWeight.Normal) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Selector de Curso OBLIGATORIAMENTE con las opciones del ciclo actual
+                Text(
+                    text = "Curso del ciclo:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (!manualCourseInput) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showCoursePicker = true }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.School,
+                                    contentDescription = null,
+                                    tint = if (curso.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = if (curso.isNotBlank()) curso else if (loadingCursos) "Cargando tus cursos..." else "Toca para seleccionar tu curso",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (curso.isNotBlank()) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (curso.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Ver cursos",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = curso,
+                        onValueChange = { curso = it },
+                        label = { Text("Escribe el nombre del curso") },
+                        placeholder = { Text("Ej. Proyecto de Tesis") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        trailingIcon = {
+                            TextButton(onClick = { manualCourseInput = false }) {
+                                Text("Ver lista", fontSize = 12.sp)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Título
                 OutlinedTextField(
                     value = titulo,
                     onValueChange = { titulo = it },
-                    label = { Text("¿Qué tarea tienes?") },
-                    placeholder = { Text("Ej. Informe Lab 2, Exposición, etc.") },
+                    label = { Text(if (esExamen) "¿Qué examen es?" else "¿Qué tarea tienes?") },
+                    placeholder = { Text(if (esExamen) "Ej. Examen Parcial, Práctica 2" else "Ej. Informe Lab 3, Ensayo, etc.") },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Curso
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = curso,
-                        onValueChange = { curso = it },
-                        label = { Text("Curso (opcional)") },
-                        placeholder = { Text("Ej. Sistemas Operativos") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        trailingIcon = {
-                            if (cursosSugeridos.isNotEmpty()) {
-                                IconButton(onClick = { cursoMenuExpanded = true }) {
-                                    Icon(Icons.Default.Book, contentDescription = "Elegir curso", tint = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    if (cursosSugeridos.isNotEmpty()) {
-                        DropdownMenu(
-                            expanded = cursoMenuExpanded,
-                            onDismissRequest = { cursoMenuExpanded = false }
-                        ) {
-                            cursosSugeridos.forEach { nombreCurso ->
-                                DropdownMenuItem(
-                                    text = { Text(nombreCurso, fontSize = 13.sp) },
-                                    onClick = {
-                                        curso = nombreCurso
-                                        cursoMenuExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Sugerencias de cursos en Chips horizontales si existen
-                if (cursosSugeridos.isNotEmpty()) {
+                // Sugerencias rápidas para exámenes
+                if (esExamen) {
                     Spacer(modifier = Modifier.height(6.dp))
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(cursosSugeridos.take(5)) { nombreCurso ->
-                            val corto = if (nombreCurso.length > 18) nombreCurso.take(16) + "..." else nombreCurso
+                        val titulosExamen = listOf("Examen Parcial", "Examen Final", "Práctica Calificada", "Exposición Final", "Sustitutorio")
+                        items(titulosExamen) { sug ->
                             AssistChip(
-                                onClick = { curso = nombreCurso },
-                                label = { Text(corto, fontSize = 11.sp) },
+                                onClick = { titulo = sug },
+                                label = { Text(sug, fontSize = 11.sp) },
                                 shape = RoundedCornerShape(8.dp)
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Fecha y Hora
+                // Selector de Fecha y Hora
+                Text(
+                    text = if (esExamen) "Fecha y hora del examen:" else "Fecha y hora de entrega:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -793,14 +946,14 @@ fun TaskFormDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Descripción / Notas
                 OutlinedTextField(
                     value = descripcion,
                     onValueChange = { descripcion = it },
-                    label = { Text("Notas o detalles (opcional)") },
-                    placeholder = { Text("En formato PDF, en grupos de 3, etc.") },
+                    label = { Text("Notas o temas a estudiar (opcional)") },
+                    placeholder = { Text(if (esExamen) "Capítulos 1 al 4, llevar calculadora..." else "Subir en PDF, trabajo grupal...") },
                     maxLines = 3,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -820,12 +973,22 @@ fun TaskFormDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    val opciones = listOf(
-                        -1 to "Sin aviso",
-                        60 to "1h antes",
-                        1440 to "1 día antes",
-                        2880 to "2 días antes"
-                    )
+                    val opciones = if (esExamen) {
+                        listOf(
+                            4320 to "3 días antes",
+                            2880 to "2 días antes",
+                            1440 to "1 día antes",
+                            120 to "2 horas antes",
+                            -1 to "Sin aviso"
+                        )
+                    } else {
+                        listOf(
+                            -1 to "Sin aviso",
+                            60 to "1h antes",
+                            1440 to "1 día antes",
+                            2880 to "2 días antes"
+                        )
+                    }
                     items(opciones) { (minutos, texto) ->
                         FilterChip(
                             selected = recordatorioMinutos == minutos,
@@ -836,7 +999,7 @@ fun TaskFormDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(22.dp))
 
                 // Botones Cancelar / Guardar
                 Row(
@@ -850,10 +1013,15 @@ fun TaskFormDialog(
                     Button(
                         onClick = {
                             if (titulo.isBlank()) {
-                                Toast.makeText(context, "Ingresa un título para la tarea", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Ingresa un título para ${if (esExamen) "el examen" else "la tarea"}", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (curso.isBlank()) {
+                                Toast.makeText(context, "Por favor selecciona el curso", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
                             val tarea = taskToEdit?.copy(
+                                tipo = tipo,
                                 titulo = titulo.trim(),
                                 curso = curso.trim(),
                                 descripcion = descripcion.trim(),
@@ -861,6 +1029,7 @@ fun TaskFormDialog(
                                 recordatorioMinutosAntes = recordatorioMinutos
                             ) ?: TaskModel(
                                 usuario = "",
+                                tipo = tipo,
                                 titulo = titulo.trim(),
                                 curso = curso.trim(),
                                 descripcion = descripcion.trim(),
@@ -869,9 +1038,133 @@ fun TaskFormDialog(
                             )
                             onSave(tarea)
                         },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (esExamen) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary
+                        ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text("Guardar", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    // Selector Modal de Cursos del Ciclo
+    if (showCoursePicker) {
+        Dialog(onDismissRequest = { showCoursePicker = false }) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Text(
+                        text = "Selecciona tu Curso",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Cursos matriculados en tu ciclo actual",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (cursosSugeridos.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (loadingCursos) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            } else {
+                                Text(
+                                    text = "No se encontraron cursos en caché.\nPuedes escribirlo manualmente.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 320.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(cursosSugeridos) { nombreCurso ->
+                                val esSeleccionado = curso.equals(nombreCurso, ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (esSeleccionado) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            curso = nombreCurso
+                                            showCoursePicker = false
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Book,
+                                            contentDescription = null,
+                                            tint = if (esSeleccionado) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = nombreCurso,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (esSeleccionado) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (esSeleccionado) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (esSeleccionado) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Seleccionado",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                manualCourseInput = true
+                                showCoursePicker = false
+                            }
+                        ) {
+                            Text("+ Escribir otro nombre", fontSize = 12.sp)
+                        }
+
+                        TextButton(onClick = { showCoursePicker = false }) {
+                            Text("Cerrar")
+                        }
                     }
                 }
             }

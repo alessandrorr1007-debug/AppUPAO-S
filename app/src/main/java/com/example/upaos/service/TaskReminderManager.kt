@@ -14,6 +14,7 @@ object TaskReminderManager {
     const val EXTRA_TASK_ID = "extra_task_id"
     const val EXTRA_TASK_TITLE = "extra_task_title"
     const val EXTRA_TASK_COURSE = "extra_task_course"
+    const val EXTRA_TASK_TYPE = "extra_task_type"
 
     fun scheduleReminder(context: Context, task: TaskModel) {
         cancelReminder(context, task.id)
@@ -34,6 +35,7 @@ object TaskReminderManager {
             putExtra(EXTRA_TASK_ID, task.id)
             putExtra(EXTRA_TASK_TITLE, task.titulo)
             putExtra(EXTRA_TASK_COURSE, task.curso)
+            putExtra(EXTRA_TASK_TYPE, task.tipo)
         }
 
         val requestCode = task.id.hashCode() and 0x7FFFFFFF

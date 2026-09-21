@@ -19,21 +19,29 @@ class TaskReminderReceiver : BroadcastReceiver() {
         when (action) {
             TaskReminderManager.ACTION_REMIND_TASK -> {
                 val taskId = intent.getStringExtra(TaskReminderManager.EXTRA_TASK_ID) ?: ""
-                val taskTitle = intent.getStringExtra(TaskReminderManager.EXTRA_TASK_TITLE) ?: "Tarea pendiente"
+                val taskTitle = intent.getStringExtra(TaskReminderManager.EXTRA_TASK_TITLE) ?: "Pendiente"
                 val taskCourse = intent.getStringExtra(TaskReminderManager.EXTRA_TASK_COURSE) ?: ""
+                val taskType = intent.getStringExtra(TaskReminderManager.EXTRA_TASK_TYPE) ?: "TAREA"
+                val esExamen = taskType.equals("EXAMEN", ignoreCase = true)
 
-                val notifTitle = if (taskCourse.isNotBlank()) {
-                    "📌 Recordatorio: $taskCourse"
+                val notifTitle = if (esExamen) {
+                    if (taskCourse.isNotBlank()) "🎯 ¡Examen Próximo: $taskCourse!" else "🎯 ¡Examen Próximo!"
                 } else {
-                    "📌 Recordatorio de Tarea"
+                    if (taskCourse.isNotBlank()) "📌 Recordatorio: $taskCourse" else "📌 Recordatorio de Tarea"
                 }
-                val notifBody = "La tarea '$taskTitle' vence pronto. ¡No olvides presentarla a tiempo!"
+
+                val notifBody = if (esExamen) {
+                    "Tienes programado tu examen '$taskTitle'. ¡Repasa tus temas y prepárate con tiempo!"
+                } else {
+                    "La tarea '$taskTitle' vence pronto. ¡No olvides presentarla a tiempo!"
+                }
 
                 NotificationService.mostrarNotificacionTarea(
                     context = context,
                     title = notifTitle,
                     body = notifBody,
-                    taskId = taskId
+                    taskId = taskId,
+                    esExamen = esExamen
                 )
             }
             Intent.ACTION_BOOT_COMPLETED,
