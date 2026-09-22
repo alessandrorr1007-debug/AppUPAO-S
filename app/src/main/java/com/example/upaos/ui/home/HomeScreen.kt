@@ -40,11 +40,10 @@ import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.ui.asistencia.AsistenciaContent
+import com.example.upaos.ui.canvas.CanvasContent
 import com.example.upaos.ui.grades.GradesContent
 import com.example.upaos.ui.horario.HorarioContent
-import androidx.compose.material.icons.filled.TaskAlt
-import androidx.compose.runtime.collectAsState
-import com.example.upaos.data.local.TasksPreferences
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -56,7 +55,6 @@ fun HomeScreen(
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
     onSwitchAccount: () -> Unit = onLogout,
-    onOpenTasks: () -> Unit = {},
     onOpenCalculator: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
@@ -64,15 +62,12 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
-    val tasksPrefs = remember { TasksPreferences(context) }
     val coroutineScope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
     var unreadCount by remember { mutableIntStateOf(0) }
     var semanaEtiqueta by remember { mutableStateOf<String?>(null) }
 
     val usuario = tokenManager.getSavedUser()
-    val userTasks by tasksPrefs.getTasksFlow(usuario ?: "").collectAsState(initial = emptyList())
-    val pendingTasksCount = remember(userTasks) { userTasks.count { !it.completada } }
 
     fun cerrarSesion() {
         tokenManager.clearSession()
@@ -164,39 +159,7 @@ fun HomeScreen(
 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
 
-                NavigationDrawerItem(
-                    label = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Tareas y Exámenes", fontWeight = FontWeight.Medium)
-                            if (pendingTasksCount > 0) {
-                                Badge(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ) {
-                                    Text("$pendingTasksCount")
-                                }
-                            }
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.TaskAlt,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    },
-                    selected = false,
-                    onClick = {
-                        coroutineScope.launch { drawerState.close() }
-                        onOpenTasks()
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                )
+
 
                 NavigationDrawerItem(
                     label = { Text("Cambiar de cuenta", fontWeight = FontWeight.Medium) },
@@ -266,7 +229,8 @@ fun HomeScreen(
                             text = when (pagerState.currentPage) {
                                 0 -> "Mis Cursos"
                                 1 -> "Horario"
-                                else -> "Asistencia"
+                                2 -> "Asistencia"
+                                else -> "Canvas LMS"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
@@ -350,6 +314,14 @@ fun HomeScreen(
                         icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
                         label = { Text("Asistencia", fontSize = 12.sp) }
                     )
+                    NavigationBarItem(
+                        selected = pagerState.currentPage == 3,
+                        onClick = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(3) }
+                        },
+                        icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Canvas", fontSize = 12.sp) }
+                    )
                 }
             }
         ) { padding ->
@@ -404,7 +376,11 @@ fun HomeScreen(
                         token = token,
                         usuario = usuario
                     )
-                    else -> AsistenciaContent(
+                    2 -> AsistenciaContent(
+                        token = token,
+                        usuario = usuario
+                    )
+                    else -> CanvasContent(
                         token = token,
                         usuario = usuario
                     )

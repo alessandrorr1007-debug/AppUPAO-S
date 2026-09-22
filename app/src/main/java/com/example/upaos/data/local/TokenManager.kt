@@ -133,6 +133,25 @@ class TokenManager(context: Context) {
         return arr.toString()
     }
 
+    // ---------- Canvas Token ----------
+
+    fun saveCanvasToken(usuario: String, token: String) {
+        val key = "canvas_token_${usuario.trim().lowercase()}"
+        prefs.edit().putString(key, token).apply()
+        fallbackPrefs.edit().putString(key, token).apply()
+    }
+
+    fun getCanvasToken(usuario: String): String? {
+        val key = "canvas_token_${usuario.trim().lowercase()}"
+        return prefs.getString(key, null) ?: fallbackPrefs.getString(key, null)
+    }
+
+    fun removeCanvasToken(usuario: String) {
+        val key = "canvas_token_${usuario.trim().lowercase()}"
+        prefs.edit().remove(key).apply()
+        fallbackPrefs.edit().remove(key).apply()
+    }
+
     /** Cierra la sesión actual sin borrar las cuentas guardadas del dispositivo. */
     fun clearSession() {
         prefs.edit()

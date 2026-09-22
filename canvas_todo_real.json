@@ -1,0 +1,334 @@
+[
+  {
+    "context_type": "Course",
+    "course_id": 79030,
+    "context_name": "MACHINE LEARNING - T1 - Nrc 5045",
+    "context_short_name": "ISIA110",
+    "type": "submitting",
+    "ignore": "https://upao.instructure.com/api/v1/users/self/todo/assignment_991430/submitting?permanent=0",
+    "ignore_permanently": "https://upao.instructure.com/api/v1/users/self/todo/assignment_991430/submitting?permanent=1",
+    "assignment": {
+      "id": 991430,
+      "position": 14,
+      "description": "<p>Basado en&nbsp; &nbsp;<a class=\"ig-title title item_link rspkr_dr_added\" style=\"font-family: inherit; font-size: 1rem;\" title=\"Tema de proyecto.pptx\" href=\"https://upao.instructure.com/courses/79030/modules/items/5399780\" aria-describedby=\"module-item-5070833-details\">Tema de proyecto.pptx</a></p>\n<p><strong><span style=\"color: #027634;\">definir para cada equipo de trabajo el tema por desarrollar y proponer 3 alternativas de solución para una idea de proyecto ya definido, o 3 ideas simples de proyecto.</span></strong></p>\n<p><strong><span style=\"color: #027634;\">Las calificaciones se asignarán con base en los siguientes criterios:</span></strong></p>\n<p><strong><span style=\"color: #027634;\">● La creatividad de su solución (algo nuevo que no exista)<br>● La viabilidad de su solución (algo que funcione)<br>● El impacto de su solución (que ayude a muchas más<br>personas)<br>● La presentación de su contenido</span></strong></p>\n<p><img src=\"https://upao.instructure.com/courses/79030/files/13676844/preview?verifier=0b34c036-aa72-4a5b-ad1b-1bc4432b8c45\" alt=\"image.png\" data-api-endpoint=\"https://upao.instructure.com/api/v1/courses/79030/files/13676844\" data-api-returntype=\"File\" loading=\"lazy\"></p>\n<p><strong><span style=\"color: #000000;\"><span style=\"color: #c71f23;\">Nota: </span>sobre la empresa AutoMove este escenario es solo un ejemplo para la presentación como tarea de su proyecto, y tienen que elegir un tema distinto para el proyecto final.</span></strong></p>",
+      "points_possible": 20.0,
+      "grading_type": "points",
+      "created_at": "2026-08-30T22:18:36Z",
+      "updated_at": "2026-09-08T15:27:32Z",
+      "due_at": "2026-09-01T16:30:00Z",
+      "final_grader_id": null,
+      "grader_count": 0,
+      "graders_anonymous_to_graders": false,
+      "grader_comments_visible_to_graders": true,
+      "grader_names_visible_to_final_grader": true,
+      "lock_at": "2026-09-01T16:30:00Z",
+      "unlock_at": null,
+      "assignment_group_id": 296441,
+      "peer_reviews": false,
+      "anonymous_peer_reviews": false,
+      "automatic_peer_reviews": false,
+      "intra_group_peer_reviews": false,
+      "post_to_sis": false,
+      "grade_group_students_individually": false,
+      "group_category_id": 53227,
+      "grading_standard_id": null,
+      "moderated_grading": false,
+      "hide_in_gradebook": false,
+      "omit_from_final_grade": false,
+      "suppress_assignment": false,
+      "anonymous_instructor_annotations": false,
+      "anonymous_grading": false,
+      "allowed_attempts": 1,
+      "annotatable_attachment_id": null,
+      "lock_info": {
+        "lock_at": "2026-09-01T16:30:00Z",
+        "can_view": true,
+        "asset_string": "assignment_991430"
+      },
+      "secure_params": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJsdGlfYXNzaWdubWVudF9pZCI6ImZmYTIzZjFjLTdlYTUtNGY1Yy04MzkxLTFmNTQ0YzExNjNlMiIsImx0aV9hc3NpZ25tZW50X2Rlc2NyaXB0aW9uIjoiXHUwMDNjcFx1MDAzZUJhc2FkbyBlblx1MDAyNm5ic3A7IFx1MDAyNm5ic3A7XHUwMDNjYSBjbGFzcz1cImlnLXRpdGxlIHRpdGxlIGl0ZW1fbGluayByc3Brcl9kcl9hZGRlZFwiIHN0eWxlPVwiZm9udC1mYW1pbHk6IGluaGVyaXQ7IGZvbnQtc2l6ZTogMXJlbTtcIiB0aXRsZT1cIlRlbWEgZGUgcHJveWVjdG8ucHB0eFwiIGhyZWY9XCIvY291cnNlcy83OTAzMC9tb2R1bGVzL2l0ZW1zLzUzOTk3ODBcIiBhcmlhLWRlc2NyaWJlZGJ5PVwibW9kdWxlLWl0ZW0tNTA3MDgzMy1kZXRhaWxzXCJcdTAwM2VUZW1hIGRlIHByb3llY3RvLnBwdHhcdTAwM2MvYVx1MDAzZVx1MDAzYy9wXHUwMDNlXG5cdTAwM2NwXHUwMDNlXHUwMDNjc3Ryb25nXHUwMDNlXHUwMDNjc3BhbiBzdHlsZT1cImNvbG9yOiAjMDI3NjM0O1wiXHUwMDNlZGVmaW5pciBwYXJhIGNhZGEgZXF1aXBvIGRlIHRyYWJham8gZWwgdGVtYSBwb3IgZGVzYXJyb2xsYXIgeSBwcm9wb25lciAzIGFsdGVybmF0aXZhcyBkZSBzb2x1Y2nDs24gcGFyYSB1bmEgaWRlYSBkZSBwcm95ZWN0byB5YSBkZWZpbmlkbywgbyAzIGlkZWFzIHNpbXBsZXMgZGUgcHJveWVjdG8uXHUwMDNjL3NwYW5cdTAwM2VcdTAwM2Mvc3Ryb25nXHUwMDNlXHUwMDNjL3BcdTAwM2Vcblx1MDAzY3BcdTAwM2VcdTAwM2NzdHJvbmdcdTAwM2VcdTAwM2NzcGFuIHN0eWxlPVwiY29sb3I6ICMwMjc2MzQ7XCJcdTAwM2VMYXMgY2FsaWZpY2FjaW9uZXMgc2UgYXNpZ25hcsOhbiBjb24gYmFzZSBlbiBsb3Mgc2lndWllbnRlcyBjcml0ZXJpb3M6XHUwMDNjL3NwYW5cdTAwM2VcdTAwM2Mvc3Ryb25nXHUwMDNlXHUwMDNjL3BcdTAwM2Vcblx1MDAzY3BcdTAwM2VcdTAwM2NzdHJvbmdcdTAwM2VcdTAwM2NzcGFuIHN0eWxlPVwiY29sb3I6ICMwMjc2MzQ7XCJcdTAwM2Xil48gTGEgY3JlYXRpdmlkYWQgZGUgc3Ugc29sdWNpw7NuIChhbGdvIG51ZXZvIHF1ZSBubyBleGlzdGEpXHUwMDNjYnJcdTAwM2Xil48gTGEgdmlhYmlsaWRhZCBkZSBzdSBzb2x1Y2nDs24gKGFsZ28gcXVlIGZ1bmNpb25lKVx1MDAzY2JyXHUwMDNl4pePIEVsIGltcGFjdG8gZGUgc3Ugc29sdWNpw7NuIChxdWUgYXl1ZGUgYSBtdWNoYXMgbcOhc1x1MDAzY2JyXHUwMDNlcGVyc29uYXMpXHUwMDNjYnJcdTAwM2Xil48gTGEgcHJlc2VudGFjacOzbiBkZSBzdSBjb250ZW5pZG9cdTAwM2Mvc3Bhblx1MDAzZVx1MDAzYy9zdHJvbmdcdTAwM2VcdTAwM2MvcFx1MDAzZVxuXHUwMDNjcFx1MDAzZVx1MDAzY2ltZyBzcmM9XCIvY291cnNlcy83OTAzMC9maWxlcy8xMzY3Njg0NC9wcmV2aWV3XCIgYWx0PVwiaW1hZ2UucG5nXCIgZGF0YS4uLiAodHJ1bmNhdGVkKSJ9.ARv5i1qwqZgZux6VF4GKyK6HgIhL-0XpAhRs2KfNvEM",
+      "lti_context_id": "ffa23f1c-7ea5-4f5c-8391-1f544c1163e2",
+      "course_id": 79030,
+      "name": "Tema del proyecto de ML NRC-5046",
+      "submission_types": [
+        "online_upload"
+      ],
+      "has_submitted_submissions": true,
+      "due_date_required": false,
+      "max_name_length": 255,
+      "in_closed_grading_period": false,
+      "availability_status": {
+        "status": "closed",
+        "date": null
+      },
+      "graded_submissions_exist": false,
+      "is_quiz_assignment": false,
+      "can_duplicate": true,
+      "original_course_id": null,
+      "original_assignment_id": null,
+      "original_lti_resource_link_id": null,
+      "original_assignment_name": null,
+      "original_quiz_id": null,
+      "workflow_state": "published",
+      "important_dates": false,
+      "muted": true,
+      "html_url": "https://upao.instructure.com/courses/79030/assignments/991430",
+      "allowed_extensions": [
+        "pptx",
+        "pdf"
+      ],
+      "use_rubric_for_grading": false,
+      "free_form_criterion_comments": false,
+      "rubric": [
+        {
+          "id": "_3602",
+          "points": 5.0,
+          "description": "La creatividad de su solución (algo nuevo que no exista)",
+          "long_description": null,
+          "ignore_for_scoring": null,
+          "criterion_use_range": false,
+          "ratings": [
+            {
+              "id": "blank",
+              "points": 5.0,
+              "description": "Muy bueno",
+              "long_description": ""
+            },
+            {
+              "id": "_3352",
+              "points": 3.0,
+              "description": "Regular",
+              "long_description": ""
+            },
+            {
+              "id": "blank_2",
+              "points": 1.0,
+              "description": "Malo",
+              "long_description": ""
+            }
+          ]
+        },
+        {
+          "id": "_4151",
+          "points": 5.0,
+          "description": "La viabilidad de su solución (algo que funcione)",
+          "long_description": null,
+          "ignore_for_scoring": null,
+          "criterion_use_range": false,
+          "ratings": [
+            {
+              "id": "_2178",
+              "points": 5.0,
+              "description": "Muy bueno",
+              "long_description": ""
+            },
+            {
+              "id": "_5494",
+              "points": 3.0,
+              "description": "Regular",
+              "long_description": ""
+            },
+            {
+              "id": "_8238",
+              "points": 1.0,
+              "description": "Malo",
+              "long_description": ""
+            }
+          ]
+        },
+        {
+          "id": "_7732",
+          "points": 5.0,
+          "description": "El impacto de su solución (que ayude a muchas más\npersonas)",
+          "long_description": null,
+          "ignore_for_scoring": null,
+          "criterion_use_range": false,
+          "ratings": [
+            {
+              "id": "_7146",
+              "points": 5.0,
+              "description": "Muy bueno",
+              "long_description": ""
+            },
+            {
+              "id": "_5055",
+              "points": 3.0,
+              "description": "Regular",
+              "long_description": ""
+            },
+            {
+              "id": "_5326",
+              "points": 1.0,
+              "description": "Malo",
+              "long_description": ""
+            }
+          ]
+        },
+        {
+          "id": "_8628",
+          "points": 5.0,
+          "description": "La presentación de su contenido)",
+          "long_description": null,
+          "ignore_for_scoring": null,
+          "criterion_use_range": false,
+          "ratings": [
+            {
+              "id": "_2608",
+              "points": 5.0,
+              "description": "Muy bueno",
+              "long_description": ""
+            },
+            {
+              "id": "_3169",
+              "points": 3.0,
+              "description": "Regular",
+              "long_description": ""
+            },
+            {
+              "id": "_6625",
+              "points": 1.0,
+              "description": "Malo",
+              "long_description": ""
+            }
+          ]
+        }
+      ],
+      "rubric_settings": {
+        "id": 211462,
+        "title": "Tema ML",
+        "points_possible": 20.0,
+        "free_form_criterion_comments": false,
+        "hide_score_total": false,
+        "hide_points": false
+      },
+      "all_dates": [
+        {
+          "id": 183116,
+          "due_at": "2026-09-01T16:30:00Z",
+          "unlock_at": "2026-09-01T15:00:00Z",
+          "lock_at": "2026-09-01T16:30:00Z",
+          "title": "ISIA110 - Nrc 5046 - Laboratorio",
+          "set_type": "CourseSection",
+          "set_id": 143520,
+          "parent_override_id": null,
+          "availability_status": {
+            "status": "closed",
+            "date": null
+          }
+        }
+      ],
+      "published": true,
+      "only_visible_to_overrides": true,
+      "visible_to_everyone": false,
+      "locked_for_user": true,
+      "lock_explanation": "Esta tarea fue bloqueada 1 de sep en 11:30.",
+      "submissions_download_url": "https://upao.instructure.com/courses/79030/assignments/991430/submissions?zip=1",
+      "post_manually": false,
+      "anonymize_students": false,
+      "new_quizzes_anonymous_participants": false,
+      "require_lockdown_browser": false,
+      "restrict_quantitative_data": false
+    },
+    "html_url": "https://upao.instructure.com/courses/79030/assignments/991430#submit"
+  },
+  {
+    "context_type": "Course",
+    "course_id": 78496,
+    "context_name": "PERCEPCION COMPUTACIONAL - T1 - Nrc 5048",
+    "context_short_name": "ISIA111",
+    "type": "submitting",
+    "ignore": "https://upao.instructure.com/api/v1/users/self/todo/assignment_1031503/submitting?permanent=0",
+    "ignore_permanently": "https://upao.instructure.com/api/v1/users/self/todo/assignment_1031503/submitting?permanent=1",
+    "assignment": {
+      "id": 1031503,
+      "position": 9,
+      "description": "<p>Mis saludos;</p>\n<p><strong>ACTIVIDAD</strong></p>\n<ul>\n<li>Realizar la investigación sobre el tema que corresponde a su percepción.</li>\n<li>Generar código según la percepción seleccionada.</li>\n</ul>\n<p><strong>INDICACIONES</strong></p>\n<ul>\n<li>Mostrar el trabajo a realizar con la percepción que ha elegido, por ejemplo si es imagen usar el trabajo para mejorar imagen, trabajar con e problema de ruidos, etc.</li>\n<li>Mostrar ejemplos en Python tengan relación con su trabajo.</li>\n<li>Recordar que el trabajo es en equipo.</li>\n</ul>\n<p><strong>ENTREGABLE</strong></p>\n<ul>\n<li>Informe en formato .PDF y archivo(s) .PY</li>\n</ul>",
+      "points_possible": 20.0,
+      "grading_type": "points",
+      "created_at": "2026-09-18T22:40:57Z",
+      "updated_at": "2026-09-18T23:00:08Z",
+      "due_at": "2026-09-25T03:00:00Z",
+      "final_grader_id": null,
+      "grader_count": 0,
+      "graders_anonymous_to_graders": false,
+      "grader_comments_visible_to_graders": true,
+      "grader_names_visible_to_final_grader": true,
+      "lock_at": "2026-09-25T03:00:00Z",
+      "unlock_at": "2026-09-18T23:00:00Z",
+      "assignment_group_id": 307167,
+      "peer_reviews": false,
+      "anonymous_peer_reviews": false,
+      "automatic_peer_reviews": false,
+      "intra_group_peer_reviews": false,
+      "post_to_sis": false,
+      "grade_group_students_individually": false,
+      "group_category_id": 53720,
+      "grading_standard_id": null,
+      "moderated_grading": false,
+      "hide_in_gradebook": false,
+      "omit_from_final_grade": false,
+      "suppress_assignment": false,
+      "anonymous_instructor_annotations": false,
+      "anonymous_grading": false,
+      "allowed_attempts": 1,
+      "annotatable_attachment_id": null,
+      "secure_params": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJsdGlfYXNzaWdubWVudF9pZCI6IjJkNGQzN2Q2LTQyZWUtNGZmMy04MGY1LTE0ZmZjZjcwYTIwOCIsImx0aV9hc3NpZ25tZW50X2Rlc2NyaXB0aW9uIjoiXHUwMDNjcFx1MDAzZU1pcyBzYWx1ZG9zO1x1MDAzYy9wXHUwMDNlXG5cdTAwM2NwXHUwMDNlXHUwMDNjc3Ryb25nXHUwMDNlQUNUSVZJREFEXHUwMDNjL3N0cm9uZ1x1MDAzZVx1MDAzYy9wXHUwMDNlXG5cdTAwM2N1bFx1MDAzZVxuXHUwMDNjbGlcdTAwM2VSZWFsaXphciBsYSBpbnZlc3RpZ2FjacOzbiBzb2JyZSBlbCB0ZW1hIHF1ZSBjb3JyZXNwb25kZSBhIHN1IHBlcmNlcGNpw7NuLlx1MDAzYy9saVx1MDAzZVxuXHUwMDNjbGlcdTAwM2VHZW5lcmFyIGPDs2RpZ28gc2Vnw7puIGxhIHBlcmNlcGNpw7NuIHNlbGVjY2lvbmFkYS5cdTAwM2MvbGlcdTAwM2Vcblx1MDAzYy91bFx1MDAzZVxuXHUwMDNjcFx1MDAzZVx1MDAzY3N0cm9uZ1x1MDAzZUlORElDQUNJT05FU1x1MDAzYy9zdHJvbmdcdTAwM2VcdTAwM2MvcFx1MDAzZVxuXHUwMDNjdWxcdTAwM2Vcblx1MDAzY2xpXHUwMDNlTW9zdHJhciBlbCB0cmFiYWpvIGEgcmVhbGl6YXIgY29uIGxhIHBlcmNlcGNpw7NuIHF1ZSBoYSBlbGVnaWRvLCBwb3IgZWplbXBsbyBzaSBlcyBpbWFnZW4gdXNhciBlbCB0cmFiYWpvIHBhcmEgbWVqb3JhciBpbWFnZW4sIHRyYWJhamFyIGNvbiBlIHByb2JsZW1hIGRlIHJ1aWRvcywgZXRjLlx1MDAzYy9saVx1MDAzZVxuXHUwMDNjbGlcdTAwM2VNb3N0cmFyIGVqZW1wbG9zIGVuIFB5dGhvbiB0ZW5nYW4gcmVsYWNpw7NuIGNvbiBzdSB0cmFiYWpvLlx1MDAzYy9saVx1MDAzZVxuXHUwMDNjbGlcdTAwM2VSZWNvcmRhciBxdWUgZWwgdHJhYmFqbyBlcyBlbiBlcXVpcG8uXHUwMDNjL2xpXHUwMDNlXG5cdTAwM2MvdWxcdTAwM2Vcblx1MDAzY3BcdTAwM2VcdTAwM2NzdHJvbmdcdTAwM2VFTlRSRUdBQkxFXHUwMDNjL3N0cm9uZ1x1MDAzZVx1MDAzYy9wXHUwMDNlXG5cdTAwM2N1bFx1MDAzZVxuXHUwMDNjbGlcdTAwM2VJbmZvcm1lIGVuIGZvcm1hdG8gLlBERiB5IGFyY2hpdm8ocykgLlBZXHUwMDNjL2xpXHUwMDNlXG5cdTAwM2MvdWxcdTAwM2UifQ.Fj-iyuB38KIf8jQiGUkO24Sxkk7Mi3axdLgpj3XFVvg",
+      "lti_context_id": "2d4d37d6-42ee-4ff3-80f5-14ffcf70a208",
+      "course_id": 78496,
+      "name": "AVANCE DE PROYECTO S02",
+      "submission_types": [
+        "online_upload"
+      ],
+      "has_submitted_submissions": false,
+      "due_date_required": false,
+      "max_name_length": 255,
+      "in_closed_grading_period": false,
+      "availability_status": {
+        "status": "open",
+        "date": "2026-09-25T03:00:00Z"
+      },
+      "graded_submissions_exist": false,
+      "is_quiz_assignment": false,
+      "can_duplicate": true,
+      "original_course_id": null,
+      "original_assignment_id": null,
+      "original_lti_resource_link_id": null,
+      "original_assignment_name": null,
+      "original_quiz_id": null,
+      "workflow_state": "published",
+      "important_dates": false,
+      "muted": true,
+      "html_url": "https://upao.instructure.com/courses/78496/assignments/1031503",
+      "allowed_extensions": [
+        "pdf",
+        "py"
+      ],
+      "all_dates": [
+        {
+          "id": 185072,
+          "due_at": "2026-09-25T03:00:00Z",
+          "unlock_at": "2026-09-18T23:00:00Z",
+          "lock_at": "2026-09-25T03:00:00Z",
+          "title": "ISIA111 - Nrc 5049 - Laboratorio",
+          "set_type": "CourseSection",
+          "set_id": 143478,
+          "parent_override_id": null,
+          "availability_status": {
+            "status": "open",
+            "date": "2026-09-25T03:00:00Z"
+          }
+        }
+      ],
+      "published": true,
+      "only_visible_to_overrides": true,
+      "visible_to_everyone": false,
+      "locked_for_user": false,
+      "submissions_download_url": "https://upao.instructure.com/courses/78496/assignments/1031503/submissions?zip=1",
+      "post_manually": false,
+      "anonymize_students": false,
+      "new_quizzes_anonymous_participants": false,
+      "require_lockdown_browser": false,
+      "restrict_quantitative_data": false
+    },
+    "html_url": "https://upao.instructure.com/courses/78496/assignments/1031503#submit"
+  }
+]
