@@ -3,6 +3,9 @@ package com.example.upaos.ui.login
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.widget.Toast
+import com.example.upaos.data.api.mensajeErrorLogin
+import com.example.upaos.data.api.requiereCaptcha
+import kotlinx.coroutines.CancellationException
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -67,6 +70,8 @@ fun LoginScreen(
     var showCaptchaDialog by remember { mutableStateOf(false) }
     var captchaBase64 by remember { mutableStateOf("") }
     var manualCaptchaCode by remember { mutableStateOf("") }
+    var captchaId by remember { mutableStateOf<String?>(null) }
+    var loginError by remember { mutableStateOf<String?>(null) }
 
     val isUserValid = usuario.length == 9 && usuario.all { it.isDigit() }
 
@@ -85,10 +90,14 @@ fun LoginScreen(
     fun procesarLogin(token: String?) {
         if (token != null) {
             tokenManager.saveToken(token)
-            tokenManager.setKeepLoggedIn(true)
             tokenManager.saveUserId(usuario)
-            tokenManager.saveCredentials(usuario, password)
-            tokenManager.saveCuenta(usuario, password)
+            if (guardarPassword) {
+                tokenManager.saveCredentials(usuario, password)
+                tokenManager.saveCuenta(usuario, password)
+            } else {
+                tokenManager.forgetCurrentPassword()
+            }
+            tokenManager.setKeepLoggedIn(mantenerSesion)
 
             FcmTokenHelper.register(context)
             onLoginSuccess(token)
@@ -159,7 +168,7 @@ fun LoginScreen(
                 ) {
                     ModernTextField(
                         value = usuario,
-                        onValueChange = { if (it.length <= 9 && it.all { char -> char.isDigit() }) usuario = it },
+                        onValueChange = { if (!isLoading && !showCaptchaDialog && it.length <= 9 && it.all { char -> char.isDigit() }) { usuario = it; loginError = null } },
                         label = "ID de usuario",
                         leadingIcon = Icons.Filled.Person,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -172,7 +181,7 @@ fun LoginScreen(
 
                     ModernTextField(
                         value = password,
-                        onValueChange = { password = it },
+                        onValueChange = { if (!isLoading && !showCaptchaDialog) { password = it; loginError = null } },
                         label = "Contraseña",
                         leadingIcon = Icons.Filled.Lock,
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -230,6 +239,9 @@ fun LoginScreen(
                                 return@PrimaryButton
                             }
 
+                            if (isLoading) return@PrimaryButton
+                            loginError = null
+                            manualCaptchaCode = ""
                             isLoading = true
                             scope.launch {
                                 try {
@@ -239,18 +251,20 @@ fun LoginScreen(
                                     if (response.isSuccessful && body != null) {
                                         if (body.success && body.token != null) {
                                             procesarLogin(body.token)
-                                        } else if (body.necesitaCaptcha && body.imagenBase64 != null) {
-                                            captchaBase64 = body.imagenBase64
+                                        } else if (requiereCaptcha(body)) {
+                                            captchaBase64 = body.imagenBase64!!
+                                            captchaId = body.captchaId
                                             showCaptchaDialog = true
                                         } else {
-                                            Toast.makeText(context, body.message ?: "Error en login", Toast.LENGTH_LONG).show()
+                                            loginError = mensajeErrorLogin(response.code(), body)
                                         }
                                     } else {
-                                        Toast.makeText(context, "Error del servidor: ${response.code()}", Toast.LENGTH_SHORT).show()
+                                        loginError = mensajeErrorLogin(response.code(), body, response.errorBody()?.string())
                                     }
                                 } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
                                     isLoading = false
-                                    Toast.makeText(context, "Error de conexión: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    loginError = "No se pudo conectar. Revisa tu conexión a internet e inténtalo nuevamente."
                                 }
                             }
                         },
@@ -260,6 +274,11 @@ fun LoginScreen(
                         height = 46.dp,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    loginError?.let { mensaje ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = mensaje, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -290,7 +309,7 @@ fun LoginScreen(
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "El OCR no pudo reconocer el captcha automáticamente. Ingréselo manualmente:",
+                        text = "Para continuar, ingresa el código que aparece en la imagen:",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -307,12 +326,12 @@ fun LoginScreen(
                                 val bmp = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
                                 if (bmp == null) {
                                     isDecodeError = true
-                                    errorMessage = "BitmapFactory devolvió null para ${imageBytes.size} bytes."
+                                    errorMessage = "No se pudo mostrar la imagen. Inicia sesión nuevamente."
                                 }
                                 bmp
                             } catch (e: Exception) {
                                 isDecodeError = true
-                                errorMessage = "Error Base64: ${e.localizedMessage}"
+                                errorMessage = "No se pudo mostrar la imagen. Inicia sesión nuevamente."
                                 null
                             }
                         }
@@ -337,7 +356,7 @@ fun LoginScreen(
                         }
                     } else {
                         Text(
-                            text = "Error: La imagen base64 vino vacía del servidor.",
+                            text = "No se pudo cargar la imagen. Inicia sesión nuevamente.",
                             color = MaterialTheme.colorScheme.error,
                             fontSize = 11.sp
                         )
@@ -361,18 +380,19 @@ fun LoginScreen(
                         scope.launch {
                             try {
                                 val res = RetrofitClient.apiService.loginConfirmarCaptcha(
-                                    ManualCaptchaRequest(usuario, password, manualCaptchaCode)
+                                    ManualCaptchaRequest(usuario, password, manualCaptchaCode, captchaId)
                                 )
                                 isLoading = false
                                 val body = res.body()
                                 if (res.isSuccessful && body?.success == true && body.token != null) {
                                     procesarLogin(body.token)
                                 } else {
-                                    Toast.makeText(context, body?.message ?: "Captcha manual incorrecto", Toast.LENGTH_SHORT).show()
+                                    loginError = mensajeErrorLogin(res.code(), body, res.errorBody()?.string())
                                 }
                             } catch (e: Exception) {
+                                if (e is CancellationException) throw e
                                 isLoading = false
-                                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                loginError = "No se pudo conectar. Revisa tu conexión a internet e inténtalo nuevamente."
                             }
                         }
                     },

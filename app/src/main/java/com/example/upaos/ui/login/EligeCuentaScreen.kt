@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upaos.data.api.RetrofitClient
+import com.example.upaos.data.api.mensajeErrorLogin
+import kotlinx.coroutines.CancellationException
 import com.example.upaos.data.local.CuentaGuardada
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.LoginRequest
@@ -67,13 +69,14 @@ fun EligeCuentaScreen(
                     autenticando = null
                     Toast.makeText(
                         context,
-                        "No se pudo iniciar sesión con la cuenta guardada. Reingresa tu contraseña.",
+                        mensajeErrorLogin(res.code(), body, res.errorBody()?.string()),
                         Toast.LENGTH_LONG
                     ).show()
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 autenticando = null
-                Toast.makeText(context, "Error de conexión: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "No se pudo conectar. Revisa tu conexión a internet.", Toast.LENGTH_LONG).show()
             }
         }
     }

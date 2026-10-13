@@ -10,7 +10,8 @@ data class LoginRequest(
 data class ManualCaptchaRequest(
     @SerializedName("usuario") val usuario: String,
     @SerializedName("password") val password: String,
-    @SerializedName("codigo_manual") val codigoManual: String
+    @SerializedName("codigo_manual") val codigoManual: String,
+    @SerializedName("captcha_id") val captchaId: String? = null
 )
 
 data class LoginResponse(
@@ -18,5 +19,7 @@ data class LoginResponse(
     @SerializedName("token") val token: String?,
     @SerializedName("necesita_captcha") val necesitaCaptcha: Boolean,
     @SerializedName("imagen_base64") val imagenBase64: String?,
-    @SerializedName("message") val message: String?
+    @SerializedName("message") val message: String?,
+    @SerializedName("error_code") val errorCode: String? = null,
+    @SerializedName("captcha_id") val captchaId: String? = null
 )

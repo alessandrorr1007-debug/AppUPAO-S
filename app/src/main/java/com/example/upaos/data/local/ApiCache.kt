@@ -2,9 +2,11 @@ package com.example.upaos.data.local
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 private val Context.apiDataStore by preferencesDataStore("api_cache")
 
@@ -17,14 +19,27 @@ private val Context.apiDataStore by preferencesDataStore("api_cache")
 class ApiCache(private val context: Context) {
 
     suspend fun guardar(clave: String, json: String) {
+        val user = clave.split('_').firstOrNull { it.matches(Regex("[0-9]{9}")) }
+        if (user != null && (AccountPrivacy.isDeleting(user) || !TokenManager(context).containsAccount(user))) return
         context.apiDataStore.edit { prefs ->
             prefs[stringPreferencesKey(clave)] = json
+            prefs[longPreferencesKey("time_$clave")] = System.currentTimeMillis()
         }
     }
 
     suspend fun cargar(clave: String): String? {
         val prefs = context.apiDataStore.data.first()
         return prefs[stringPreferencesKey(clave)]
+    }
+
+    suspend fun actualizado(clave: String): Long? = context.apiDataStore.data.first()[longPreferencesKey("time_$clave")]
+    fun observarFecha(clave: String) = context.apiDataStore.data.map { it[longPreferencesKey("time_$clave")] }
+
+    suspend fun limpiar(usuario: String) {
+        val user = usuario.trim().lowercase()
+        context.apiDataStore.edit { prefs ->
+            prefs.asMap().keys.filter { key -> key.name.split('_').contains(user) }.forEach { prefs.remove(it) }
+        }
     }
 
     /**

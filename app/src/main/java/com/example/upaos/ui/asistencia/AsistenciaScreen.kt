@@ -499,6 +499,10 @@ fun AsistenciaContent(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        Column(Modifier.padding(vertical = 6.dp)) {
+            com.example.upaos.ui.home.Freshness(shared.times[claveCache], !offline, isLoading || isRefreshing)
+        }
+
         if (offline && (registros.isNotEmpty() || horarioCursos.isNotEmpty())) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -508,7 +512,7 @@ fun AsistenciaContent(
                     .padding(bottom = 8.dp)
             ) {
                 Text(
-                    text = "Sin conexión · Mostrando datos guardados",
+                    text = "Datos guardados · pendiente de actualizar",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

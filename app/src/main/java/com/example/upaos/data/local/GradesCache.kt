@@ -2,9 +2,11 @@ package com.example.upaos.data.local
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 private val Context.gradesDataStore by preferencesDataStore("notas_cache")
 
@@ -17,10 +19,22 @@ private val Context.gradesDataStore by preferencesDataStore("notas_cache")
 class GradesCache(private val context: Context) {
 
     suspend fun guardar(clave: String, json: String) {
+        val user = clave.split('_').firstOrNull { it.matches(Regex("[0-9]{9}")) }
+        if (user != null && (AccountPrivacy.isDeleting(user) || !TokenManager(context).containsAccount(user))) return
         context.gradesDataStore.edit { prefs ->
             prefs[stringPreferencesKey("notas_$clave")] = json
+            prefs[longPreferencesKey("time_$clave")] = System.currentTimeMillis()
         }
     }
+
+    suspend fun limpiar(usuario: String) {
+        val user = usuario.trim().lowercase()
+        context.gradesDataStore.edit { prefs ->
+            prefs.asMap().keys.filter { it.name.split('_').contains(user) }.forEach { prefs.remove(it) }
+        }
+    }
+
+    fun observarFecha(clave: String) = context.gradesDataStore.data.map { it[longPreferencesKey("time_$clave")] }
 
     suspend fun cargar(clave: String): String? {
         val prefs = context.gradesDataStore.data.first()
@@ -33,14 +47,7 @@ class GradesCache(private val context: Context) {
         val nombres = linkedSetOf<String>()
 
         val userKey = usuario?.trim()?.lowercase() ?: "anonimo"
-        val posiblesClaves = listOf(
-            "notas_$userKey",
-            userKey,
-            "202610_UG",
-            "202610_EPG",
-            "202520_UG",
-            "202510_UG"
-        )
+        val posiblesClaves = listOf("notas_$userKey", userKey)
 
         for (clave in posiblesClaves) {
             val json = prefs[stringPreferencesKey("notas_$clave")]
@@ -58,7 +65,7 @@ class GradesCache(private val context: Context) {
 
         // Si no se encontró por clave directa, buscar en todas las preferencias de notas
         for ((key, value) in prefs.asMap()) {
-            if (value is String && value.contains("\"cursos\"")) {
+            if (key.name.split('_').contains(userKey) && value is String && value.contains("\"cursos\"")) {
                 try {
                     val resp = gson.fromJson(value, com.example.upaos.data.model.GradesResponse::class.java)
                     val lista = resp.cursos.mapNotNull { it.displayNombre.trim() }.filter { it.isNotBlank() }

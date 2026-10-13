@@ -50,7 +50,9 @@ import com.example.upaos.ui.theme.UpaoBlue
 import com.example.upaos.ui.theme.UpaoOrange
 import com.example.upaos.widget.ProximoCursoWidget
 import java.util.Calendar
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private fun diaHoy(): Int = (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) + 5) % 7
 
@@ -267,7 +269,7 @@ fun HorarioContent(
             ExposedDropdownMenuBox(
                 expanded = periodosExpanded,
                 onExpandedChange = { periodosExpanded = !periodosExpanded },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.weight(1f)
             ) {
                 OutlinedTextField(
                     value = selectedPeriodo,
@@ -289,15 +291,31 @@ fun HorarioContent(
                             text = { Text(item, fontSize = 13.sp) },
                             onClick = {
                                 periodosExpanded = false
-                                loadHorario()
+                                dashboard.selectSchedule(item)
                             }
                         )
                     }
                 }
             }
+
+            IconButton(
+                onClick = {
+                    loadHorario()
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Actualizar horario",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
+
+        Column(Modifier.padding(vertical = 6.dp)) {
+            com.example.upaos.ui.home.Freshness(shared.times[claveCache()], !offline, isLoading || isRefreshing)
+        }
 
         if (offline && cursos.isNotEmpty()) {
             Surface(
@@ -308,7 +326,7 @@ fun HorarioContent(
                     .padding(bottom = 8.dp)
             ) {
                 Text(
-                    text = "Sin conexión · Mostrando horario guardado",
+                    text = "Horario guardado · pendiente de actualizar",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -317,60 +335,70 @@ fun HorarioContent(
             }
         }
 
-        when {
-            isLoading && cursos.isEmpty() -> {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    repeat(3) { SkeletonHorarioCard() }
+        // Pull-to-refresh envolviendo todo el contenido
+        RefreshableContent(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                loadHorario()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            when {
+                isLoading && cursos.isEmpty() -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        repeat(3) { SkeletonHorarioCard() }
+                    }
                 }
-            }
-            errorMessage != null && cursos.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    ErrorView(
-                        message = errorMessage!!,
-                        onRetry = { loadHorario() },
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-            }
-            cursos.isEmpty() -> {
-                EmptyState(
-                    icon = Icons.Filled.Schedule,
-                    title = "Sin horario publicado",
-                    subtitle = "No hay horario para el periodo $selectedPeriodo.",
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-            }
-            else -> {
-                val proxima = calcularProximaClase(cursos)
-                RefreshableContent(
-                    isRefreshing = isRefreshing,
-                    onRefresh = {
-                            loadHorario()
-                        },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        if (proxima != null) {
-                            ProximaClaseCard(
-                                proxima = proxima,
-                                onClick = {
-                                    bloqueSeleccionado = proxima.curso to proxima.bloque
-                                }
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                        }
-                        HorarioSemanalGrid(
-                            cursos = cursos,
-                            asistenciaCursos = asistenciaCursos,
-                            onBloqueClick = { curso, bloque ->
-                                bloqueSeleccionado = curso to bloque
-                            },
-                            modifier = Modifier.weight(1f)
+                errorMessage != null && cursos.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ErrorView(
+                            message = errorMessage!!,
+                            onRetry = { loadHorario() }
                         )
                     }
+                }
+                cursos.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        EmptyState(
+                            icon = Icons.Filled.Schedule,
+                            title = "Sin horario publicado",
+                            subtitle = "No hay horario para el periodo $selectedPeriodo."
+                        )
+                    }
+                }
+                else -> {
+                    val proxima = calcularProximaClase(cursos)
+                    HorarioSemanalGrid(
+                        cursos = cursos,
+                        asistenciaCursos = asistenciaCursos,
+                        proximaClase = proxima,
+                        onProximaClick = {
+                            if (proxima != null) {
+                                bloqueSeleccionado = proxima.curso to proxima.bloque
+                            }
+                        },
+                        onBloqueClick = { curso, bloque ->
+                            bloqueSeleccionado = curso to bloque
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         }
@@ -470,6 +498,8 @@ private data class BloqueProgramado(
 private fun HorarioSemanalGrid(
     cursos: List<HorarioCurso>,
     asistenciaCursos: List<AsistenciaCurso>,
+    proximaClase: ProximaClase?,
+    onProximaClick: () -> Unit,
     onBloqueClick: (HorarioCurso, HorarioBloque) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -489,6 +519,14 @@ private fun HorarioSemanalGrid(
             .padding(bottom = 24.dp)
             .verticalScroll(vertScroll)
     ) {
+        if (proximaClase != null) {
+            ProximaClaseCard(
+                proxima = proximaClase,
+                onClick = onProximaClick
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
         Row(modifier = Modifier.horizontalScroll(horScroll)) {
             NOMBRES_DIAS.forEachIndexed { index, nombre ->
                 val esHoy = index == hoy

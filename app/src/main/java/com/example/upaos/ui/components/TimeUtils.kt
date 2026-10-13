@@ -9,17 +9,7 @@ import java.util.TimeZone
  * En producción (Render) el reloj del servidor está en UTC, así que se interpretan
  * como UTC y se comparan con el reloj del dispositivo.
  */
-private fun parsearInstant(iso: String?): Long? {
-    if (iso.isNullOrBlank()) return null
-    return try {
-        val base = if (iso.contains(".")) iso.substringBefore(".") else iso
-        val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
-        fmt.timeZone = TimeZone.getTimeZone("UTC")
-        fmt.parse(base)?.time
-    } catch (e: Exception) {
-        null
-    }
-}
+private fun parsearInstant(iso: String?): Long? = com.example.upaos.data.agenda.parseServerDate(iso)
 
 /** "hace 5 min", "hace un momento", "hace 3 h", "hace 2 días", o "" si no hay fecha. */
 fun tiempoRelativo(iso: String?): String {
@@ -48,3 +38,4 @@ private fun fechaLocal(epoch: Long): String {
     fmt.timeZone = TimeZone.getDefault()
     return fmt.format(epoch)
 }
+

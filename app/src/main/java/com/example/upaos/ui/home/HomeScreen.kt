@@ -54,6 +54,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     token: String,
+    openAgenda: Boolean = false,
+    onAgendaOpened: () -> Unit = {},
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
@@ -66,7 +68,8 @@ fun HomeScreen(
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
     val coroutineScope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 5 })
+    LaunchedEffect(openAgenda) { if (openAgenda) pagerState.scrollToPage(0) }
 
     val usuario = tokenManager.getSavedUser()
 
@@ -205,9 +208,10 @@ fun HomeScreen(
                     title = {
                         Text(
                             text = when (pagerState.currentPage) {
-                                0 -> "Mis Cursos"
-                                1 -> "Horario"
-                                2 -> "Asistencia"
+                                0 -> "Hoy"
+                                1 -> "Mis Cursos"
+                                2 -> "Horario"
+                                3 -> "Asistencia"
                                 else -> "Canvas LMS"
                             },
                             style = MaterialTheme.typography.titleMedium,
@@ -270,32 +274,38 @@ fun HomeScreen(
                 ) {
                     NavigationBarItem(
                         selected = pagerState.currentPage == 0,
-                        onClick = {
-                            coroutineScope.launch { pagerState.animateScrollToPage(0) }
-                        },
-                        icon = { Icon(Icons.Filled.School, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Cursos", fontSize = 12.sp) }
+                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
+                        icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Hoy", fontSize = 12.sp) }
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 1,
                         onClick = {
                             coroutineScope.launch { pagerState.animateScrollToPage(1) }
                         },
-                        icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Horario", fontSize = 12.sp) }
+                        icon = { Icon(Icons.Filled.School, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Cursos", fontSize = 12.sp) }
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 2,
                         onClick = {
                             coroutineScope.launch { pagerState.animateScrollToPage(2) }
                         },
-                        icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Asistencia", fontSize = 12.sp) }
+                        icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Horario", fontSize = 12.sp) }
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 3,
                         onClick = {
                             coroutineScope.launch { pagerState.animateScrollToPage(3) }
+                        },
+                        icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        label = { Text("Asistencia", fontSize = 12.sp) }
+                    )
+                    NavigationBarItem(
+                        selected = pagerState.currentPage == 4,
+                        onClick = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(4) }
                         },
                         icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(20.dp)) },
                         label = { Text("Canvas", fontSize = 12.sp) }
@@ -343,7 +353,12 @@ fun HomeScreen(
                     .weight(1f)
             ) { page ->
                 when (page) {
-                    0 -> GradesContent(
+                    0 -> TodayContent(token, dashboard, usuario,
+                        openAgenda = openAgenda, onAgendaOpened = onAgendaOpened,
+                        onSchedule = { coroutineScope.launch { pagerState.animateScrollToPage(2) } },
+                        onCanvas = { coroutineScope.launch { pagerState.animateScrollToPage(4) } },
+                        onNotifications = onOpenNotifications)
+                    1 -> GradesContent(
                         token = token,
                         dashboard = dashboard,
                         usuario = usuario,
@@ -351,12 +366,12 @@ fun HomeScreen(
                             onOpenCourse(periodo, carrera, crn, nombre)
                         }
                     )
-                    1 -> HorarioContent(
+                    2 -> HorarioContent(
                         token = token,
                         dashboard = dashboard,
                         usuario = usuario
                     )
-                    2 -> AsistenciaContent(
+                    3 -> AsistenciaContent(
                         token = token,
                         dashboard = dashboard,
                         usuario = usuario

@@ -6,6 +6,9 @@ import retrofit2.http.*
 
 interface ApiService {
 
+    @DELETE("cuenta/datos")
+    suspend fun eliminarDatosCuenta(@Query("usuario") usuario: String): Response<Map<String, Any>>
+
     @POST("login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 

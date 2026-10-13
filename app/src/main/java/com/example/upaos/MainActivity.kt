@@ -1,6 +1,7 @@
 package com.example.upaos
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -56,6 +57,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private var agendaRequest by mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        agendaRequest = intent.getStringExtra("agenda_user")
+    }
 
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -66,6 +74,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        agendaRequest = intent.getStringExtra("agenda_user")
         com.example.upaos.data.api.RetrofitClient.init(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -146,14 +155,12 @@ class MainActivity : ComponentActivity() {
                                     val currentToken = tokenManager.getToken()
                                     val currentUser = tokenManager.getSavedUser()
                                     val savedAccounts = tokenManager.getCuentas()
-                                    if (!currentUser.isNullOrBlank() || !currentToken.isNullOrBlank()) {
+                                    if (tokenManager.shouldKeepLoggedIn() && (!currentUser.isNullOrBlank() || !currentToken.isNullOrBlank())) {
                                         navegarPorTipoCuenta(currentToken ?: "")
                                     } else if (savedAccounts.isNotEmpty()) {
-                                        val primera = savedAccounts.first()
-                                        tokenManager.saveCredentials(primera.usuario, primera.password)
-                                        tokenManager.saveUserId(primera.usuario)
-                                        tokenManager.setKeepLoggedIn(true)
-                                        navegarPorTipoCuenta(tokenManager.getToken() ?: "")
+                                        navController.navigate("elige-cuenta") {
+                                            popUpTo("splash") { inclusive = true }
+                                        }
                                     } else {
                                         navController.navigate("login") {
                                             popUpTo("splash") { inclusive = true }
@@ -204,6 +211,8 @@ class MainActivity : ComponentActivity() {
                             val token = backStackEntry.arguments?.getString("token") ?: ""
                             HomeScreen(
                                 token = token,
+                                openAgenda = agendaRequest == tokenManager.getSavedUser() && agendaRequest != null,
+                                onAgendaOpened = { agendaRequest = null },
                                 isDarkTheme = darkTheme,
                                 onToggleTheme = {
                                     scope.launch { themePreferences.setDarkTheme(!darkTheme) }
@@ -286,7 +295,8 @@ class MainActivity : ComponentActivity() {
                             SettingsScreen(
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() },
-                                onOpenSugerencias = { navController.navigate("sugerencias") }
+                                onOpenSugerencias = { navController.navigate("sugerencias") },
+                                onAccountRemoved = { navController.navigate("elige-cuenta") { popUpTo(0) { inclusive = true } } }
                             )
                         }
 

@@ -5,6 +5,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.upaos.data.model.CanvasConversation
+import com.example.upaos.data.model.CanvasCourse
+import com.example.upaos.data.model.CanvasGroup
+import com.example.upaos.data.model.CanvasNotificationItem
 import com.example.upaos.data.model.CanvasTodoItem
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -17,8 +21,13 @@ class CanvasCache(private val context: Context) {
 
     private fun jsonKey(user: String) = stringPreferencesKey("canvas_todo_${user.trim().lowercase()}")
     private fun timeKey(user: String) = longPreferencesKey("canvas_time_${user.trim().lowercase()}")
+    private fun convKey(user: String) = stringPreferencesKey("canvas_conv_${user.trim().lowercase()}")
+    private fun coursesKey(user: String) = stringPreferencesKey("canvas_courses_${user.trim().lowercase()}")
+    private fun notifsKey(user: String) = stringPreferencesKey("canvas_notifs_${user.trim().lowercase()}")
+    private fun groupsKey(user: String) = stringPreferencesKey("canvas_groups_${user.trim().lowercase()}")
 
     suspend fun guardar(user: String, items: List<CanvasTodoItem>) {
+        if (AccountPrivacy.isDeleting(user) || !TokenManager(context).containsAccount(user)) return
         val json = gson.toJson(items)
         context.canvasDataStore.edit { prefs ->
             prefs[jsonKey(user)] = json
@@ -44,10 +53,90 @@ class CanvasCache(private val context: Context) {
         }
     }
 
+    suspend fun guardarConversaciones(user: String, convs: List<CanvasConversation>) {
+        if (AccountPrivacy.isDeleting(user) || !TokenManager(context).containsAccount(user)) return
+        val json = gson.toJson(convs)
+        context.canvasDataStore.edit { prefs ->
+            prefs[convKey(user)] = json
+        }
+    }
+
+    suspend fun cargarConversaciones(user: String): List<CanvasConversation> {
+        val prefs = context.canvasDataStore.data.first()
+        val json = prefs[convKey(user)] ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<CanvasConversation>>() {}.type
+            gson.fromJson<List<CanvasConversation>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun guardarCursos(user: String, courses: List<CanvasCourse>) {
+        if (AccountPrivacy.isDeleting(user) || !TokenManager(context).containsAccount(user)) return
+        val json = gson.toJson(courses)
+        context.canvasDataStore.edit { prefs ->
+            prefs[coursesKey(user)] = json
+        }
+    }
+
+    suspend fun cargarCursos(user: String): List<CanvasCourse> {
+        val prefs = context.canvasDataStore.data.first()
+        val json = prefs[coursesKey(user)] ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<CanvasCourse>>() {}.type
+            gson.fromJson<List<CanvasCourse>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun guardarNotificaciones(user: String, notifs: List<CanvasNotificationItem>) {
+        if (AccountPrivacy.isDeleting(user) || !TokenManager(context).containsAccount(user)) return
+        val json = gson.toJson(notifs)
+        context.canvasDataStore.edit { prefs ->
+            prefs[notifsKey(user)] = json
+        }
+    }
+
+    suspend fun cargarNotificaciones(user: String): List<CanvasNotificationItem> {
+        val prefs = context.canvasDataStore.data.first()
+        val json = prefs[notifsKey(user)] ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<CanvasNotificationItem>>() {}.type
+            gson.fromJson<List<CanvasNotificationItem>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun guardarGrupos(user: String, groups: List<CanvasGroup>) {
+        if (AccountPrivacy.isDeleting(user) || !TokenManager(context).containsAccount(user)) return
+        val json = gson.toJson(groups)
+        context.canvasDataStore.edit { prefs ->
+            prefs[groupsKey(user)] = json
+        }
+    }
+
+    suspend fun cargarGrupos(user: String): List<CanvasGroup> {
+        val prefs = context.canvasDataStore.data.first()
+        val json = prefs[groupsKey(user)] ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<CanvasGroup>>() {}.type
+            gson.fromJson<List<CanvasGroup>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     suspend fun limpiar(user: String) {
         context.canvasDataStore.edit { prefs ->
             prefs.remove(jsonKey(user))
             prefs.remove(timeKey(user))
+            prefs.remove(convKey(user))
+            prefs.remove(coursesKey(user))
+            prefs.remove(notifsKey(user))
+            prefs.remove(groupsKey(user))
         }
     }
 }

@@ -155,6 +155,7 @@ object SyncScheduler {
 
         WorkManager.getInstance(context).cancelUniqueWork(PERIODIC_WORK_NAME)
         WorkManager.getInstance(context).cancelUniqueWork(ONE_TIME_WORK_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork("upao_immediate_sync")
         WorkManager.getInstance(context).cancelUniqueWork("upao_asistencia_check")
         WorkManager.getInstance(context).cancelUniqueWork("upao_asistencia_5min_check")
         Log.d(TAG, "Todas las sincronizaciones en segundo plano han sido canceladas.")
@@ -169,7 +170,7 @@ object SyncScheduler {
             .setConstraints(constraints)
             .build()
 
-        WorkManager.getInstance(context).enqueue(request)
+        WorkManager.getInstance(context).enqueueUniqueWork("upao_immediate_sync", ExistingWorkPolicy.KEEP, request)
         Log.d(TAG, "Sincronización inmediata solicitada.")
     }
 }

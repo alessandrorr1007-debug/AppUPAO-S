@@ -22,43 +22,65 @@ class TokenManager(context: Context) {
     private val fallbackPrefs: SharedPreferences =
         context.getSharedPreferences("upao_session_permanent", Context.MODE_PRIVATE)
 
-    private val prefs: SharedPreferences = try {
-        EncryptedSharedPreferences.create(
-            context,
-            "secret_upao_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    } catch (e: Exception) {
-        fallbackPrefs
+    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        "secret_upao_prefs",
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+    init {
+        synchronized(migrationLock) {
+            val legacy = fallbackPrefs.all
+            if (legacy.isNotEmpty()) {
+                val editor = prefs.edit()
+                legacy.forEach { (key, value) ->
+                    if (!prefs.contains(key)) {
+                        when (value) {
+                            is String -> editor.putString(key, value)
+                            is Boolean -> editor.putBoolean(key, value)
+                        }
+                    }
+                }
+                check(editor.commit()) { "No se pudieron proteger las credenciales guardadas" }
+                check(fallbackPrefs.edit().clear().commit()) { "No se pudo limpiar el respaldo antiguo" }
+            }
+        }
+    }
+
+    companion object {
+        private val migrationLock = Any()
     }
 
     fun saveToken(token: String) {
         prefs.edit().putString("auth_token", token).apply()
-        fallbackPrefs.edit().putString("auth_token", token).apply()
     }
 
     fun getToken(): String? {
         return prefs.getString("auth_token", null)
-            ?: fallbackPrefs.getString("auth_token", null)
     }
 
     fun saveCredentials(user: String, pass: String) {
-        prefs.edit().putString("user_id", user).putString("user_pass", pass).putBoolean("keep_logged_in", true).apply()
-        fallbackPrefs.edit().putString("user_id", user).putString("user_pass", pass).putBoolean("keep_logged_in", true).apply()
+        prefs.edit().putString("user_id", user).putString("user_pass", pass).apply()
     }
 
     fun saveUserId(user: String) {
-        prefs.edit().putString("user_id", user).putBoolean("keep_logged_in", true).apply()
-        fallbackPrefs.edit().putString("user_id", user).putBoolean("keep_logged_in", true).apply()
+        prefs.edit().putString("user_id", user).apply()
     }
 
     fun getSavedUser(): String? =
-        prefs.getString("user_id", null) ?: fallbackPrefs.getString("user_id", null)
+        prefs.getString("user_id", null)
+
+    fun containsAccount(user: String): Boolean = getSavedUser() == user || getCuentas().any { it.usuario == user }
+
+    fun forgetCurrentPassword() {
+        prefs.edit().remove("user_pass").apply()
+        getSavedUser()?.let { removeCuenta(it) }
+    }
 
     fun getSavedPass(): String? {
-        val pass = prefs.getString("user_pass", null) ?: fallbackPrefs.getString("user_pass", null)
+        val pass = prefs.getString("user_pass", null)
         if (!pass.isNullOrBlank()) return pass
         // Respaldo: buscar en las cuentas guardadas
         val user = getSavedUser()
@@ -74,13 +96,12 @@ class TokenManager(context: Context) {
 
     fun setKeepLoggedIn(keep: Boolean) {
         prefs.edit().putBoolean("keep_logged_in", keep).apply()
-        fallbackPrefs.edit().putBoolean("keep_logged_in", keep).apply()
     }
 
     fun shouldKeepLoggedIn(): Boolean {
         val user = getSavedUser()
         if (user.isNullOrBlank()) return false
-        return prefs.getBoolean("keep_logged_in", true) && fallbackPrefs.getBoolean("keep_logged_in", true)
+        return prefs.getBoolean("keep_logged_in", true)
     }
 
     // ---------- Cuentas guardadas (multi-cuenta) ----------
@@ -91,12 +112,10 @@ class TokenManager(context: Context) {
         actuales.add(CuentaGuardada(usuario, password, nombre))
         val json = guardarJson(actuales)
         prefs.edit().putString("cuentas_guardadas", json).apply()
-        fallbackPrefs.edit().putString("cuentas_guardadas", json).apply()
     }
 
     fun getCuentas(): List<CuentaGuardada> {
         val raw = prefs.getString("cuentas_guardadas", null)
-            ?: fallbackPrefs.getString("cuentas_guardadas", null)
             ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
@@ -118,7 +137,6 @@ class TokenManager(context: Context) {
         actuales.removeAll { it.usuario == usuario }
         val json = guardarJson(actuales)
         prefs.edit().putString("cuentas_guardadas", json).apply()
-        fallbackPrefs.edit().putString("cuentas_guardadas", json).apply()
     }
 
     private fun guardarJson(cuentas: List<CuentaGuardada>): String {
@@ -138,18 +156,16 @@ class TokenManager(context: Context) {
     fun saveCanvasToken(usuario: String, token: String) {
         val key = "canvas_token_${usuario.trim().lowercase()}"
         prefs.edit().putString(key, token).apply()
-        fallbackPrefs.edit().putString(key, token).apply()
     }
 
     fun getCanvasToken(usuario: String): String? {
         val key = "canvas_token_${usuario.trim().lowercase()}"
-        return prefs.getString(key, null) ?: fallbackPrefs.getString(key, null)
+        return prefs.getString(key, null)
     }
 
     fun removeCanvasToken(usuario: String) {
         val key = "canvas_token_${usuario.trim().lowercase()}"
         prefs.edit().remove(key).apply()
-        fallbackPrefs.edit().remove(key).apply()
     }
 
     /** Cierra la sesión actual sin borrar las cuentas guardadas del dispositivo. */
@@ -160,16 +176,9 @@ class TokenManager(context: Context) {
             .remove("user_pass")
             .putBoolean("keep_logged_in", false)
             .apply()
-        fallbackPrefs.edit()
-            .remove("auth_token")
-            .remove("user_id")
-            .remove("user_pass")
-            .putBoolean("keep_logged_in", false)
-            .apply()
     }
 
     fun clearAll() {
         prefs.edit().clear().apply()
-        fallbackPrefs.edit().clear().apply()
     }
 }

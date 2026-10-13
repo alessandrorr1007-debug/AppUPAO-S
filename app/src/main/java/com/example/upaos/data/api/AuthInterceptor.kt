@@ -20,7 +20,10 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
         val currentToken = tokenManager?.getToken()
 
         // Inyectamos siempre el token más reciente de TokenManager si la petición requiere Authorization
-        val initialRequest = if (!currentToken.isNullOrBlank() && originalRequest.header("Authorization") != null) {
+        val isLogin = originalRequest.url.encodedPath == "/login" ||
+            originalRequest.url.encodedPath == "/login/confirmar-captcha" ||
+            originalRequest.url.encodedPath == "/admin/login"
+        val initialRequest = if (!currentToken.isNullOrBlank() && !isLogin) {
             originalRequest.newBuilder()
                 .header("Authorization", "Bearer $currentToken")
                 .build()
@@ -31,7 +34,7 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
         val response = chain.proceed(initialRequest)
 
         // Si la respuesta es HTTP 401 y no proviene de /login
-        if (response.code == 401 && !originalRequest.url.encodedPath.contains("login")) {
+        if (response.code == 401 && !originalRequest.url.encodedPath.contains("login") && originalRequest.method != "DELETE") {
             Log.d("UPAO_APP", "[AuthInterceptor] HTTP 401 recibido en ${originalRequest.url.encodedPath}. Intentando re-login en segundo plano...")
 
             try {
@@ -39,7 +42,7 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
                     val user = tokenManager.getSavedUser()
                     val pass = tokenManager.getSavedPass()
 
-                    if (!user.isNullOrBlank() && !pass.isNullOrBlank()) {
+                    if (!user.isNullOrBlank() && !pass.isNullOrBlank() && !com.example.upaos.data.local.AccountPrivacy.isDeleting(user)) {
                         synchronized(this) {
                             val freshToken = tokenManager.getToken()
                             val requestAuthHeader = initialRequest.header("Authorization")
@@ -108,20 +111,20 @@ class AuthInterceptor(private val contextProvider: () -> Context?) : Interceptor
                 .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
 
-            val loginResponse = loginClient.newCall(loginRequest).execute()
-            val responseBodyStr = loginResponse.body?.string()
-            Log.d("UPAO_APP", "[AuthInterceptor] Re-login HTTP code=${loginResponse.code}, body=$responseBodyStr")
+            loginClient.newCall(loginRequest).execute().use { loginResponse ->
+                val responseBodyStr = loginResponse.body?.string()
+                Log.d("UPAO_APP", "[AuthInterceptor] Re-login HTTP code=${loginResponse.code}")
 
-            if (loginResponse.isSuccessful) {
-                if (!responseBodyStr.isNullOrBlank()) {
-                    val jsonObj = JSONObject(responseBodyStr)
-                    val success = jsonObj.optBoolean("success", false)
-                    val token = jsonObj.optString("token", "")
+                if (loginResponse.isSuccessful) {
+                    if (!responseBodyStr.isNullOrBlank()) {
+                        val jsonObj = JSONObject(responseBodyStr)
+                        val success = jsonObj.optBoolean("success", false)
+                        val token = jsonObj.optString("token", "")
 
-                    if (success && !token.isNullOrBlank()) {
-                        tokenManager.saveToken(token)
-                        tokenManager.setKeepLoggedIn(true)
-                        return token
+                        if (success && !token.isNullOrBlank() && tokenManager.getSavedUser() == user && !com.example.upaos.data.local.AccountPrivacy.isDeleting(user)) {
+                            tokenManager.saveToken(token)
+                            return token
+                        }
                     }
                 }
             }

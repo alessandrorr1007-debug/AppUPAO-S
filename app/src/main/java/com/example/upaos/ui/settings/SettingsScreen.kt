@@ -47,7 +47,8 @@ private const val INTERVALO_FIJO_MINUTOS = 5
 fun SettingsScreen(
     usuario: String?,
     onBack: () -> Unit,
-    onOpenSugerencias: () -> Unit
+    onOpenSugerencias: () -> Unit,
+    onAccountRemoved: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -201,6 +202,7 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
+            if (usuario != null) PrivacyControls(usuario, onAccountRemoved)
             if (cargando) {
                 Box(
                     modifier = Modifier.fillMaxWidth(),

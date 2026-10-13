@@ -17,6 +17,8 @@ import com.example.upaos.widget.ResumenNotasWidget
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
 class AsistenciaWorker(
@@ -24,7 +26,11 @@ class AsistenciaWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
-    private val notificationPrefs = NotificationPreferences(context)
+    init {
+        RetrofitClient.init(context)
+    }
+
+    private var notificationPrefs = NotificationPreferences(context)
     private val tokenManager = TokenManager(context)
     private val apiCache = ApiCache(context)
     private val gradesCache = GradesCache(context)
@@ -32,75 +38,73 @@ class AsistenciaWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         if (com.example.upaos.data.refresh.ForegroundRefreshGate.active) return@withContext Result.success()
-        val checkAsistencia = notificationPrefs.checkAsistenciaEnabled
-        val checkNotas = notificationPrefs.checkNotasEnabled
-
-        if (!checkAsistencia && !checkNotas) {
-            Log.d(TAG, "Notificaciones de asistencia y notas desactivadas. Omitiendo revisión.")
-            return@withContext Result.success()
-        }
-
-        val user = tokenManager.getSavedUser()
-        val pass = tokenManager.getSavedPass()
-        var token = tokenManager.getToken()
-
-        if (user.isNullOrBlank()) {
-            Log.d(TAG, "Sin usuario guardado, omitiendo chequeo.")
-            return@withContext Result.success()
-        }
-
+        if (!syncMutex.tryLock()) return@withContext Result.success()
         try {
-            // Si no hay token pero sí credenciales, intentamos autenticar
-            if (token.isNullOrBlank() && !pass.isNullOrBlank()) {
-                val loginRes = RetrofitClient.apiService.login(LoginRequest(user, pass))
-                val nuevoToken = loginRes.body()?.token
-                if (loginRes.isSuccessful && !nuevoToken.isNullOrBlank()) {
-                    token = nuevoToken
-                    tokenManager.saveToken(nuevoToken)
-                }
-            }
+            if (!tokenManager.shouldKeepLoggedIn()) return@withContext Result.success()
+            val checkAsistencia = notificationPrefs.checkAsistenciaEnabled
+            val checkNotas = notificationPrefs.checkNotasEnabled
 
-            if (token.isNullOrBlank()) {
-                Log.w(TAG, "No se pudo obtener token para sincronización en segundo plano.")
-                SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
+            if (!checkAsistencia && !checkNotas) {
+                Log.d(TAG, "Notificaciones de asistencia y notas desactivadas. Omitiendo revisión.")
                 return@withContext Result.success()
             }
 
-            // 1. Revisión de Asistencia
-            if (checkAsistencia) {
-                token = revisarAsistencia(token, user, pass)
-            }
+            val user = tokenManager.getSavedUser()
+            val pass = tokenManager.getSavedPass()
+            var token = tokenManager.getToken()
 
-            // 2. Revisión de Notas
-            if (checkNotas) {
-                revisarNotas(token, user, pass)
+            if (user.isNullOrBlank()) {
+                Log.d(TAG, "Sin usuario guardado, omitiendo chequeo.")
+                return@withContext Result.success()
             }
+            notificationPrefs = NotificationPreferences(applicationContext, user)
 
-            // Reprograma la siguiente verificación en 5 minutos
-            SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
-            Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próxima en 5 min.")
-            Result.success()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error en AsistenciaWorker/BackgroundSync: ${e.localizedMessage}", e)
-            SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
-            Result.retry()
+            try {
+                // Si no hay token pero sí credenciales, intentamos autenticar
+                if (token.isNullOrBlank() && !pass.isNullOrBlank()) {
+                    val loginRes = RetrofitClient.apiService.login(LoginRequest(user, pass))
+                    val nuevoToken = loginRes.body()?.token
+                    if (loginRes.isSuccessful && !nuevoToken.isNullOrBlank()) {
+                        token = nuevoToken
+                        tokenManager.saveToken(nuevoToken)
+                    }
+                }
+
+                if (token.isNullOrBlank()) {
+                    Log.w(TAG, "No se pudo obtener token para sincronización en segundo plano.")
+                    SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
+                    return@withContext Result.success()
+                }
+
+                // 1. Revisión de Asistencia
+                if (checkAsistencia) {
+                    revisarAsistencia(token, user)
+                }
+
+                // 2. Revisión de Notas
+                if (checkNotas) {
+                    revisarNotas(token, user)
+                }
+
+                // Reprograma la siguiente verificación en 5 minutos
+                SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
+                Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próxima en 5 min.")
+                Result.success()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e(TAG, "Error en AsistenciaWorker/BackgroundSync: ${e.localizedMessage}", e)
+                SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
+                Result.retry()
+            }
+        } finally {
+            syncMutex.unlock()
         }
     }
 
-    private suspend fun revisarAsistencia(tokenInicial: String, user: String, pass: String?): String {
-        var activeToken = tokenInicial
+    private suspend fun revisarAsistencia(token: String, user: String) {
         try {
-            var res = RetrofitClient.apiService.getAsistencia("Bearer $activeToken")
-
-            if (res.code() == 401 && !pass.isNullOrBlank()) {
-                val loginRes = RetrofitClient.apiService.login(LoginRequest(user, pass))
-                val nuevoToken = loginRes.body()?.token
-                if (loginRes.isSuccessful && !nuevoToken.isNullOrBlank()) {
-                    activeToken = nuevoToken
-                    tokenManager.saveToken(nuevoToken)
-                    res = RetrofitClient.apiService.getAsistencia("Bearer $activeToken")
-                }
-            }
+            val res = RetrofitClient.apiService.getAsistencia("Bearer $token")
+            if (tokenManager.getSavedUser() != user) return
 
             if (res.isSuccessful && res.body() != null) {
                 val nuevaAsistencia = res.body()!!.asistencia
@@ -114,13 +118,12 @@ class AsistenciaWorker(
                 Log.w(TAG, "Respuesta no exitosa al consultar asistencia: ${res.code()}")
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e(TAG, "Error revisando asistencia: ${e.localizedMessage}")
         }
-        return activeToken
     }
 
-    private suspend fun revisarNotas(token: String, user: String, pass: String?) {
-        var activeToken = token
+    private suspend fun revisarNotas(token: String, user: String) {
         try {
             // Determinamos periodo y carrera
             var periodo = "202610"
@@ -136,7 +139,7 @@ class AsistenciaWorker(
                 } catch (_: Exception) {}
             } else {
                 try {
-                    val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $activeToken")
+                    val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
                     if (periodosRes.isSuccessful && periodosRes.body() != null) {
                         val body = periodosRes.body()!!
                         periodo = detectarPeriodoActual(body.periodos, body.periodoActual)
@@ -145,17 +148,8 @@ class AsistenciaWorker(
             }
 
             val req = mapOf("periodo" to periodo, "carrera" to carrera)
-            var res = RetrofitClient.apiService.buscarNotas("Bearer $activeToken", req)
-
-            if (res.code() == 401 && !pass.isNullOrBlank()) {
-                val loginRes = RetrofitClient.apiService.login(LoginRequest(user, pass))
-                val nuevoToken = loginRes.body()?.token
-                if (loginRes.isSuccessful && !nuevoToken.isNullOrBlank()) {
-                    activeToken = nuevoToken
-                    tokenManager.saveToken(nuevoToken)
-                    res = RetrofitClient.apiService.buscarNotas("Bearer $activeToken", req)
-                }
-            }
+            val res = RetrofitClient.apiService.buscarNotas("Bearer $token", req)
+            if (tokenManager.getSavedUser() != user) return
 
             if (res.isSuccessful && res.body() != null) {
                 val body = res.body()!!
@@ -174,6 +168,7 @@ class AsistenciaWorker(
                 Log.w(TAG, "Respuesta no exitosa al consultar notas: ${res.code()}")
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e(TAG, "Error revisando notas en segundo plano: ${e.localizedMessage}")
         }
     }
@@ -185,6 +180,7 @@ class AsistenciaWorker(
             try {
                 gson.fromJson(snapshotPrevioRaw, type) ?: emptyMap()
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 emptyMap()
             }
         } else {
@@ -254,6 +250,7 @@ class AsistenciaWorker(
             try {
                 gson.fromJson(snapshotPrevioRaw, type) ?: emptyMap()
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 emptyMap()
             }
         } else {
@@ -358,6 +355,7 @@ class AsistenciaWorker(
 
     companion object {
         private const val TAG = "UPAO_BackgroundSync"
+        private val syncMutex = com.example.upaos.data.refresh.ForegroundRefreshGate.lock
 
         /**
          * Programa la sincronización periódica de 5 minutos utilizando SyncScheduler

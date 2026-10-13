@@ -3,10 +3,14 @@ package com.example.upaos.data.local
 import android.content.Context
 import android.content.SharedPreferences
 
-class NotificationPreferences(context: Context) {
+class NotificationPreferences(context: Context, usuario: String? = null) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("upaos_notification_prefs", Context.MODE_PRIVATE)
+
+    private val snapshotPrefs: SharedPreferences = context.getSharedPreferences(
+        "upaos_notification_snapshots_${usuario ?: TokenManager(context).getSavedUser() ?: "anonymous"}", Context.MODE_PRIVATE
+    )
 
     var checkNotasEnabled: Boolean
         get() = prefs.getBoolean(KEY_CHECK_NOTAS, true)
@@ -21,20 +25,20 @@ class NotificationPreferences(context: Context) {
         set(value) = prefs.edit().putInt(KEY_INTERVALO_MINUTOS, value).apply()
 
     var ultimaRevisionAsistencia: Long
-        get() = prefs.getLong(KEY_ULTIMA_REVISION, 0L)
-        set(value) = prefs.edit().putLong(KEY_ULTIMA_REVISION, value).apply()
+        get() = snapshotPrefs.getLong(KEY_ULTIMA_REVISION, 0L)
+        set(value) = snapshotPrefs.edit().putLong(KEY_ULTIMA_REVISION, value).apply()
 
     var ultimoSnapshotAsistencia: String?
-        get() = prefs.getString(KEY_ULTIMO_SNAPSHOT, null)
-        set(value) = prefs.edit().putString(KEY_ULTIMO_SNAPSHOT, value).apply()
+        get() = snapshotPrefs.getString(KEY_ULTIMO_SNAPSHOT, null)
+        set(value) = snapshotPrefs.edit().putString(KEY_ULTIMO_SNAPSHOT, value).apply()
 
     var ultimaRevisionNotas: Long
-        get() = prefs.getLong(KEY_ULTIMA_REVISION_NOTAS, 0L)
-        set(value) = prefs.edit().putLong(KEY_ULTIMA_REVISION_NOTAS, value).apply()
+        get() = snapshotPrefs.getLong(KEY_ULTIMA_REVISION_NOTAS, 0L)
+        set(value) = snapshotPrefs.edit().putLong(KEY_ULTIMA_REVISION_NOTAS, value).apply()
 
     var ultimoSnapshotNotas: String?
-        get() = prefs.getString(KEY_ULTIMO_SNAPSHOT_NOTAS, null)
-        set(value) = prefs.edit().putString(KEY_ULTIMO_SNAPSHOT_NOTAS, value).apply()
+        get() = snapshotPrefs.getString(KEY_ULTIMO_SNAPSHOT_NOTAS, null)
+        set(value) = snapshotPrefs.edit().putString(KEY_ULTIMO_SNAPSHOT_NOTAS, value).apply()
 
     companion object {
         private const val KEY_CHECK_NOTAS = "check_notas_enabled"

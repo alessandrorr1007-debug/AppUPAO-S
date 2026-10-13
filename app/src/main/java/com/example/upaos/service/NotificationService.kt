@@ -27,6 +27,7 @@ object FcmTokenHelper {
     private const val TAG = "UPAO_FCM"
 
     fun register(context: Context) {
+        RetrofitClient.init(context)
         val usuario = TokenManager(context).getSavedUser() ?: return
         @Suppress("DEPRECATION")
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
@@ -52,7 +53,7 @@ class NotificationService : FirebaseMessagingService() {
     @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        Log.d(TAG, "Nuevo token FCM: ${token.take(20)}...")
+        Log.d(TAG, "Token FCM actualizado")
         FcmTokenHelper.register(applicationContext)
     }
 
