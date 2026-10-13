@@ -48,14 +48,3 @@ private fun fechaLocal(epoch: Long): String {
     fmt.timeZone = TimeZone.getDefault()
     return fmt.format(epoch)
 }
-
-/** Texto "Actualizado hace X" / "Actualizado a las HH:mm". */
-fun textoUltimaActualizacion(iso: String?): String {
-    val epoch = parsearInstant(iso) ?: return ""
-    val minutos = (System.currentTimeMillis() - epoch) / 60000
-    return when {
-        minutos < 1 -> "Actualizado hace un momento"
-        minutos < 60 -> "Actualizado hace $minutos min"
-        else -> "Actualizado a las ${horaLocal(iso)}"
-    }
-}

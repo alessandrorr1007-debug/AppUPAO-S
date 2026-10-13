@@ -31,6 +31,7 @@ class AsistenciaWorker(
     private val gson = Gson()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        if (com.example.upaos.data.refresh.ForegroundRefreshGate.active) return@withContext Result.success()
         val checkAsistencia = notificationPrefs.checkAsistenciaEnabled
         val checkNotas = notificationPrefs.checkNotasEnabled
 

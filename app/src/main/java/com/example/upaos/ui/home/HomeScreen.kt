@@ -23,6 +23,11 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,14 +42,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.ui.asistencia.AsistenciaContent
 import com.example.upaos.ui.canvas.CanvasContent
 import com.example.upaos.ui.grades.GradesContent
 import com.example.upaos.ui.horario.HorarioContent
 import androidx.compose.material.icons.automirrored.filled.Assignment
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -64,8 +67,6 @@ fun HomeScreen(
     val tokenManager = remember { TokenManager(context) }
     val coroutineScope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
-    var unreadCount by remember { mutableIntStateOf(0) }
-    var semanaEtiqueta by remember { mutableStateOf<String?>(null) }
 
     val usuario = tokenManager.getSavedUser()
 
@@ -74,44 +75,21 @@ fun HomeScreen(
         onLogout()
     }
 
-    LaunchedEffect(usuario) {
-        if (usuario == null) return@LaunchedEffect
-        try {
-            val res = RetrofitClient.apiService.getSemana()
-            if (res.isSuccessful && res.body() != null) {
-                val info = res.body()!!
-                if (info.configurada && info.fueraDeCiclo != true && !info.etiqueta.isNullOrBlank()) {
-                    semanaEtiqueta = info.etiqueta
-                }
-            }
-        } catch (e: Exception) {
-            // Silencioso
+    val dashboard: DashboardViewModel = viewModel(
+        key = "dashboard_${usuario}_${token.hashCode()}",
+        factory = DashboardViewModel.factory(context.applicationContext as android.app.Application, token, usuario ?: "anonimo")
+    )
+    val shared by dashboard.state.collectAsState()
+    val unreadCount = shared.notices?.noLeidas ?: 0
+    val semanaEtiqueta = shared.week?.takeIf { it.configurada && it.fueraDeCiclo != true }?.etiqueta
+    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(dashboard, lifecycle) {
+        val observer = LifecycleEventObserver { _, _ ->
+            dashboard.setForeground(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         }
-    }
-
-    LaunchedEffect(usuario) {
-        if (usuario == null) return@LaunchedEffect
-        var ciclos = 0
-        while (true) {
-            try {
-                val res = RetrofitClient.apiService.getNotificaciones(usuario)
-                if (res.isSuccessful && res.body() != null) {
-                    unreadCount = res.body()!!.noLeidas
-                }
-            } catch (e: Exception) {
-                // Silencioso
-            }
-            ciclos++
-            // Cada 5 minutos (10 ciclos de 30s) revisamos asistencia si está habilitado
-            if (ciclos >= 10) {
-                ciclos = 0
-                val notifPrefs = com.example.upaos.data.local.NotificationPreferences(context)
-                if (notifPrefs.checkAsistenciaEnabled || notifPrefs.checkNotasEnabled) {
-                    com.example.upaos.service.AsistenciaWorker.runOnce(context)
-                }
-            }
-            delay(30_000)
-        }
+        lifecycle.addObserver(observer)
+        dashboard.setForeground(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        onDispose { lifecycle.removeObserver(observer); dashboard.setForeground(false) }
     }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -367,6 +345,7 @@ fun HomeScreen(
                 when (page) {
                     0 -> GradesContent(
                         token = token,
+                        dashboard = dashboard,
                         usuario = usuario,
                         onOpenCourse = { periodo, carrera, crn, nombre ->
                             onOpenCourse(periodo, carrera, crn, nombre)
@@ -374,10 +353,12 @@ fun HomeScreen(
                     )
                     1 -> HorarioContent(
                         token = token,
+                        dashboard = dashboard,
                         usuario = usuario
                     )
                     2 -> AsistenciaContent(
                         token = token,
+                        dashboard = dashboard,
                         usuario = usuario
                     )
                     else -> CanvasContent(

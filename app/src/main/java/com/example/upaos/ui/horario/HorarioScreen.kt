@@ -1,5 +1,6 @@
 package com.example.upaos.ui.horario
 
+import com.example.upaos.ui.home.DashboardViewModel
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -31,8 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
-import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.model.AsistenciaComponente
 import com.example.upaos.data.model.AsistenciaCurso
 import com.example.upaos.data.model.AsistenciaResponse
@@ -50,7 +49,6 @@ import com.example.upaos.ui.grades.detectarPeriodoActual
 import com.example.upaos.ui.theme.UpaoBlue
 import com.example.upaos.ui.theme.UpaoOrange
 import com.example.upaos.widget.ProximoCursoWidget
-import com.google.gson.Gson
 import java.util.Calendar
 import kotlinx.coroutines.launch
 
@@ -237,131 +235,24 @@ private fun calcularProximaClase(cursos: List<HorarioCurso>): ProximaClase? {
 @Composable
 fun HorarioContent(
     token: String,
+    dashboard: DashboardViewModel,
     usuario: String? = null,
     onSesionExpirada: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val cache = remember { ApiCache(context) }
-    val gson = remember { Gson() }
-
-    var periodos by remember { mutableStateOf(listOf("202610")) }
-    var selectedPeriodo by remember { mutableStateOf("202610") }
+    val shared by dashboard.state.collectAsState()
+    val selectedPeriodo = shared.schedulePeriod
+    val periodos = shared.periods.ifEmpty { listOf(selectedPeriodo) }
     var periodosExpanded by remember { mutableStateOf(false) }
-
-    var cursos by remember { mutableStateOf<List<HorarioCurso>>(emptyList()) }
-    var asistenciaCursos by remember { mutableStateOf<List<AsistenciaCurso>>(emptyList()) }
+    val cursos = shared.schedules[selectedPeriodo]?.listaCursos ?: emptyList()
+    val asistenciaCursos = shared.attendance?.asistencia ?: emptyList()
     var bloqueSeleccionado by remember { mutableStateOf<Pair<HorarioCurso, HorarioBloque>?>(null) }
-
-    var isLoading by remember { mutableStateOf(false) }
-    var isRefreshing by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var offline by remember { mutableStateOf(false) }
-    fun claveCache(): String = "horario_${usuario ?: "anonimo"}_$selectedPeriodo"
-
-    fun aplicarCache() {
-        scope.launch {
-            try {
-                // Cargar asistencia de caché para asociar docentes y NRCs específicos de componentes
-                val asisJson = cache.cargar("asistencia_${usuario ?: "anonimo"}")
-                if (asisJson != null) {
-                    val asisBody = gson.fromJson(asisJson, AsistenciaResponse::class.java)
-                    asistenciaCursos = asisBody.asistencia
-                }
-
-                if (cursos.isNotEmpty()) return@launch
-                var json = cache.cargar(claveCache())
-                if (json == null) {
-                    val prefijo = "horario_${usuario ?: "anonimo"}_"
-                    val todas = cache.listarPorPrefijo(prefijo)
-                    val periodoEnCache = todas.keys
-                        .mapNotNull { it.removePrefix(prefijo) }
-                        .sorted()
-                        .lastOrNull()
-                    if (periodoEnCache != null) {
-                        selectedPeriodo = periodoEnCache
-                        json = todas[prefijo + periodoEnCache]
-                    }
-                }
-                if (json == null) return@launch
-                val body = gson.fromJson(json, HorarioResponse::class.java)
-                cursos = body.listaCursos
-                Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${cursos.size} cursos de horario")
-            } catch (e: Exception) {
-                Log.e("UPAO_APP", "[Android UI] Error leyendo caché de horario: ${e.localizedMessage}", e)
-            }
-        }
-    }
-
-    fun loadHorario() {
-        isLoading = true
-        errorMessage = null
-        offline = false
-        scope.launch {
-            try {
-                Log.d("UPAO_APP", "[Android UI] Consultando horario para term=$selectedPeriodo...")
-                val res = RetrofitClient.apiService.getHorario("Bearer $token", selectedPeriodo)
-                isLoading = false
-                isRefreshing = false
-                val errBody = res.errorBody()?.string()
-                if (res.isSuccessful && res.body() != null) {
-                    val body = res.body()!!
-                    cursos = body.listaCursos
-                    scope.launch { cache.guardar(claveCache(), gson.toJson(body)) }
-                    // Actualiza el widget de próxima clase
-                    try {
-                        ProximoCursoWidget.updateAll(context)
-                    } catch (e: Exception) {
-                        // Widget no instalado
-                    }
-                } else {
-                    val err = errBody ?: "Error desconocido"
-                    errorMessage = "Error HTTP ${res.code()}: $err"
-                    Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
-                }
-            } catch (e: Exception) {
-                isLoading = false
-                isRefreshing = false
-                if (cursos.isNotEmpty()) {
-                    offline = true
-                } else {
-                    errorMessage = "Sin conexión: ${e.localizedMessage}"
-                }
-            }
-        }
-    }
-
-    fun cargarAsistencia() {
-        scope.launch {
-            try {
-                val res = RetrofitClient.apiService.getAsistencia("Bearer $token")
-                if (res.isSuccessful && res.body() != null) {
-                    asistenciaCursos = res.body()!!.asistencia
-                    cache.guardar("asistencia_${usuario ?: "anonimo"}", gson.toJson(res.body()!!))
-                }
-            } catch (_: Exception) {
-                // Si falla la red, ya se cargó de la caché en aplicarCache()
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        try {
-            val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
-            if (periodosRes.isSuccessful && periodosRes.body() != null) {
-                val body = periodosRes.body()!!
-                periodos = body.periodos
-                selectedPeriodo = detectarPeriodoActual(body.periodos, body.periodoActual)
-            }
-            aplicarCache()
-            loadHorario()
-            cargarAsistencia()
-        } catch (e: Exception) {
-            aplicarCache()
-            loadHorario()
-            cargarAsistencia()
-        }
-    }
+    val isLoading = shared.busy
+    val isRefreshing = shared.busy
+    fun claveCache() = dashboard.scheduleCacheKey(selectedPeriodo)
+    val errorMessage = shared.errors[claveCache()]
+    val offline = claveCache() !in shared.fresh
+    fun loadHorario() = dashboard.refresh()
 
     Column(
         modifier = Modifier
@@ -397,7 +288,6 @@ fun HorarioContent(
                         DropdownMenuItem(
                             text = { Text(item, fontSize = 13.sp) },
                             onClick = {
-                                selectedPeriodo = item
                                 periodosExpanded = false
                                 loadHorario()
                             }
@@ -458,10 +348,8 @@ fun HorarioContent(
                 RefreshableContent(
                     isRefreshing = isRefreshing,
                     onRefresh = {
-                        isRefreshing = true
-                        loadHorario()
-                        cargarAsistencia()
-                    },
+                            loadHorario()
+                        },
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {

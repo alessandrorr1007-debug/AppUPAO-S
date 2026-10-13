@@ -1,5 +1,6 @@
 package com.example.upaos.ui.grades
 
+import com.example.upaos.ui.home.DashboardViewModel
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
@@ -30,8 +31,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
-import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.GradesResponse
@@ -44,9 +43,7 @@ import com.example.upaos.ui.components.SkeletonCourseCard
 import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.gradeColor
 import com.example.upaos.ui.components.isPendiente
-import com.example.upaos.ui.components.textoUltimaActualizacion
 import com.example.upaos.ui.components.toTitleCase
-import com.google.gson.Gson
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
@@ -66,183 +63,30 @@ fun detectarPeriodoActual(periodos: List<String>, periodoActual: String? = null)
 @Composable
 fun GradesContent(
     token: String,
+    dashboard: DashboardViewModel,
     usuario: String?,
     onSesionExpirada: () -> Unit = {},
     onOpenCourse: (String, String, String, String) -> Unit = { _, _, _, _ -> }
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val cache = remember { GradesCache(context) }
-    val gson = remember { Gson() }
-
-    var periodos by remember { mutableStateOf(listOf("202610")) }
-    var selectedPeriodo by remember { mutableStateOf("202610") }
+    val shared by dashboard.state.collectAsState()
+    val selectedPeriodo = shared.gradePeriod
+    val selectedCarrera = shared.career
+    val periodos = shared.periods.ifEmpty { listOf(selectedPeriodo) }
+    val carreras = shared.careers
     var periodosExpanded by remember { mutableStateOf(false) }
-
-    var carreras by remember { mutableStateOf(listOf("UG")) }
-    var selectedCarrera by remember { mutableStateOf("UG") }
     var carrerasExpanded by remember { mutableStateOf(false) }
-
-    var cursos by remember { mutableStateOf<List<CourseGrade>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
-    var isRefreshing by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var offline by remember { mutableStateOf(false) }
-    var notasProyectadas by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
-    var promedioGeneral by remember { mutableStateOf<Any?>(null) }
-    var promedioBasadoEn by remember { mutableStateOf<String?>(null) }
-    var promedioPeriodoRes by remember { mutableStateOf<PromedioPeriodoResponse?>(null) }
-    var ultimaActualizacion by remember { mutableStateOf<String?>(null) }
-
-    val claveCache = "notas_${usuario ?: "anonimo"}"
-
-    fun loadPromedioPeriodo(term: String) {
-        scope.launch {
-            try {
-                Log.d("UPAO_APP", "[Android UI] Solicitando promedio PPS para periodo: $term")
-                val res = RetrofitClient.apiService.getPromedioPeriodo(term, "Bearer $token")
-                if (res.isSuccessful && res.body() != null) {
-                    promedioPeriodoRes = res.body()
-                    Log.d("UPAO_APP", "[Android UI] PPS recibido -> Oficial=${promedioPeriodoRes?.ppsOficial}, Calc=${promedioPeriodoRes?.ppsCalculado}, Fuente=${promedioPeriodoRes?.fuente}")
-                } else {
-                    Log.w("UPAO_APP", "[Android UI] No se pudo obtener PPS (${res.code()}), usando promedio local de fallback")
-                }
-            } catch (e: Exception) {
-                Log.w("UPAO_APP", "[Android UI] Excepción obteniendo PPS: ${e.localizedMessage}, usando promedio local de fallback")
-            }
-        }
-    }
-
-    fun cargarNotasProyectadas() {
-        val pendientes = cursos.filter { isPendiente(it.displayNotaActual) }
-        if (pendientes.isEmpty()) return
-        pendientes.forEach { course ->
-            val crn = course.crn ?: course.courseReferenceNumber ?: return@forEach
-            scope.launch {
-                try {
-                    val cacheJson = cache.cargar("proyectada_${usuario ?: "anonimo"}_$crn")
-                    if (cacheJson != null && cacheJson != "null") {
-                        notasProyectadas = notasProyectadas + (crn to cacheJson)
-                    }
-                } catch (e: Exception) {
-                    // ignorar
-                }
-                try {
-                    val res = RetrofitClient.apiService.getDetalleCurso(
-                        "Bearer $token",
-                        mapOf("periodo" to selectedPeriodo, "carrera" to selectedCarrera, "crn" to crn)
-                    )
-                    if (res.isSuccessful && res.body() != null) {
-                        val nota = res.body()!!.notaProyectada
-                        if (nota != null) {
-                            notasProyectadas = notasProyectadas + (crn to nota)
-                            scope.launch { cache.guardar("proyectada_${usuario ?: "anonimo"}_$crn", nota.toString()) }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // sin conexión: se mantiene el valor en caché si existe
-                }
-            }
-        }
-    }
-
-    fun aplicarCache() {
-        scope.launch {
-            try {
-                if (cursos.isNotEmpty()) return@launch
-                val json = cache.cargar(claveCache) ?: return@launch
-                val body = gson.fromJson(json, GradesResponse::class.java)
-                cursos = body.cursos
-                promedioGeneral = body.promedioGeneral
-                promedioBasadoEn = body.promedioBasadoEn
-                ultimaActualizacion = body.ultimaActualizacion
-                body.periodo?.let { selectedPeriodo = it }
-                body.carrera?.let { selectedCarrera = it }
-                Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${cursos.size} cursos")
-                cargarNotasProyectadas()
-            } catch (e: Exception) {
-                Log.e("UPAO_APP", "[Android UI] Error leyendo caché de notas: ${e.localizedMessage}", e)
-            }
-        }
-    }
-
-    fun loadGrades() {
-        isLoading = true
-        errorMessage = null
-        offline = false
-        scope.launch {
-            try {
-                Log.d("UPAO_APP", "[Android UI] Consultando notas -> Periodo: $selectedPeriodo, Carrera: $selectedCarrera")
-                val req = mapOf("periodo" to selectedPeriodo, "carrera" to selectedCarrera)
-                val res = RetrofitClient.apiService.buscarNotas("Bearer $token", req)
-                isLoading = false
-                isRefreshing = false
-                val errBody = res.errorBody()?.string()
-
-                if (res.isSuccessful && res.body() != null) {
-                    val body = res.body()!!
-                    cursos = body.cursos
-                    promedioGeneral = body.promedioGeneral
-                    promedioBasadoEn = body.promedioBasadoEn
-                    ultimaActualizacion = body.ultimaActualizacion
-                    scope.launch { cache.guardar(claveCache, gson.toJson(body)) }
-                    cargarNotasProyectadas()
-                    // Actualiza el widget de resumen de notas
-                    try {
-                        com.example.upaos.widget.ResumenNotasWidget.updateAll(context)
-                    } catch (e: Exception) {
-                        // Widget no instalado
-                    }
-                } else {
-                    val err = errBody ?: "Error desconocido"
-                    errorMessage = "Error HTTP ${res.code()}: $err"
-                    Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
-                }
-            } catch (e: Exception) {
-                isLoading = false
-                isRefreshing = false
-                if (cursos.isNotEmpty()) {
-                    offline = true
-                } else {
-                    errorMessage = "Sin conexión: ${e.localizedMessage}"
-                }
-            }
-        }
-        loadPromedioPeriodo(selectedPeriodo)
-    }
-
-    fun updateCarrerasForTerm(term: String) {
-        scope.launch {
-            try {
-                val carrerasRes = RetrofitClient.apiService.getCarreras("Bearer $token", term)
-                if (carrerasRes.isSuccessful && carrerasRes.body() != null) {
-                    val body = carrerasRes.body()!!
-                    if (body.carreras.isNotEmpty()) {
-                        carreras = body.carreras
-                        selectedCarrera = carreras[0]
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("UPAO_APP", "Error actualizando carreras para $term: ${e.localizedMessage}")
-            }
-            loadGrades()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        aplicarCache()
-        try {
-            val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
-            if (periodosRes.isSuccessful && periodosRes.body() != null) {
-                val body = periodosRes.body()!!
-                periodos = body.periodos
-                selectedPeriodo = detectarPeriodoActual(body.periodos, body.periodoActual)
-            }
-            updateCarrerasForTerm(selectedPeriodo)
-        } catch (e: Exception) {
-            loadGrades()
-        }
-    }
+    val cursos = shared.grades?.cursos ?: emptyList()
+    val isLoading = shared.busy
+    val isRefreshing = shared.busy
+    val claveCache = dashboard.gradeCacheKey
+    val errorMessage = shared.errors[claveCache]
+    val offline = claveCache !in shared.fresh
+    val notasProyectadas = shared.projected
+    val promedioGeneral = shared.grades?.promedioGeneral
+    val promedioBasadoEn = shared.grades?.promedioBasadoEn
+    val promedioPeriodoRes = shared.average
+    fun loadGrades() = dashboard.refresh()
 
     Column(
         modifier = Modifier
@@ -276,9 +120,8 @@ fun GradesContent(
                         DropdownMenuItem(
                             text = { Text(item, fontSize = 13.sp) },
                             onClick = {
-                                selectedPeriodo = item
                                 periodosExpanded = false
-                                updateCarrerasForTerm(item)
+                                dashboard.selectGrades(item)
                             }
                         )
                     }
@@ -307,9 +150,8 @@ fun GradesContent(
                         DropdownMenuItem(
                             text = { Text(item, fontSize = 13.sp) },
                             onClick = {
-                                selectedCarrera = item
                                 carrerasExpanded = false
-                                loadGrades()
+                                dashboard.selectGrades(selectedPeriodo, item)
                             }
                         )
                     }
@@ -333,16 +175,6 @@ fun GradesContent(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                )
-            }
-        }
-
-        if (ultimaActualizacion != null && errorMessage == null) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
-                Text(
-                    text = textoUltimaActualizacion(ultimaActualizacion),
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -393,7 +225,6 @@ fun GradesContent(
                 RefreshableContent(
                     isRefreshing = isRefreshing,
                     onRefresh = {
-                        isRefreshing = true
                         loadGrades()
                     },
                     modifier = Modifier.fillMaxSize()

@@ -1,5 +1,6 @@
 package com.example.upaos.ui.asistencia
 
+import com.example.upaos.ui.home.DashboardViewModel
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -28,8 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
-import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.model.AsistenciaComponente
 import com.example.upaos.data.model.AsistenciaCurso
 import com.example.upaos.data.model.AsistenciaResponse
@@ -51,9 +50,7 @@ import com.example.upaos.ui.theme.UpaoBlue
 import com.example.upaos.ui.theme.UpaoGreen
 import com.example.upaos.ui.theme.UpaoOrange
 import com.example.upaos.ui.theme.UpaoRed
-import com.google.gson.Gson
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import com.example.upaos.data.model.clasificarTipo
 import com.example.upaos.data.model.contarDiasHorario
 
@@ -136,7 +133,7 @@ private fun obtenerSemanaCiclo(periodo: String, semanaApi: Int?): Int {
 }
 
 private fun formatPct(pct: Double): String =
-    if (pct % 1.0 == 0.0) pct.toInt().toString() else pct.toString()
+    com.example.upaos.ui.components.attendancePercentText(pct)
 
 private fun normalizarNombre(nombre: String): String =
     nombre.uppercase()
@@ -420,160 +417,25 @@ private fun procesarCursosAsistencia(
 @Composable
 fun AsistenciaContent(
     token: String,
+    dashboard: DashboardViewModel,
     usuario: String? = null,
     onSesionExpirada: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val cache = remember { ApiCache(context) }
-    val gson = remember { Gson() }
-    val claveCache = "asistencia_${usuario ?: "anonimo"}"
-
-    var periodos by remember { mutableStateOf(listOf("202620", "202610")) }
-    var selectedPeriodo by remember { mutableStateOf("202620") }
+    val shared by dashboard.state.collectAsState()
+    val selectedPeriodo = shared.attendancePeriod
+    val registros = shared.attendance?.asistencia ?: emptyList()
+    val periodos = (shared.periods + registros.mapNotNull { it.periodo }).distinct().sortedDescending().ifEmpty { listOf(selectedPeriodo) }
     var periodosExpanded by remember { mutableStateOf(false) }
-
-    var registros by remember { mutableStateOf<List<AsistenciaCurso>>(emptyList()) }
-    var horarioCursos by remember { mutableStateOf<List<HorarioCurso>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
-    var isRefreshing by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var offline by remember { mutableStateOf(false) }
+    val horarioCursos = shared.schedules[selectedPeriodo]?.listaCursos ?: emptyList()
+    val isLoading = shared.busy
+    val isRefreshing = shared.busy
+    val claveCache = dashboard.attendanceCacheKey
+    val errorMessage = shared.errors[claveCache]
+    val offline = claveCache !in shared.fresh
     var cursoSeleccionado by remember { mutableStateOf<AsistenciaCurso?>(null) }
-    var semanaActual by remember { mutableStateOf<Int?>(null) }
-
-    fun actualizarPeriodos(
-        listaAsistencia: List<AsistenciaCurso>,
-        periodosApi: List<String> = emptyList(),
-        periodoActualApi: String? = null
-    ) {
-        val periodosDeAsistencia = listaAsistencia.mapNotNull { it.periodo?.trim() }.filter { it.isNotBlank() }
-        val todos = (periodosApi + periodosDeAsistencia).distinct().filter { it.isNotBlank() }.sortedDescending()
-        if (todos.isNotEmpty()) {
-            periodos = todos
-            if (!todos.contains(selectedPeriodo)) {
-                selectedPeriodo = if (todos.contains("202620")) "202620" else detectarPeriodoActual(todos, periodoActualApi)
-            }
-        }
-    }
-
-    fun aplicarCache() {
-        scope.launch {
-            try {
-                if (registros.isNotEmpty()) return@launch
-                val json = cache.cargar(claveCache) ?: return@launch
-                val body = gson.fromJson(json, AsistenciaResponse::class.java)
-                registros = body.asistencia
-                actualizarPeriodos(body.asistencia)
-                Log.d("UPAO_APP", "[Android UI] Caché aplicada: ${registros.size} registros de asistencia")
-            } catch (e: Exception) {
-                Log.e("UPAO_APP", "[Android UI] Error leyendo caché de asistencia: ${e.localizedMessage}", e)
-            }
-        }
-    }
-
-    fun cargarHorario(term: String) {
-        scope.launch {
-            try {
-                val cacheJson = cache.cargar("horario_${usuario ?: "anonimo"}_$term")
-                if (cacheJson != null) {
-                    val cuerpo = gson.fromJson(cacheJson, HorarioResponse::class.java)
-                    horarioCursos = cuerpo.cursos
-                }
-                val res = RetrofitClient.apiService.getHorario("Bearer $token", term)
-                if (res.isSuccessful && res.body() != null) {
-                    val body = res.body()!!
-                    horarioCursos = body.cursos
-                    scope.launch { cache.guardar("horario_${usuario ?: "anonimo"}_$term", gson.toJson(body)) }
-                }
-            } catch (e: Exception) {
-                Log.e("UPAO_APP", "[Android UI] Error cargando horario para asistencia: ${e.localizedMessage}", e)
-                try {
-                    val prefijo = "horario_${usuario ?: "anonimo"}_"
-                    val cacheMap = cache.listarPorPrefijo(prefijo)
-                    val cacheJson = cacheMap[prefijo + term] ?: cacheMap.values.lastOrNull()
-                    if (cacheJson != null) {
-                        val cuerpo = gson.fromJson(cacheJson, HorarioResponse::class.java)
-                        if (cuerpo.cursos.isNotEmpty()) {
-                            horarioCursos = cuerpo.cursos
-                            offline = true
-                        }
-                    }
-                } catch (e2: Exception) {
-                    Log.e("UPAO_APP", "[Android UI] Error leyendo caché de horario: ${e2.localizedMessage}", e2)
-                }
-            }
-        }
-    }
-
-    fun load() {
-        isLoading = true
-        errorMessage = null
-        offline = false
-        scope.launch {
-            try {
-                try {
-                    val sRes = RetrofitClient.apiService.getSemana()
-                    if (sRes.isSuccessful && sRes.body() != null) {
-                        semanaActual = sRes.body()?.semana
-                    }
-                } catch (_: Exception) {}
-
-                if (!usuario.isNullOrBlank()) {
-                    try {
-                        RetrofitClient.apiService.actualizarAhora(usuario)
-                    } catch (_: Exception) {}
-                }
-
-                Log.d("UPAO_APP", "[Android UI] Consultando asistencia...")
-                val res = RetrofitClient.apiService.getAsistencia("Bearer $token")
-                isLoading = false
-                isRefreshing = false
-                val errBody = res.errorBody()?.string()
-                if (res.isSuccessful && res.body() != null) {
-                    val body = res.body()!!
-                    registros = body.asistencia
-                    actualizarPeriodos(body.asistencia)
-                    scope.launch { cache.guardar(claveCache, gson.toJson(body)) }
-                } else {
-                    val err = errBody ?: "Error desconocido"
-                    errorMessage = "Error HTTP ${res.code()}: $err"
-                    Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
-                }
-            } catch (e: Exception) {
-                isLoading = false
-                isRefreshing = false
-                if (registros.isNotEmpty() || horarioCursos.isNotEmpty()) {
-                    offline = true
-                } else {
-                    errorMessage = "Sin conexión: ${e.localizedMessage}"
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        aplicarCache()
-        try {
-            val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
-            if (periodosRes.isSuccessful && periodosRes.body() != null) {
-                val p = periodosRes.body()!!
-                actualizarPeriodos(registros, p.periodos, p.periodoActual)
-            }
-        } catch (e: Exception) {
-            Log.e("UPAO_APP", "Error cargando periodos: ${e.localizedMessage}")
-        }
-        cargarHorario(selectedPeriodo)
-        scope.launch {
-            try {
-                val sRes = RetrofitClient.apiService.getSemana()
-                if (sRes.isSuccessful && sRes.body() != null) {
-                    semanaActual = sRes.body()?.semana
-                }
-            } catch (_: Exception) {}
-        }
-        load()
-    }
+    val semanaActual = shared.week?.semana
+    fun load() = dashboard.refresh()
 
     val cursosVisibles = remember(registros, horarioCursos, semanaActual, selectedPeriodo) {
         procesarCursosAsistencia(registros, horarioCursos, semanaActual, selectedPeriodo)
@@ -626,9 +488,8 @@ fun AsistenciaContent(
                         DropdownMenuItem(
                             text = { Text(item, fontSize = 13.sp) },
                             onClick = {
-                                selectedPeriodo = item
                                 periodosExpanded = false
-                                cargarHorario(item)
+                                dashboard.selectAttendance(item)
                             }
                         )
                     }
@@ -689,7 +550,6 @@ fun AsistenciaContent(
                     RefreshableContent(
                         isRefreshing = isRefreshing,
                         onRefresh = {
-                            isRefreshing = true
                             load()
                         },
                         modifier = Modifier.weight(1f)
