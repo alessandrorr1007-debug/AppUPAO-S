@@ -3,6 +3,7 @@ package com.example.upaos.ui.home
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -146,11 +147,46 @@ fun TodaySchedule(classes: List<NextClass>, available: Boolean, now: Long, updat
 }
 
 @Composable
+fun TodayAssignments(items: List<AgendaItem>, now: Long, updated: Long?, current: Boolean, onCanvas: () -> Unit) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(Icons.AutoMirrored.Filled.Assignment, null, Modifier.padding(12.dp).size(22.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Por entregar hoy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Tus tareas y entregas del día", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Text(items.size.toString(), Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+            if (items.isEmpty()) {
+                TodayEmptyState(if (updated == null) "Conecta Canvas para ver tus entregas" else "Sin entregas pendientes para hoy",
+                    if (updated == null) "Conecta tu cuenta desde la pestaña Canvas." else if (current) "No tienes entregas pendientes que venzan hoy." else "No hay entregas de hoy en los datos guardados.")
+            } else {
+                items.forEach { assignment -> androidx.compose.runtime.key(assignment.key) { TodayAssignment(assignment, now, true) } }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { SourceStamp(updated, current) }
+                TextButton(onClick = onCanvas) { Text("Ver Canvas") }
+            }
+        }
+    }
+}
+
+@Composable
 fun TodayAssignment(item: AgendaItem, now: Long, todayOnly: Boolean) {
     val context = LocalContext.current
+    val deliveryUrl = item.url?.takeIf { Uri.parse(it).scheme == "https" && Uri.parse(it).host == "upao.instructure.com" }
+    fun openDelivery() { deliveryUrl?.let { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } }
     val late = !item.submitted && !item.graded && (item.dueMillis ?: Long.MAX_VALUE) < now
     val accent = if (late) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(Modifier.fillMaxWidth().clickable(enabled = deliveryUrl != null, onClick = { openDelivery() }), shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(4.dp).fillMaxHeight().background(accent))
             Column(Modifier.weight(1f).padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -160,10 +196,13 @@ fun TodayAssignment(item: AgendaItem, now: Long, todayOnly: Boolean) {
                     Icon(Icons.Filled.Schedule, null, Modifier.size(17.dp), tint = accent)
                     Text(item.dueMillis?.let { if (todayOnly) "Hoy · ${campusFormat(it, "HH:mm")}" else "Vence ${campusFormat(it, "dd/MM HH:mm")}" } ?: "Sin fecha de entrega", style = MaterialTheme.typography.bodySmall, color = accent)
                     Spacer(Modifier.weight(1f))
-                    Text(if (todayOnly && late) "Vencida hoy" else item.status(now), style = MaterialTheme.typography.labelSmall, color = accent)
+                    Surface(color = accent.copy(alpha = .12f), shape = RoundedCornerShape(8.dp)) {
+                        Text(if (todayOnly && late) "Vencida hoy" else item.status(now), Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = accent)
+                    }
                 }
-                item.url?.takeIf { Uri.parse(it).scheme == "https" && Uri.parse(it).host == "upao.instructure.com" }?.let { url ->
-                    TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }, contentPadding = PaddingValues(0.dp)) {
+                if (deliveryUrl != null) {
+                    TextButton(onClick = { openDelivery() }, contentPadding = PaddingValues(0.dp)) {
                         Text("Ver entrega")
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.padding(start = 6.dp).size(16.dp))
                     }

@@ -106,14 +106,8 @@ fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?,
         }
             item { TodaySchedule(dayClasses, timetable != null, now, scheduleTime, scheduleFresh, onSchedule) }
             item {
-                TodaySectionTitle("Por entregar hoy", dayTasks.size)
-                SourceStamp(agendaTime, agendaFresh)
-                if (dayTasks.isEmpty()) TodayEmptyState(
-                    if (agendaTime == null) "Conecta Canvas para ver tus entregas" else "Sin entregas pendientes para hoy",
-                    if (agendaTime == null) "Conecta tu cuenta desde la pestaña Canvas y actualiza esta pantalla." else if (agendaFresh) "No tienes entregas pendientes que venzan hoy." else "No hay entregas de hoy en los datos guardados. Actualiza cuando tengas conexión."
-                )
+                TodayAssignments(dayTasks, now, agendaTime, agendaFresh, onCanvas)
             }
-            items(dayTasks, key = { "today_task_${it.key}" }) { assignment -> TodayAssignment(assignment, now, true) }
             item {
                 TodaySectionTitle("Novedades de hoy", dayNotices.size)
                 SourceStamp(noticesTime, noticesFresh)
