@@ -10,9 +10,6 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -76,7 +73,6 @@ fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?,
     val agendaFresh = "agenda_$usuario" in shared.fresh
     val scheduleFresh = dashboard.scheduleCacheKey(shared.currentPeriod) in shared.fresh
     val noticesFresh = "notificaciones_$usuario" in shared.fresh
-    val busy = shared.busy
     val error = listOfNotNull(shared.errors["agenda_$usuario"], shared.errors[dashboard.scheduleCacheKey(shared.currentPeriod)], shared.errors["notificaciones_$usuario"]).joinToString("\n").takeIf { it.isNotBlank() }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
@@ -94,16 +90,11 @@ fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?,
     val dayTasks = remember(items, now) { assignmentsToday(items, now) }
     val dayNotices = remember(notices, now) { notificationsToday(notices, now) }
     var showDetails by remember { mutableStateOf(false) }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                IconButton(enabled = !busy, onClick = { dashboard.refresh() }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Actualizar datos")
-                }
-            }
-            if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-            error?.let { detail ->
-                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(top = 10.dp)) {
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { TodayHero(now, if (timetable != null) dayClasses.size else null, if (agendaTime != null) dayTasks.size else null, if (noticesTime != null) dayNotices.size else null) }
+        error?.let { detail ->
+            item {
+                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp)) {
                     Column(Modifier.fillMaxWidth().padding(12.dp)) {
                         Text("Actualización pendiente", style = MaterialTheme.typography.labelLarge)
                         Text("Algunos datos no se pudieron consultar. Mostramos lo último guardado.", style = MaterialTheme.typography.bodySmall)
@@ -113,7 +104,6 @@ fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?,
                 }
             }
         }
-            item { TodayHero(now, if (timetable != null) dayClasses.size else null, if (agendaTime != null) dayTasks.size else null, if (noticesTime != null) dayNotices.size else null) }
             item { TodaySchedule(dayClasses, timetable != null, now, scheduleTime, scheduleFresh, onSchedule) }
             item {
                 TodaySectionTitle("Por entregar hoy", dayTasks.size)
