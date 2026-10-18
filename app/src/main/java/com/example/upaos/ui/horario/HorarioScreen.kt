@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Class
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
@@ -303,6 +304,22 @@ fun HorarioContent(
                         )
                     }
                 }
+            }
+
+            IconButton(
+                onClick = {
+                    com.example.upaos.data.upao.IcsCalendarExporter.exportarAlCalendario(
+                        context = context,
+                        cursos = cursosAMostrar,
+                        term = selectedPeriodo
+                    )
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CalendarMonth,
+                    contentDescription = "Agregar al calendario",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
 
             IconButton(
