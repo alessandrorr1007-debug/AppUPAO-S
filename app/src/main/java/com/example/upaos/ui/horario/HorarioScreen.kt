@@ -42,6 +42,7 @@ import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
 import com.example.upaos.ui.components.ErrorView
 import com.example.upaos.ui.components.RefreshableContent
+import com.example.upaos.data.upao.ScheduleCalculator
 import com.example.upaos.ui.components.SkeletonBox
 import com.example.upaos.ui.components.cursoColor
 import com.example.upaos.ui.components.toTitleCase
@@ -54,7 +55,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private fun diaHoy(): Int = (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) + 5) % 7
+private fun diaHoy(): Int = ScheduleCalculator.diaSemanaLima()
 
 private fun minutosAhora(): Int {
     val c = Calendar.getInstance()
@@ -509,101 +510,116 @@ private fun HorarioSemanalGrid(
     onBloqueClick: (HorarioCurso, HorarioBloque) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val hoy = diaHoy() // 0 = Lun, 1 = Mar, ..., 5 = Sáb, 6 = Dom
+    val hoy = ScheduleCalculator.diaSemanaLima() // 0 = Lun, 1 = Mar, ..., 5 = Sáb, 6 = Dom
     val horScroll = rememberScrollState()
     val vertScroll = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
-    val porDia: Map<Int, List<BloqueProgramado>> = cursos.flatMap { curso ->
-        curso.bloques
-            .filter { (it.dia ?: -1) in 0..5 }
-            .map { BloqueProgramado(curso, it) }
-    }.groupBy { it.bloque.dia!! }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(bottom = 24.dp)
-            .verticalScroll(vertScroll)
-    ) {
-        if (proximaClase != null) {
-            ProximaClaseCard(
-                proxima = proximaClase,
-                onClick = onProximaClick
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val screenWidthDp = maxWidth.value
+        LaunchedEffect(hoy, screenWidthDp) {
+            val diaTarget = ScheduleCalculator.diaParaAutoScroll()
+            val offsetDp = ScheduleCalculator.calcularScrollOffsetDp(
+                diaIndex = diaTarget,
+                columnaWidthDp = ColumnaDia.value,
+                screenWidthDp = screenWidthDp
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            val offsetPx = with(density) { offsetDp.dp.roundToPx() }
+            horScroll.animateScrollTo(offsetPx)
         }
 
-        Row(modifier = Modifier.horizontalScroll(horScroll)) {
-            NOMBRES_DIAS.forEachIndexed { index, nombre ->
-                val esHoy = index == hoy
-                Column(
-                    modifier = Modifier
-                        .width(ColumnaDia)
-                        .padding(horizontal = 3.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (esHoy) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.surfaceContainerHigh
-                            )
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = nombre,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = if (esHoy) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
-        }
+        val porDia: Map<Int, List<BloqueProgramado>> = cursos.flatMap { curso ->
+            curso.bloques
+                .filter { (it.dia ?: -1) in 0..5 }
+                .map { BloqueProgramado(curso, it) }
+        }.groupBy { it.bloque.dia!! }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(horScroll)
+                .fillMaxSize()
+                .padding(bottom = 24.dp)
+                .verticalScroll(vertScroll)
         ) {
-            NOMBRES_DIAS.forEachIndexed { index, _ ->
-                val clases = porDia[index] ?: emptyList()
-                Column(
-                    modifier = Modifier
-                        .width(ColumnaDia)
-                        .padding(horizontal = 3.dp)
-                ) {
-                    if (clases.isEmpty()) {
+            if (proximaClase != null) {
+                ProximaClaseCard(
+                    proxima = proximaClase,
+                    onClick = onProximaClick
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            Row(modifier = Modifier.horizontalScroll(horScroll)) {
+                NOMBRES_DIAS.forEachIndexed { index, nombre ->
+                    val esHoy = ScheduleCalculator.esHoy(index)
+                    Column(
+                        modifier = Modifier
+                            .width(ColumnaDia)
+                            .padding(horizontal = 3.dp)
+                    ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(110.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                .background(
+                                    if (esHoy) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                                )
+                                .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "—",
-                                color = MaterialTheme.colorScheme.outline,
-                                fontSize = 14.sp
+                                text = nombre,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = if (esHoy) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurface
                             )
                         }
-                    } else {
-                        clases.sortedBy { minutosDe(it.bloque.horaInicio) ?: 0 }.forEach { c ->
-                            val infoComp = deducirInfoComponente(c.curso, c.bloque, asistenciaCursos)
-                            BloqueColumna(
-                                curso = c.curso,
-                                bloque = c.bloque,
-                                infoComponente = infoComp,
-                                esHoy = index == hoy,
-                                onClick = { onBloqueClick(c.curso, c.bloque) }
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(horScroll)
+            ) {
+                NOMBRES_DIAS.forEachIndexed { index, _ ->
+                    val clases = porDia[index] ?: emptyList()
+                    Column(
+                        modifier = Modifier
+                            .width(ColumnaDia)
+                            .padding(horizontal = 3.dp)
+                    ) {
+                        if (clases.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(110.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "—",
+                                    color = MaterialTheme.colorScheme.outline,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        } else {
+                            clases.sortedBy { minutosDe(it.bloque.horaInicio) ?: 0 }.forEach { c ->
+                                val infoComp = deducirInfoComponente(c.curso, c.bloque, asistenciaCursos)
+                                BloqueColumna(
+                                    curso = c.curso,
+                                    bloque = c.bloque,
+                                    infoComponente = infoComp,
+                                    esHoy = ScheduleCalculator.esHoy(index),
+                                    onClick = { onBloqueClick(c.curso, c.bloque) }
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
                         }
                     }
                 }
