@@ -127,10 +127,21 @@ class DashboardViewModel(app: Application, private val token: String, private va
         for (key in listOf("agenda_$user", "notificaciones_$user", attendanceCacheKey) + schedules.keys.map(::scheduleCacheKey)) {
             times[key] = cache.actualizado(key)
         }
-        times[gradeCacheKey] = gradesCache.observarFecha(gradeCacheKey).first()
-        savedGrades?.let { gradeVariants[(it.periodo ?: current) to (it.carrera ?: "UG")] = it }
+        val savedProjected = mutableMapOf<String, Any?>()
+        savedGrades?.cursos?.forEach { c ->
+            val crn = c.crn ?: c.courseReferenceNumber ?: return@forEach
+            try {
+                gradesCache.cargar("proyectada_${user}_$crn")?.let { savedProjected[crn] = it }
+            } catch (_: Exception) {}
+        }
+        savedGrades?.let {
+            val key = (it.periodo ?: current) to (it.carrera ?: "UG")
+            gradeVariants[key] = it
+            projections[key] = savedProjected
+        }
         mutable.value = state.value.copy(periods = periods?.periodos ?: emptyList(), currentPeriod = current,
             gradePeriod = savedGrades?.periodo ?: current, career = savedGrades?.carrera ?: "UG", grades = savedGrades,
+            projected = savedProjected,
             schedulePeriod = lastTerm, attendance = cached(attendanceCacheKey), schedules = schedules,
             notices = cached("notificaciones_$user"), agenda = agenda.first, times = times,
             week = cached("semana_$user"))
@@ -180,15 +191,24 @@ class DashboardViewModel(app: Application, private val token: String, private va
             attempt(gradeCacheKey) {
                 val grades = body(api.buscarNotas(auth, mapOf("periodo" to result.gradePeriod, "carrera" to result.career)))
                 gradeVariants[result.gradePeriod to result.career] = grades
-                result = result.copy(grades = grades, projected = emptyMap())
+                result = result.copy(grades = grades)
                 gradesCache.guardar(gradeCacheKey, gson.toJson(grades))
                 times[gradeCacheKey] = gradesCache.observarFecha(gradeCacheKey).first()
-                for (course in grades.cursos.filter { isPendiente(it.displayNotaActual) }) {
+                for (course in grades.cursos) {
                     val crn = course.crn ?: course.courseReferenceNumber ?: continue
                     attempt("proyectada_$crn") {
                         val detail = body(api.getDetalleCurso(auth, mapOf("periodo" to result.gradePeriod, "carrera" to result.career, "crn" to crn)))
-                        result = result.copy(projected = result.projected + (crn to detail.notaProyectada))
-                        detail.notaProyectada?.let { gradesCache.guardar("proyectada_${user}_$crn", it.toString()) }
+                        val compEvaluados = detail.detalles.filter { !isPendiente(it.displayNota) }
+                        val sumaPonderada = if (compEvaluados.isNotEmpty()) {
+                            compEvaluados.sumOf { comp ->
+                                val nota = comp.displayNota?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
+                                val peso = comp.displayPeso?.toString()?.replace("%", "")?.trim()?.toDoubleOrNull() ?: 0.0
+                                nota * (peso / 100.0)
+                            }
+                        } else null
+                        val puntosCalculados = detail.notaProyectada ?: sumaPonderada
+                        result = result.copy(projected = result.projected + (crn to puntosCalculados))
+                        puntosCalculados?.let { gradesCache.guardar("proyectada_${user}_$crn", it.toString()) }
                     }
                 }
             }

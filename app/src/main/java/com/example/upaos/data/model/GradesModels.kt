@@ -15,7 +15,11 @@ data class SubComponente(
     @SerializedName("peso") val peso: Any? = null,
     @SerializedName("weight") val weight: Any? = null,
     @SerializedName("percentage") val percentage: Any? = null,
+    @SerializedName("porcentaje") val porcentaje: Any? = null,
+    @SerializedName("percent") val percent: Any? = null,
     @SerializedName("porcentaje_logrado") val porcentajeLogrado: Any? = null,
+    @SerializedName("porcentaje_componente") val porcentajeComponente: Any? = null,
+    @SerializedName("peso_componente") val pesoComponente: Any? = null,
     @SerializedName("puntaje_obtenido") val puntajeObtenido: Any? = null,
     @SerializedName("puntaje_sobre") val puntajeSobre: Any? = null,
     @SerializedName("grade") val grade: Any? = null,
@@ -26,10 +30,10 @@ data class SubComponente(
         get() = nombre ?: description ?: componente ?: "Sub-componente"
 
     val displayNota: Any?
-        get() = puntajeObtenido ?: grade ?: nota
+        get() = puntajeObtenido ?: grade ?: nota ?: score
 
     val displayPeso: Any?
-        get() = peso ?: weight
+        get() = peso ?: weight ?: percentage ?: porcentaje ?: percent ?: porcentajeComponente ?: pesoComponente ?: porcentajeLogrado
 }
 
 data class ComponenteDetalle(
@@ -39,7 +43,12 @@ data class ComponenteDetalle(
     @SerializedName("codigo") val codigo: String? = null,
     @SerializedName("peso") val peso: Any? = null,
     @SerializedName("weight") val weight: Any? = null,
+    @SerializedName("percentage") val percentage: Any? = null,
+    @SerializedName("porcentaje") val porcentaje: Any? = null,
+    @SerializedName("percent") val percent: Any? = null,
     @SerializedName("porcentaje_logrado") val porcentajeLogrado: Any? = null,
+    @SerializedName("porcentaje_componente") val porcentajeComponente: Any? = null,
+    @SerializedName("peso_componente") val pesoComponente: Any? = null,
     @SerializedName("puntaje_obtenido") val puntajeObtenido: Any? = null,
     @SerializedName("puntaje_sobre") val puntajeSobre: Any? = null,
     @SerializedName("grade") val grade: Any? = null,
@@ -54,10 +63,10 @@ data class ComponenteDetalle(
         get() = nombre ?: description ?: componente ?: "Componente"
 
     val displayNota: Any?
-        get() = puntajeObtenido ?: grade ?: nota
+        get() = puntajeObtenido ?: grade ?: nota ?: score ?: gradeOficial
 
     val displayPeso: Any?
-        get() = peso ?: weight
+        get() = peso ?: weight ?: percentage ?: porcentaje ?: percent ?: porcentajeComponente ?: pesoComponente ?: porcentajeLogrado
 
     val displayPuntaje: String?
         get() {

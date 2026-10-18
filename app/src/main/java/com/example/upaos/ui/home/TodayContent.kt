@@ -109,11 +109,13 @@ fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?,
                 TodayAssignments(dayTasks, now, agendaTime, agendaFresh, onCanvas)
             }
             item {
-                TodaySectionTitle("Novedades de hoy", dayNotices.size)
-                SourceStamp(noticesTime, noticesFresh)
-                if (dayNotices.isEmpty()) TodayEmptyState("Sin novedades de notas hoy",
-                    if (noticesTime == null) "Actualiza para consultar las novedades de este día." else if (noticesFresh) "Cuando se registre un cambio hoy, aparecerá aquí." else "No hay novedades de hoy en los datos guardados. Actualiza cuando tengas conexión.")
+                TodayNewsCard(
+                    items = dayNotices,
+                    now = now,
+                    updated = noticesTime,
+                    current = noticesFresh,
+                    onNotifications = onNotifications
+                )
             }
-            items(dayNotices, key = { "today_notice_${it.id}" }) { notice -> TodayNotice(notice, onNotifications) }
     }
 }

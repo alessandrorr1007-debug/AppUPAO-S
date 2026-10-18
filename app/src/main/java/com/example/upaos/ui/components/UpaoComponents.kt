@@ -492,7 +492,8 @@ fun isPendiente(value: Any?): Boolean =
 
 fun gradeValue(value: Any?): Double? {
     if (value == null) return null
-    return value.toString().trim().toDoubleOrNull()
+    val d = value.toString().trim().toDoubleOrNull() ?: return null
+    return if (d.isNaN() || d.isInfinite()) null else d
 }
 
 fun gradeColor(value: Any?): Color {

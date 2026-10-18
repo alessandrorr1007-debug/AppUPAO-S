@@ -247,6 +247,12 @@ fun HorarioContent(
     val periodos = shared.periods.ifEmpty { listOf(selectedPeriodo) }
     var periodosExpanded by remember { mutableStateOf(false) }
     val cursos = shared.schedules[selectedPeriodo]?.listaCursos ?: emptyList()
+    var ultimoHorarioValido by remember(selectedPeriodo) { mutableStateOf(cursos) }
+    if (cursos.isNotEmpty()) {
+        ultimoHorarioValido = cursos
+    }
+    val cursosAMostrar = if (cursos.isNotEmpty()) cursos else ultimoHorarioValido
+
     val asistenciaCursos = shared.attendance?.asistencia ?: emptyList()
     var bloqueSeleccionado by remember { mutableStateOf<Pair<HorarioCurso, HorarioBloque>?>(null) }
     val isLoading = shared.busy
@@ -317,7 +323,7 @@ fun HorarioContent(
             com.example.upaos.ui.home.Freshness(shared.times[claveCache()], !offline, isLoading || isRefreshing)
         }
 
-        if (offline && cursos.isNotEmpty()) {
+        if (offline && cursosAMostrar.isNotEmpty()) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(10.dp),
@@ -346,7 +352,7 @@ fun HorarioContent(
                 .weight(1f)
         ) {
             when {
-                isLoading && cursos.isEmpty() -> {
+                isLoading && cursosAMostrar.isEmpty() -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -356,7 +362,7 @@ fun HorarioContent(
                         repeat(3) { SkeletonHorarioCard() }
                     }
                 }
-                errorMessage != null && cursos.isEmpty() -> {
+                errorMessage != null && cursosAMostrar.isEmpty() -> {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -369,7 +375,7 @@ fun HorarioContent(
                         )
                     }
                 }
-                cursos.isEmpty() -> {
+                cursosAMostrar.isEmpty() -> {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -384,9 +390,9 @@ fun HorarioContent(
                     }
                 }
                 else -> {
-                    val proxima = calcularProximaClase(cursos)
+                    val proxima = calcularProximaClase(cursosAMostrar)
                     HorarioSemanalGrid(
-                        cursos = cursos,
+                        cursos = cursosAMostrar,
                         asistenciaCursos = asistenciaCursos,
                         proximaClase = proxima,
                         onProximaClick = {

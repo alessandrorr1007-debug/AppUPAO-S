@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -263,6 +264,50 @@ fun GradesContent(
     }
 }
 
+/**
+ * Calcula la nota acumulada ponderada de un curso (ej: EP1 de 14 * 20% = 2.8).
+ * A medida que se cargan el Parcial, EP2 y Final, el acumulado va aumentando.
+ */
+fun calcularAcumuladoCurso(course: CourseGrade, notaProyectada: Any? = null): Double? {
+    if (!isPendiente(notaProyectada)) {
+        val np = notaProyectada?.toString()?.trim()?.toDoubleOrNull()
+        if (np != null && !np.isNaN() && !np.isInfinite()) return np
+    }
+    val ep1 = course.displayEp1.nota?.toString()?.trim()?.toDoubleOrNull()
+    if (ep1 != null && !ep1.isNaN() && !ep1.isInfinite()) {
+        val ep2 = course.displayEp2.nota?.toString()?.trim()?.toDoubleOrNull()
+        return if (ep2 != null && !ep2.isNaN() && !ep2.isInfinite()) {
+            (ep1 * 0.20) + (ep2 * 0.20)
+        } else {
+            ep1 * 0.20
+        }
+    }
+    val na = course.displayNotaActual?.toString()?.trim()?.toDoubleOrNull()
+    if (na != null && !na.isNaN() && !na.isInfinite()) {
+        // En semestres en curso, la nota de Banner (ej: 14.0) es la nota del EP1 (20%)
+        // El acumulado real para el ponderado es 14.0 * 20% = 2.8 pts
+        return if (na > 4.0) (na * 0.20) else na
+    }
+    return null
+}
+
+fun resolverCreditosCurso(course: CourseGrade, promedioPeriodoRes: PromedioPeriodoResponse? = null): Int {
+    val crn = course.crn ?: course.courseReferenceNumber ?: ""
+    val crPromedio = promedioPeriodoRes?.cursos?.firstOrNull { it.crn == crn }?.creditos?.takeIf { it > 0 }
+    if (crPromedio != null) return crPromedio
+
+    val raw = course.rawBanner
+    val crRaw = (raw?.get("hoursAttempted")
+        ?: raw?.get("creditHours")
+        ?: raw?.get("hours")
+        ?: raw?.get("credits"))
+        ?.toString()?.trim()?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 }
+    if (crRaw != null) return crRaw
+
+    return 3
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PromedioCard(
     promedioGeneral: Any?,
@@ -270,37 +315,42 @@ fun PromedioCard(
     cursos: List<CourseGrade> = emptyList(),
     notasProyectadas: Map<String, Any?> = emptyMap()
 ) {
+    var showSheet by remember { mutableStateOf(false) }
+
     val ppsOficial = promedioPeriodoRes?.ppsOficial?.toDouble()
     val ppsCalculado = promedioPeriodoRes?.ppsCalculado?.toDouble()
 
-    val promedioCursosLocal: Double? = remember(cursos, notasProyectadas) {
-        val notasValidas = cursos.mapNotNull { c ->
+    // Cálculo ponderado usando el acumulado y los créditos reales de cada curso
+    val ponderadoLocal: Double? = remember(cursos, notasProyectadas, promedioPeriodoRes) {
+        var puntos = 0.0
+        var creditos = 0
+        cursos.forEach { c ->
             val crn = c.crn ?: c.courseReferenceNumber ?: ""
-            val nota = if (isPendiente(c.displayNotaActual) && notasProyectadas[crn] != null) {
-                notasProyectadas[crn]
-            } else {
-                c.displayNotaActual
+            val acumulado = calcularAcumuladoCurso(c, notasProyectadas[crn])
+            val cr = resolverCreditosCurso(c, promedioPeriodoRes)
+            if (acumulado != null && !acumulado.isNaN() && !acumulado.isInfinite()) {
+                puntos += (acumulado * cr)
+                creditos += cr
             }
-            nota?.toString()?.trim()?.toDoubleOrNull()
         }
-        if (notasValidas.isNotEmpty()) {
-            notasValidas.average()
-        } else null
+        if (creditos > 0) (puntos / creditos).takeUnless { it.isNaN() || it.isInfinite() } else null
     }
 
     val pFinal: Double? = when {
-        ppsOficial != null -> ppsOficial
+        // En ciclos en curso, el ponderado debe reflejar el acumulado
+        ponderadoLocal != null -> ponderadoLocal
         ppsCalculado != null -> ppsCalculado
+        ppsOficial != null -> ppsOficial
         promedioGeneral != null && !isPendiente(promedioGeneral) && promedioGeneral.toString().trim().toDoubleOrNull() != null -> {
-            promedioGeneral.toString().trim().toDouble()
+            promedioGeneral.toString().trim().toDouble().takeUnless { it.isNaN() || it.isInfinite() }
         }
-        else -> promedioCursosLocal
+        else -> null
     }
 
     val fuenteTexto = when {
+        ponderadoLocal != null -> "Acumulado del ciclo (Puntos ÷ Créditos)"
         ppsOficial != null -> "Oficial (Cuadro de Mérito)"
         ppsCalculado != null -> "Estimado (Notas × Créditos)"
-        promedioCursosLocal != null -> "Promedio del ciclo"
         else -> "Sin notas registradas"
     }
 
@@ -311,7 +361,8 @@ fun PromedioCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         corner = 14.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        onClick = { showSheet = true }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -319,15 +370,24 @@ fun PromedioCard(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Ponderado",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Ponderado",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = "Ver desglose del ponderado",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = fuenteTexto,
+                    text = "$fuenteTexto · Toca para ver cálculo",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -338,6 +398,330 @@ fun PromedioCard(
                 fontWeight = FontWeight.Bold,
                 color = if (notaTexto != "--") gaugeColor else MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+
+    if (showSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            DetallePonderadoSheet(
+                promedioGeneral = pFinal,
+                fuenteTexto = fuenteTexto,
+                promedioPeriodoRes = promedioPeriodoRes,
+                cursos = cursos,
+                notasProyectadas = notasProyectadas,
+                onClose = { showSheet = false }
+            )
+        }
+    }
+}
+
+data class DetalleCursoPonderado(
+    val nombre: String,
+    val crn: String,
+    val nota: Double?,
+    val creditos: Int,
+    val puntos: Double?
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DetallePonderadoSheet(
+    promedioGeneral: Double?,
+    fuenteTexto: String,
+    promedioPeriodoRes: PromedioPeriodoResponse?,
+    cursos: List<CourseGrade>,
+    notasProyectadas: Map<String, Any?> = emptyMap(),
+    onClose: () -> Unit
+) {
+    val itemsPonderados = remember(cursos, promedioPeriodoRes, notasProyectadas) {
+        cursos.map { c ->
+            val crn = c.crn ?: c.courseReferenceNumber ?: ""
+            val cr = resolverCreditosCurso(c, promedioPeriodoRes)
+            // Usamos estrictamente el acumulado del curso (ej: EP1 de 14 * 20% = 2.8)
+            val acumulado = calcularAcumuladoCurso(c, notasProyectadas[crn])
+            val puntos = if (acumulado != null && !acumulado.isNaN() && !acumulado.isInfinite()) acumulado * cr else null
+            DetalleCursoPonderado(
+                nombre = toTitleCase(c.displayNombre),
+                crn = crn,
+                nota = acumulado,
+                creditos = cr,
+                puntos = puntos
+            )
+        }
+    }
+
+    val totalPuntos = itemsPonderados.mapNotNull { it.puntos }.sum()
+    val totalCreditosEvaluados = itemsPonderados.filter { it.puntos != null }.sumOf { it.creditos }
+    val pCalculado = if (totalCreditosEvaluados > 0) (totalPuntos / totalCreditosEvaluados).takeUnless { it.isNaN() || it.isInfinite() } else null
+    val notaMostrar = pCalculado ?: promedioGeneral
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        contentPadding = PaddingValues(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Cálculo del Ponderado",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = fuenteTexto,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = formatPromedio(notaMostrar),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = gradeColor(notaMostrar),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+
+        item {
+            // Tarjeta explicativa de la fórmula UPAO con acumulado
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "FÓRMULA PONDERADA UPAO",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Promedio = Σ(Acumulado × Créditos) ÷ Total Créditos",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "El ponderado se calcula multiplicando el puntaje acumulado de cada asignatura por sus créditos.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        item {
+            Text(
+                text = "1. MULTIPLICACIÓN POR CURSO (ACUMULADO × CRÉDITOS)",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.outline,
+                letterSpacing = 0.5.sp
+            )
+        }
+
+        items(itemsPonderados) { item ->
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = item.nombre,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        if (item.nota != null && item.puntos != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Acumulado ${formatNota(item.nota)}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = gradeColor(item.nota),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text("  ×  ", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "${item.creditos} créd",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text("  =  ", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "${formatNota(item.puntos)} pts",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "Pendiente × ${item.creditos} créditos",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = "-- pts",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "2. CÓMO SE SUMA Y CALCULA EL RESULTADO",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.outline,
+                letterSpacing = 0.5.sp
+            )
+        }
+
+        item {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "A. Suma total de puntos acumulados:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "${formatNota(totalPuntos)} pts",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "B. Suma de créditos evaluados:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "$totalCreditosEvaluados créd",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "C. División final (Puntos ÷ Créditos):",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = if (totalCreditosEvaluados > 0) {
+                                    "${formatNota(totalPuntos)} ÷ $totalCreditosEvaluados = ${formatPromedio(pCalculado)}"
+                                } else {
+                                    "Sin evaluaciones para dividir"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                text = formatPromedio(pCalculado),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = gradeColor(pCalculado),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onClose,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Entendido")
+            }
         }
     }
 }
@@ -351,9 +735,21 @@ fun CourseGradeCard(
     notaProyectada: Any? = null,
     onClick: () -> Unit = {}
 ) {
-    val notaMostrar =
-        if (isPendiente(course.displayNotaActual) && notaProyectada != null) notaProyectada else course.displayNotaActual
-    val statusColor = gradeColor(notaMostrar)
+    // Puntos acumulados ponderados (ej: EP1 de 14 * 20% = 2.8)
+    val puntajeAcumulado = calcularAcumuladoCurso(course, notaProyectada)
+
+    val promedioEvaluado = when {
+        !isPendiente(course.displayEp1.nota) -> course.displayEp1.nota
+        !isPendiente(course.displayEp2.nota) -> course.displayEp2.nota
+        !isPendiente(course.displayNotaActual) -> course.displayNotaActual
+        else -> null
+    }
+
+    val statusColor = when {
+        isPendiente(puntajeAcumulado) -> gradeColor(null)
+        promedioEvaluado != null -> gradeColor(promedioEvaluado)
+        else -> gradeColor(puntajeAcumulado)
+    }
 
     Row(
         modifier = Modifier
@@ -399,13 +795,14 @@ fun CourseGradeCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "NOTA",
+                        text = "ACUMULADO",
                         fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = formatNota(notaMostrar),
+                        text = formatNota(puntajeAcumulado),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = statusColor,
@@ -433,10 +830,12 @@ fun ComponenteRow(componente: ComponenteDetalle) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = componente.displayNombre, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                val pesoTxt = formatPesoTexto(componente.displayPeso, componente.displayNombre)
                 val puntaje = componente.displayPuntaje
-                if (puntaje != null) {
+                val detalleTxt = listOfNotNull(puntaje, pesoTxt?.let { if (it.startsWith("Peso", ignoreCase = true)) it else "Peso $it" }).joinToString(" · ")
+                if (detalleTxt.isNotBlank()) {
                     Text(
-                        text = "$puntaje · Peso ${componente.displayPeso}%",
+                        text = detalleTxt,
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -462,26 +861,93 @@ fun ComponenteRow(componente: ComponenteDetalle) {
                         .fillMaxWidth()
                 ) {
                     componente.subcomponentes.forEach { sub ->
+                        val subPesoTxt = formatPesoTexto(sub.displayPeso, sub.displayNombre)
+                        val subPuntaje = if (sub.puntajeObtenido != null && sub.puntajeSobre != null) {
+                            "${sub.puntajeObtenido}/${sub.puntajeSobre}"
+                        } else null
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = sub.displayNombre, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                            Text(
-                                text = displayGrade(sub.displayNota),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = sub.displayNombre,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (subPuntaje != null || subPesoTxt != null) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        if (subPuntaje != null) {
+                                            Text(
+                                                text = subPuntaje,
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                        if (subPesoTxt != null) {
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (subPesoTxt.startsWith("Peso", ignoreCase = true)) subPesoTxt else "Peso $subPesoTxt",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = displayGrade(sub.displayNota),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = gradeColor(sub.displayNota),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+fun formatPesoTexto(pesoRaw: Any?, fallbackText: String? = null): String? {
+    val s = pesoRaw?.toString()?.trim()
+    if (!s.isNullOrBlank() && s != "null") {
+        if (s.endsWith("%")) return s
+        val d = s.toDoubleOrNull()
+        if (d != null) {
+            val pct = if (d > 0.0 && d <= 1.0) d * 100.0 else d
+            val r = (pct * 10.0).roundToInt() / 10.0
+            return if (r % 1.0 == 0.0) "${r.toInt()}%" else "$r%"
+        }
+        return "$s%"
+    }
+    if (!fallbackText.isNullOrBlank()) {
+        val match = Regex("""(\d+(?:\.\d+)?)\s*%""").find(fallbackText)
+        if (match != null) return match.value.trim()
+    }
+    return null
 }
 
 fun displayGrade(value: Any?): String = when {
@@ -492,6 +958,7 @@ fun displayGrade(value: Any?): String = when {
 fun formatNota(value: Any?): String {
     if (isPendiente(value)) return "--"
     val d = value.toString().trim().toDoubleOrNull() ?: return value.toString()
+    if (d.isNaN() || d.isInfinite()) return "--"
     val r = (d * 100).roundToInt() / 100.0
     return if (r % 1.0 == 0.0) r.toInt().toString() else r.toString()
 }
@@ -499,6 +966,7 @@ fun formatNota(value: Any?): String {
 fun formatPromedio(value: Any?): String {
     if (isPendiente(value)) return "--"
     val d = value?.toString()?.trim()?.toDoubleOrNull() ?: return "--"
+    if (d.isNaN() || d.isInfinite()) return "--"
     val r = (d * 100).roundToInt() / 100.0
     return if (r % 1.0 == 0.0) r.toInt().toString() else r.toString()
 }

@@ -81,14 +81,15 @@ class AsistenciaWorker(
                     revisarAsistencia(token, user)
                 }
 
-                // 2. Revisión de Notas
+                // 2. Revisión de Notas y Notificaciones del Servidor
                 if (checkNotas) {
                     revisarNotas(token, user)
+                    revisarNotificacionesServidor(user)
                 }
 
-                // Reprograma la siguiente verificación en 5 minutos
+                // Reprograma la siguiente verificación en 10 minutos
                 SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
-                Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próxima en 5 min.")
+                Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próxima en 10 min.")
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -98,6 +99,34 @@ class AsistenciaWorker(
             }
         } finally {
             syncMutex.unlock()
+        }
+    }
+
+    private suspend fun revisarNotificacionesServidor(user: String) {
+        try {
+            val res = RetrofitClient.apiService.getNotificaciones(user)
+            if (res.isSuccessful && res.body() != null) {
+                val body = res.body()!!
+                val ultimasLeidas = notificationPrefs.ultimoSnapshotNotificacionesBackend
+                val type = object : TypeToken<Set<Long>>() {}.type
+                val previosIds: Set<Long> = if (!ultimasLeidas.isNullOrBlank()) {
+                    try { gson.fromJson(ultimasLeidas, type) ?: emptySet() } catch (_: Exception) { emptySet() }
+                } else emptySet()
+
+                if (previosIds.isNotEmpty()) {
+                    val noLeidas = body.notificaciones.filter { !it.leida && it.id !in previosIds }
+                    for (notif in noLeidas) {
+                        val titulo = "🎓 " + (notif.componente?.takeIf { it.isNotBlank() } ?: notif.curso ?: "Nueva nota registrada")
+                        NotificationService.mostrarNotificacionNotas(applicationContext, titulo, notif.mensaje)
+                    }
+                }
+
+                val todosIds = body.notificaciones.map { it.id }.toSet()
+                notificationPrefs.ultimoSnapshotNotificacionesBackend = gson.toJson(todosIds)
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e(TAG, "Error revisando notificaciones del servidor: ${e.localizedMessage}")
         }
     }
 

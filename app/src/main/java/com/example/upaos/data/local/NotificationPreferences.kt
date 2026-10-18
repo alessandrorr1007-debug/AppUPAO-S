@@ -21,7 +21,7 @@ class NotificationPreferences(context: Context, usuario: String? = null) {
         set(value) = prefs.edit().putBoolean(KEY_CHECK_ASISTENCIA, value).apply()
 
     var intervaloMinutos: Int
-        get() = prefs.getInt(KEY_INTERVALO_MINUTOS, 5)
+        get() = prefs.getInt(KEY_INTERVALO_MINUTOS, 10)
         set(value) = prefs.edit().putInt(KEY_INTERVALO_MINUTOS, value).apply()
 
     var ultimaRevisionAsistencia: Long
@@ -40,6 +40,10 @@ class NotificationPreferences(context: Context, usuario: String? = null) {
         get() = snapshotPrefs.getString(KEY_ULTIMO_SNAPSHOT_NOTAS, null)
         set(value) = snapshotPrefs.edit().putString(KEY_ULTIMO_SNAPSHOT_NOTAS, value).apply()
 
+    var ultimoSnapshotNotificacionesBackend: String?
+        get() = snapshotPrefs.getString(KEY_ULTIMO_SNAPSHOT_NOTIF_BACKEND, null)
+        set(value) = snapshotPrefs.edit().putString(KEY_ULTIMO_SNAPSHOT_NOTIF_BACKEND, value).apply()
+
     companion object {
         private const val KEY_CHECK_NOTAS = "check_notas_enabled"
         private const val KEY_CHECK_ASISTENCIA = "check_asistencia_enabled"
@@ -48,5 +52,6 @@ class NotificationPreferences(context: Context, usuario: String? = null) {
         private const val KEY_ULTIMO_SNAPSHOT = "ultimo_snapshot_asistencia"
         private const val KEY_ULTIMA_REVISION_NOTAS = "ultima_revision_notas"
         private const val KEY_ULTIMO_SNAPSHOT_NOTAS = "ultimo_snapshot_notas"
+        private const val KEY_ULTIMO_SNAPSHOT_NOTIF_BACKEND = "ultimo_snapshot_notif_backend"
     }
 }

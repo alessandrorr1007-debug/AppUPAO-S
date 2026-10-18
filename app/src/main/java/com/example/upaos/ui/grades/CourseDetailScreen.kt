@@ -18,6 +18,8 @@ import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
+import com.example.upaos.ui.components.gradeColor
+import com.example.upaos.ui.components.isPendiente
 import com.example.upaos.ui.components.toTitleCase
 import kotlinx.coroutines.launch
 
@@ -129,26 +131,98 @@ fun CourseDetailScreen(
                     )
                 }
                 else -> {
-                    if (notaProyectada != null) {
+                    val componentesEvaluados = componentes.filter { !isPendiente(it.displayNota) }
+                    val sumaPesosEvaluados = componentesEvaluados.sumOf {
+                        it.displayPeso?.toString()?.replace("%", "")?.trim()?.toDoubleOrNull() ?: 0.0
+                    }
+                    val sumaPonderada = componentesEvaluados.sumOf { comp ->
+                        val nota = comp.displayNota?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
+                        val peso = comp.displayPeso?.toString()?.replace("%", "")?.trim()?.toDoubleOrNull() ?: 0.0
+                        nota * (peso / 100.0)
+                    }
+                    val puntosAcumulados = (notaProyectada?.toString()?.toDoubleOrNull() ?: sumaPonderada)
+                        .takeUnless { it.isNaN() || it.isInfinite() } ?: 0.0
+                    val promedioParcial: Double? = when {
+                        sumaPesosEvaluados > 0.0 -> (sumaPonderada / (sumaPesosEvaluados / 100.0)).takeUnless { it.isNaN() || it.isInfinite() }
+                        componentesEvaluados.isNotEmpty() -> {
+                            val notas = componentesEvaluados.mapNotNull { it.displayNota?.toString()?.trim()?.toDoubleOrNull() }
+                            if (notas.isNotEmpty()) notas.average().takeUnless { it.isNaN() || it.isInfinite() } else null
+                        }
+                        else -> null
+                    }
+
+                    if (promedioParcial != null || notaProyectada != null) {
                         Card(
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                             ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "PROMEDIO PARCIAL",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        Text(
+                                            text = formatNota(promedioParcial ?: puntosAcumulados),
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = gradeColor(promedioParcial ?: puntosAcumulados)
+                                        )
+                                    }
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                            horizontalAlignment = Alignment.End
+                                        ) {
+                                            Text(
+                                                text = "ACUMULADO",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                            Text(
+                                                text = "${formatNota(puntosAcumulados)} / 20 pts",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+                                }
+                                val faltan = (10.5 - puntosAcumulados).coerceAtLeast(0.0)
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Nota proyectada: ${displayGrade(notaProyectada)}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
+                                    text = if (pesosPendientes.isNotEmpty() && faltan > 0.0) {
+                                        "Llevas ${formatNota(puntosAcumulados)} pts asegurados (promedio parcial ${formatNota(promedioParcial)}). Faltan ${formatNota(faltan)} pts para aprobar con 10.5."
+                                    } else if (pesosPendientes.isNotEmpty()) {
+                                        "¡Ya tienes ${formatNota(puntosAcumulados)} pts asegurados! Tienes el curso aprobado."
+                                    } else {
+                                        "Evaluaciones completadas · Nota final: ${formatNota(puntosAcumulados)}"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 if (pesosPendientes.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = "Por evaluar: ${pesosPendientes.joinToString(", ")}",
-                                        fontSize = 11.sp
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.outline
                                     )
                                 }
                             }

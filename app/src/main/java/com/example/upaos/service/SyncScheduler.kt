@@ -12,11 +12,11 @@ import java.util.concurrent.TimeUnit
 
 object SyncScheduler {
     private const val TAG = "UPAO_SyncScheduler"
-    const val ACTION_SYNC = "com.example.upaos.ACTION_SYNC_5MIN"
+    const val ACTION_SYNC = "com.example.upaos.ACTION_SYNC_10MIN"
     private const val ALARM_REQUEST_CODE = 9988
     private const val PERIODIC_WORK_NAME = "upao_unified_periodic_sync"
     private const val ONE_TIME_WORK_NAME = "upao_unified_onetime_sync"
-    const val INTERVAL_MINUTES = 5L
+    const val INTERVAL_MINUTES = 10L
 
     /**
      * Inicia o actualiza la programación en segundo plano cada 5 minutos
