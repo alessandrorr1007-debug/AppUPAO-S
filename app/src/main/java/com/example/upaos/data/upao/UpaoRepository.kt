@@ -8,9 +8,11 @@ import com.example.upaos.data.model.CarrerasResponse
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.DetalleCursoResponse
 import com.example.upaos.data.model.GradesResponse
+import com.example.upaos.data.model.HorarioResponse
 import com.example.upaos.data.model.PeriodosResponse
 import com.example.upaos.data.model.PromedioCursoItem
 import com.example.upaos.data.model.PromedioPeriodoResponse
+import com.example.upaos.data.model.SemanaInfo
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -142,5 +144,13 @@ class UpaoRepository(private val context: Context) {
             totalCreditos = if (sumaCreditos > 0) sumaCreditos else null,
             cursos = items
         )
+    }
+
+    suspend fun getHorario(term: String): HorarioResponse = withContext(Dispatchers.IO) {
+        bannerApi.getHorario(term)
+    }
+
+    fun getSemana(term: String, fechaReferencia: Date = Date()): SemanaInfo {
+        return AcademicCalendar.calcularSemana(term, fechaReferencia)
     }
 }

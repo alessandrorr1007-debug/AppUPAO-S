@@ -227,16 +227,23 @@ class DashboardViewModel(app: Application, private val token: String, private va
             for (term in setOf(result.currentPeriod, result.schedulePeriod, result.attendancePeriod)) {
                 val key = scheduleCacheKey(term)
                 attempt(key) {
-                    val schedule = body(api.getHorario(auth, term))
-                    schedules[term] = schedule; save(key, schedule)
-                    if (term == result.currentPeriod) {
-                        save("horario_ultimo_$user", schedule)
-                        cache.guardar("horario_ultimo_periodo_$user", term)
+                    val schedule = upaoRepository.getHorario(term)
+                    if (schedule.success || schedule.cursos.isNotEmpty()) {
+                        schedules[term] = schedule
+                        save(key, schedule)
+                        if (term == result.currentPeriod) {
+                            save("horario_ultimo_$user", schedule)
+                            cache.guardar("horario_ultimo_periodo_$user", term)
+                        }
                     }
                 }
             }
             result = result.copy(schedules = schedules)
-            attempt("semana") { val week = body(api.getSemana()); result = result.copy(week = week); save("semana_$user", week) }
+            attempt("semana") {
+                val week = upaoRepository.getSemana(result.currentPeriod)
+                result = result.copy(week = week)
+                save("semana_$user", week)
+            }
             attempt("notificaciones_$user") {
                 val notices = body(api.getNotificaciones(user)); result = result.copy(notices = notices); save("notificaciones_$user", notices)
             }
