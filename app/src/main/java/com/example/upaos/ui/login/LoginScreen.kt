@@ -1,16 +1,10 @@
 package com.example.upaos.ui.login
 
-import android.graphics.BitmapFactory
-import android.util.Base64
 import android.widget.Toast
-import com.example.upaos.data.api.mensajeErrorLogin
-import com.example.upaos.data.api.requiereCaptcha
-import kotlinx.coroutines.CancellationException
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,11 +21,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -39,16 +30,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.TokenManager
-import com.example.upaos.data.model.LoginRequest
-import com.example.upaos.data.model.ManualCaptchaRequest
-import com.example.upaos.service.FcmTokenHelper
+import com.example.upaos.data.upao.UpaoAuth
+import com.example.upaos.data.upao.UpaoInvalidCredentialsException
+import com.example.upaos.data.upao.UpaoNetworkException
+import com.example.upaos.data.upao.UpaoServiceUnavailableException
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.ModernTextField
 import com.example.upaos.ui.components.PrimaryButton
 import com.example.upaos.ui.components.UpaoLogo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -67,10 +58,6 @@ fun LoginScreen(
     var mantenerSesion by remember { mutableStateOf(true) }
 
     var isLoading by remember { mutableStateOf(false) }
-    var showCaptchaDialog by remember { mutableStateOf(false) }
-    var captchaBase64 by remember { mutableStateOf("") }
-    var manualCaptchaCode by remember { mutableStateOf("") }
-    var captchaId by remember { mutableStateOf<String?>(null) }
     var loginError by remember { mutableStateOf<String?>(null) }
 
     val isUserValid = usuario.length == 9 && usuario.all { it.isDigit() }
@@ -87,21 +74,17 @@ fun LoginScreen(
         label = "logoScale"
     )
 
-    fun procesarLogin(token: String?) {
-        if (token != null) {
-            tokenManager.saveToken(token)
-            tokenManager.saveUserId(usuario)
-            if (guardarPassword) {
-                tokenManager.saveCredentials(usuario, password)
-                tokenManager.saveCuenta(usuario, password)
-            } else {
-                tokenManager.forgetCurrentPassword()
-            }
-            tokenManager.setKeepLoggedIn(mantenerSesion)
-
-            FcmTokenHelper.register(context)
-            onLoginSuccess(token)
+    fun procesarLogin(studentName: String?) {
+        tokenManager.saveToken(usuario)
+        tokenManager.saveUserId(usuario)
+        if (guardarPassword) {
+            tokenManager.saveCredentials(usuario, password)
+            tokenManager.saveCuenta(usuario, password, studentName)
+        } else {
+            tokenManager.forgetCurrentPassword()
         }
+        tokenManager.setKeepLoggedIn(mantenerSesion)
+        onLoginSuccess(usuario)
     }
 
     Box(
@@ -168,7 +151,7 @@ fun LoginScreen(
                 ) {
                     ModernTextField(
                         value = usuario,
-                        onValueChange = { if (!isLoading && !showCaptchaDialog && it.length <= 9 && it.all { char -> char.isDigit() }) { usuario = it; loginError = null } },
+                        onValueChange = { if (!isLoading && it.length <= 9 && it.all { char -> char.isDigit() }) { usuario = it; loginError = null } },
                         label = "ID de usuario",
                         leadingIcon = Icons.Filled.Person,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -181,7 +164,7 @@ fun LoginScreen(
 
                     ModernTextField(
                         value = password,
-                        onValueChange = { if (!isLoading && !showCaptchaDialog) { password = it; loginError = null } },
+                        onValueChange = { if (!isLoading) { password = it; loginError = null } },
                         label = "Contraseña",
                         leadingIcon = Icons.Filled.Lock,
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -241,30 +224,29 @@ fun LoginScreen(
 
                             if (isLoading) return@PrimaryButton
                             loginError = null
-                            manualCaptchaCode = ""
                             isLoading = true
                             scope.launch {
                                 try {
-                                    val response = RetrofitClient.apiService.login(LoginRequest(usuario, password))
+                                    val result = UpaoAuth.login(usuario, password)
                                     isLoading = false
-                                    val body = response.body()
-                                    if (response.isSuccessful && body != null) {
-                                        if (body.success && body.token != null) {
-                                            procesarLogin(body.token)
-                                        } else if (requiereCaptcha(body)) {
-                                            captchaBase64 = body.imagenBase64!!
-                                            captchaId = body.captchaId
-                                            showCaptchaDialog = true
-                                        } else {
-                                            loginError = mensajeErrorLogin(response.code(), body)
-                                        }
+                                    if (result.success) {
+                                        procesarLogin(result.studentName)
                                     } else {
-                                        loginError = mensajeErrorLogin(response.code(), body, response.errorBody()?.string())
+                                        loginError = result.errorMessage ?: "No se pudo iniciar sesión."
                                     }
+                                } catch (e: UpaoInvalidCredentialsException) {
+                                    isLoading = false
+                                    loginError = e.message ?: "ID o contraseña incorrectos. Revisa tus datos."
+                                } catch (e: UpaoServiceUnavailableException) {
+                                    isLoading = false
+                                    loginError = e.message ?: "El portal de la UPAO no está disponible, intenta más tarde."
+                                } catch (e: UpaoNetworkException) {
+                                    isLoading = false
+                                    loginError = "No se pudo conectar. Revisa tu conexión a internet e inténtalo nuevamente."
                                 } catch (e: Exception) {
                                     if (e is CancellationException) throw e
                                     isLoading = false
-                                    loginError = "No se pudo conectar. Revisa tu conexión a internet e inténtalo nuevamente."
+                                    loginError = e.localizedMessage ?: "No se pudo iniciar sesión. Inténtalo nuevamente."
                                 }
                             }
                         },
@@ -274,10 +256,14 @@ fun LoginScreen(
                         height = 46.dp,
                         modifier = Modifier.fillMaxWidth()
                     )
+
                     loginError?.let { mensaje ->
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = mensaje, color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = mensaje,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
 
@@ -291,121 +277,5 @@ fun LoginScreen(
                 )
             }
         }
-    }
-
-    // Diálogo Fallback de Captcha Manual
-    if (showCaptchaDialog) {
-        AlertDialog(
-            onDismissRequest = { showCaptchaDialog = false },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shape = RoundedCornerShape(20.dp),
-            title = {
-                Text(
-                    text = "Código de Verificación",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Para continuar, ingresa el código que aparece en la imagen:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    if (captchaBase64.isNotEmpty()) {
-                        val cleanB64 = if (captchaBase64.contains(",")) captchaBase64.substringAfter(",") else captchaBase64
-                        var isDecodeError by remember { mutableStateOf(false) }
-                        var errorMessage by remember { mutableStateOf("") }
-
-                        val bitmap = remember(cleanB64) {
-                            try {
-                                val imageBytes = Base64.decode(cleanB64, Base64.DEFAULT)
-                                val bmp = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-                                if (bmp == null) {
-                                    isDecodeError = true
-                                    errorMessage = "No se pudo mostrar la imagen. Inicia sesión nuevamente."
-                                }
-                                bmp
-                            } catch (e: Exception) {
-                                isDecodeError = true
-                                errorMessage = "No se pudo mostrar la imagen. Inicia sesión nuevamente."
-                                null
-                            }
-                        }
-
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Captcha Image",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(MaterialTheme.colorScheme.surface)
-                                    .padding(4.dp)
-                            )
-                        } else if (isDecodeError) {
-                            Text(
-                                text = errorMessage,
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 11.sp
-                            )
-                        }
-                    } else {
-                        Text(
-                            text = "No se pudo cargar la imagen. Inicia sesión nuevamente.",
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    ModernTextField(
-                        value = manualCaptchaCode,
-                        onValueChange = { if (it.length <= 6) manualCaptchaCode = it.uppercase() },
-                        label = "Código (6 caracteres)",
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showCaptchaDialog = false
-                        isLoading = true
-                        scope.launch {
-                            try {
-                                val res = RetrofitClient.apiService.loginConfirmarCaptcha(
-                                    ManualCaptchaRequest(usuario, password, manualCaptchaCode, captchaId)
-                                )
-                                isLoading = false
-                                val body = res.body()
-                                if (res.isSuccessful && body?.success == true && body.token != null) {
-                                    procesarLogin(body.token)
-                                } else {
-                                    loginError = mensajeErrorLogin(res.code(), body, res.errorBody()?.string())
-                                }
-                            } catch (e: Exception) {
-                                if (e is CancellationException) throw e
-                                isLoading = false
-                                loginError = "No se pudo conectar. Revisa tu conexión a internet e inténtalo nuevamente."
-                            }
-                        }
-                    },
-                    enabled = manualCaptchaCode.length == 6
-                ) {
-                    Text("Confirmar", fontWeight = FontWeight.SemiBold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCaptchaDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
-        )
     }
 }
