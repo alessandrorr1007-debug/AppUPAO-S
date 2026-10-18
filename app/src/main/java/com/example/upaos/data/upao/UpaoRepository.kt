@@ -10,6 +10,8 @@ import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.DetalleCursoResponse
 import com.example.upaos.data.model.GradesResponse
 import com.example.upaos.data.model.HorarioResponse
+import com.example.upaos.data.model.NotificacionItem
+import com.example.upaos.data.model.NotificacionesResponse
 import com.example.upaos.data.model.PeriodosResponse
 import com.example.upaos.data.model.PromedioCursoItem
 import com.example.upaos.data.model.PromedioPeriodoResponse
@@ -157,5 +159,70 @@ class UpaoRepository(private val context: Context) {
 
     suspend fun getAsistencia(): AsistenciaResponse = withContext(Dispatchers.IO) {
         bannerApi.getAsistencia()
+    }
+
+    suspend fun getNotificaciones(usuario: String): NotificacionesResponse = withContext(Dispatchers.IO) {
+        val json = apiCache.cargar("notificaciones_$usuario")
+        if (!json.isNullOrBlank()) {
+            try {
+                gson.fromJson(json, NotificacionesResponse::class.java)
+            } catch (_: Exception) {
+                NotificacionesResponse()
+            }
+        } else {
+            NotificacionesResponse()
+        }
+    }
+
+    suspend fun registrarNotificacionLocal(
+        usuario: String,
+        mensaje: String,
+        curso: String? = null,
+        componente: String? = null
+    ): NotificacionItem = withContext(Dispatchers.IO) {
+        val actual = getNotificaciones(usuario)
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+        val fecha = sdf.format(Date())
+        val nuevoId = System.currentTimeMillis()
+        val nuevoItem = NotificacionItem(
+            id = nuevoId,
+            mensaje = mensaje,
+            curso = curso,
+            componente = componente,
+            fechaCreacion = fecha,
+            leida = false
+        )
+        val nuevaLista = listOf(nuevoItem) + actual.notificaciones
+        val nuevoResponse = NotificacionesResponse(
+            noLeidas = nuevaLista.count { !it.leida },
+            total = nuevaLista.size,
+            notificaciones = nuevaLista
+        )
+        apiCache.guardar("notificaciones_$usuario", gson.toJson(nuevoResponse))
+        nuevoItem
+    }
+
+    suspend fun marcarNotificacionLeida(id: Long, usuario: String) = withContext(Dispatchers.IO) {
+        val actual = getNotificaciones(usuario)
+        val nuevaLista = actual.notificaciones.map {
+            if (it.id == id) it.copy(leida = true) else it
+        }
+        val nuevoResponse = NotificacionesResponse(
+            noLeidas = nuevaLista.count { !it.leida },
+            total = nuevaLista.size,
+            notificaciones = nuevaLista
+        )
+        apiCache.guardar("notificaciones_$usuario", gson.toJson(nuevoResponse))
+    }
+
+    suspend fun marcarTodasNotificacionesLeidas(usuario: String) = withContext(Dispatchers.IO) {
+        val actual = getNotificaciones(usuario)
+        val nuevaLista = actual.notificaciones.map { it.copy(leida = true) }
+        val nuevoResponse = NotificacionesResponse(
+            noLeidas = 0,
+            total = nuevaLista.size,
+            notificaciones = nuevaLista
+        )
+        apiCache.guardar("notificaciones_$usuario", gson.toJson(nuevoResponse))
     }
 }

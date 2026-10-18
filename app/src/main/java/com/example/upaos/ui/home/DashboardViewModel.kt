@@ -248,7 +248,9 @@ class DashboardViewModel(app: Application, private val token: String, private va
                 save("semana_$user", week)
             }
             attempt("notificaciones_$user") {
-                val notices = body(api.getNotificaciones(user)); result = result.copy(notices = notices); save("notificaciones_$user", notices)
+                val notices = upaoRepository.getNotificaciones(user)
+                result = result.copy(notices = notices)
+                save("notificaciones_$user", notices)
             }
             attempt("agenda_$user") {
                 val agenda = agendaRepository.refresh(user); result = result.copy(agenda = agenda)

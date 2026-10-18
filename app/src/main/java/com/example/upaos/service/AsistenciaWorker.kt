@@ -3,7 +3,6 @@ package com.example.upaos.service
 import android.content.Context
 import android.util.Log
 import androidx.work.*
-import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.local.NotificationPreferences
@@ -11,14 +10,14 @@ import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.AsistenciaCurso
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.GradesResponse
-import com.example.upaos.data.model.LoginRequest
-import com.example.upaos.ui.grades.detectarPeriodoActual
+import com.example.upaos.data.upao.Calculators
+import com.example.upaos.data.upao.UpaoAuth
+import com.example.upaos.data.upao.UpaoRepository
 import com.example.upaos.widget.ResumenNotasWidget
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class AsistenciaWorker(
@@ -26,14 +25,11 @@ class AsistenciaWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
-    init {
-        RetrofitClient.init(context)
-    }
-
     private var notificationPrefs = NotificationPreferences(context)
     private val tokenManager = TokenManager(context)
     private val apiCache = ApiCache(context)
     private val gradesCache = GradesCache(context)
+    private val upaoRepository = UpaoRepository(context)
     private val gson = Gson()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -51,43 +47,33 @@ class AsistenciaWorker(
 
             val user = tokenManager.getSavedUser()
             val pass = tokenManager.getSavedPass()
-            var token = tokenManager.getToken()
 
-            if (user.isNullOrBlank()) {
-                Log.d(TAG, "Sin usuario guardado, omitiendo chequeo.")
+            if (user.isNullOrBlank() || pass.isNullOrBlank()) {
+                Log.d(TAG, "Sin credenciales guardadas, omitiendo chequeo.")
                 return@withContext Result.success()
             }
             notificationPrefs = NotificationPreferences(applicationContext, user)
 
             try {
-                // Si no hay token pero sí credenciales, intentamos autenticar
-                if (token.isNullOrBlank() && !pass.isNullOrBlank()) {
-                    val loginRes = RetrofitClient.apiService.login(LoginRequest(user, pass))
-                    val nuevoToken = loginRes.body()?.token
-                    if (loginRes.isSuccessful && !nuevoToken.isNullOrBlank()) {
-                        token = nuevoToken
-                        tokenManager.saveToken(nuevoToken)
-                    }
-                }
-
-                if (token.isNullOrBlank()) {
-                    Log.w(TAG, "No se pudo obtener token para sincronización en segundo plano.")
+                // Asegurar sesión directa en UPAO SSO
+                val loginRes = UpaoAuth.ensureSession(user, pass)
+                if (!loginRes.success) {
+                    Log.w(TAG, "No se pudo asegurar sesión directa con UPAO SSO.")
                     SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
                     return@withContext Result.success()
                 }
 
                 // 1. Revisión de Asistencia
                 if (checkAsistencia) {
-                    revisarAsistencia(token, user)
+                    revisarAsistencia(user)
                 }
 
-                // 2. Revisión de Notas y Notificaciones del Servidor
+                // 2. Revisión de Notas
                 if (checkNotas) {
-                    revisarNotas(token, user)
-                    revisarNotificacionesServidor(user)
+                    revisarNotas(user)
                 }
 
-                // Reprograma la siguiente verificación en 10 minutos
+                // Reprograma la siguiente verificación periódica
                 SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
                 Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próxima en 10 min.")
                 Result.success()
@@ -102,49 +88,21 @@ class AsistenciaWorker(
         }
     }
 
-    private suspend fun revisarNotificacionesServidor(user: String) {
+    private suspend fun revisarAsistencia(user: String) {
         try {
-            val res = RetrofitClient.apiService.getNotificaciones(user)
-            if (res.isSuccessful && res.body() != null) {
-                val body = res.body()!!
-                val ultimasLeidas = notificationPrefs.ultimoSnapshotNotificacionesBackend
-                val type = object : TypeToken<Set<Long>>() {}.type
-                val previosIds: Set<Long> = if (!ultimasLeidas.isNullOrBlank()) {
-                    try { gson.fromJson(ultimasLeidas, type) ?: emptySet() } catch (_: Exception) { emptySet() }
-                } else emptySet()
-
-                if (previosIds.isNotEmpty()) {
-                    val noLeidas = body.notificaciones.filter { !it.leida && it.id !in previosIds }
-                    for (notif in noLeidas) {
-                        val titulo = "🎓 " + (notif.componente?.takeIf { it.isNotBlank() } ?: notif.curso ?: "Nueva nota registrada")
-                        NotificationService.mostrarNotificacionNotas(applicationContext, titulo, notif.mensaje)
-                    }
-                }
-
-                val todosIds = body.notificaciones.map { it.id }.toSet()
-                notificationPrefs.ultimoSnapshotNotificacionesBackend = gson.toJson(todosIds)
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.e(TAG, "Error revisando notificaciones del servidor: ${e.localizedMessage}")
-        }
-    }
-
-    private suspend fun revisarAsistencia(token: String, user: String) {
-        try {
-            val res = RetrofitClient.apiService.getAsistencia("Bearer $token")
+            val res = upaoRepository.getAsistencia()
             if (tokenManager.getSavedUser() != user) return
 
-            if (res.isSuccessful && res.body() != null) {
-                val nuevaAsistencia = res.body()!!.asistencia
-                compararYNotificarAsistencia(nuevaAsistencia)
+            if (res.success && res.asistencia.isNotEmpty()) {
+                val nuevaAsistencia = res.asistencia
+                compararYNotificarAsistencia(nuevaAsistencia, user)
 
                 val cacheKey = "asistencia_$user"
-                apiCache.guardar(cacheKey, gson.toJson(res.body()!!))
+                apiCache.guardar(cacheKey, gson.toJson(res))
                 notificationPrefs.ultimaRevisionAsistencia = System.currentTimeMillis()
                 Log.d(TAG, "Revisión de asistencia completada.")
             } else {
-                Log.w(TAG, "Respuesta no exitosa al consultar asistencia: ${res.code()}")
+                Log.w(TAG, "Respuesta vacía o no exitosa al consultar asistencia directa")
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -152,14 +110,12 @@ class AsistenciaWorker(
         }
     }
 
-    private suspend fun revisarNotas(token: String, user: String) {
+    private suspend fun revisarNotas(user: String) {
         try {
-            // Determinamos periodo y carrera
             var periodo = "202610"
             var carrera = "UG"
 
-            // Intentamos recuperar del caché guardado por la app
-            val cachedJson = gradesCache.cargar(user)
+            val cachedJson = gradesCache.cargar("notas_$user")
             if (!cachedJson.isNullOrBlank()) {
                 try {
                     val cachedGrades = gson.fromJson(cachedJson, GradesResponse::class.java)
@@ -168,33 +124,27 @@ class AsistenciaWorker(
                 } catch (_: Exception) {}
             } else {
                 try {
-                    val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
-                    if (periodosRes.isSuccessful && periodosRes.body() != null) {
-                        val body = periodosRes.body()!!
-                        periodo = detectarPeriodoActual(body.periodos, body.periodoActual)
-                    }
+                    val periodos = upaoRepository.getPeriodos()
+                    periodo = Calculators.detectarPeriodoActual(periodos.periodos, periodos.periodoActual)
+                    val carreras = upaoRepository.getCarreras(periodo)
+                    carrera = carreras.carreras.firstOrNull() ?: "UG"
                 } catch (_: Exception) {}
             }
 
-            val req = mapOf("periodo" to periodo, "carrera" to carrera)
-            val res = RetrofitClient.apiService.buscarNotas("Bearer $token", req)
+            val grades = upaoRepository.buscarNotas(periodo, carrera)
             if (tokenManager.getSavedUser() != user) return
 
-            if (res.isSuccessful && res.body() != null) {
-                val body = res.body()!!
-                compararYNotificarNotas(body.cursos)
+            if (grades.cursos.isNotEmpty()) {
+                compararYNotificarNotas(grades.cursos, user)
 
-                // Guardar en caché y actualizar widget de escritorio
-                gradesCache.guardar(user, gson.toJson(body))
+                gradesCache.guardar("notas_$user", gson.toJson(grades))
                 notificationPrefs.ultimaRevisionNotas = System.currentTimeMillis()
 
                 try {
                     ResumenNotasWidget.updateAll(applicationContext)
                 } catch (_: Exception) {}
 
-                Log.d(TAG, "Revisión de notas completada (${body.cursos.size} cursos analizados).")
-            } else {
-                Log.w(TAG, "Respuesta no exitosa al consultar notas: ${res.code()}")
+                Log.d(TAG, "Revisión de notas completada (${grades.cursos.size} cursos analizados).")
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -202,7 +152,7 @@ class AsistenciaWorker(
         }
     }
 
-    private fun compararYNotificarAsistencia(nuevosCursos: List<AsistenciaCurso>) {
+    private suspend fun compararYNotificarAsistencia(nuevosCursos: List<AsistenciaCurso>, user: String) {
         val snapshotPrevioRaw = notificationPrefs.ultimoSnapshotAsistencia
         val type = object : TypeToken<Map<String, SnapshotCurso>>() {}.type
         val snapshotPrevio: Map<String, SnapshotCurso> = if (!snapshotPrevioRaw.isNullOrBlank()) {
@@ -254,16 +204,19 @@ class AsistenciaWorker(
                         val titulo = "⚠️ Falta registrada"
                         val mensaje = "$nombreConTipo: Te registraron $plural (Total: $faltasActuales). Asistencia: ${formatearPct(pctActual)}%."
                         NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     } else if (asistenciasActuales != null && asistPrevias != null && asistenciasActuales > asistPrevias) {
                         val dif = asistenciasActuales - asistPrevias
                         val plural = if (dif == 1) "asistencia" else "$dif asistencias"
                         val titulo = "✅ Asistencia registrada"
                         val mensaje = "$nombreConTipo: ¡Se registró tu $plural! Llevas $asistenciasActuales asistencias."
                         NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     } else if (previo.porcentaje != null && pctActual > previo.porcentaje && faltasActuales == faltasPrevias) {
                         val titulo = "✅ Asistencia registrada"
                         val mensaje = "$nombreConTipo: ¡Se registró una nueva asistencia! (${formatearPct(pctActual)}%)."
                         NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     }
                 }
             }
@@ -272,7 +225,7 @@ class AsistenciaWorker(
         notificationPrefs.ultimoSnapshotAsistencia = gson.toJson(nuevoSnapshot)
     }
 
-    private fun compararYNotificarNotas(nuevosCursos: List<CourseGrade>) {
+    private suspend fun compararYNotificarNotas(nuevosCursos: List<CourseGrade>, user: String) {
         val snapshotPrevioRaw = notificationPrefs.ultimoSnapshotNotas
         val type = object : TypeToken<Map<String, SnapshotNotasCurso>>() {}.type
         val snapshotPrevio: Map<String, SnapshotNotasCurso> = if (!snapshotPrevioRaw.isNullOrBlank()) {
@@ -318,7 +271,7 @@ class AsistenciaWorker(
                 componentes = compMap
             )
 
-            // Comparar solo si ya teníamos un snapshot previo (evita inundar de alertas al primer inicio)
+            // Comparar solo si ya teníamos un snapshot previo
             if (snapshotPrevio.isNotEmpty()) {
                 val previo = snapshotPrevio[key]
                 if (previo != null) {
@@ -329,6 +282,7 @@ class AsistenciaWorker(
                         val titulo = "🎓 Nueva nota en EP1"
                         val mensaje = "$cursoNombre: Tu nota de EP1 es $ep1NotaStr."
                         NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = "EP1")
                     }
 
                     // Caso 2: Se subió o modificó la nota de EP2
@@ -336,9 +290,10 @@ class AsistenciaWorker(
                         val titulo = "🎓 Nueva nota en EP2"
                         val mensaje = "$cursoNombre: Tu nota de EP2 es $ep2NotaStr."
                         NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = "EP2")
                     }
 
-                    // Caso 3: Cambio en algún componente evaluativo específico (prácticas, parciales, etc.)
+                    // Caso 3: Cambio en algún componente evaluativo específico
                     for ((compName, compVal) in compMap) {
                         val valPrevio = previo.componentes[compName]
                         if (!compVal.isNullOrBlank() && compVal != valPrevio) {
@@ -346,6 +301,7 @@ class AsistenciaWorker(
                             val titulo = "🎓 Nueva evaluación calificada"
                             val mensaje = "$cursoNombre: Calificación en $etiquetaLimpia: $compVal."
                             NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                            upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = etiquetaLimpia)
                         }
                     }
 
@@ -356,6 +312,7 @@ class AsistenciaWorker(
                         val titulo = "🎓 Nota promedio actualizada"
                         val mensaje = "$cursoNombre: Tu promedio actual ahora es $notaActualStr."
                         NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = "Promedio Actual")
                     }
                 }
             }
@@ -386,9 +343,6 @@ class AsistenciaWorker(
         private const val TAG = "UPAO_BackgroundSync"
         private val syncMutex = com.example.upaos.data.refresh.ForegroundRefreshGate.lock
 
-        /**
-         * Programa la sincronización periódica de 5 minutos utilizando SyncScheduler
-         */
         fun schedule(context: Context, intervalMinutes: Long = 5) {
             SyncScheduler.start(context)
         }
