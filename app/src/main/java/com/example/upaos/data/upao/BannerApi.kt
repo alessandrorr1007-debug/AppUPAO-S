@@ -2,6 +2,9 @@ package com.example.upaos.data.upao
 
 import android.content.Context
 import com.example.upaos.data.local.TokenManager
+import com.example.upaos.data.model.AsistenciaComponente
+import com.example.upaos.data.model.AsistenciaCurso
+import com.example.upaos.data.model.AsistenciaResponse
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.DetalleCursoResponse
@@ -25,6 +28,7 @@ import okhttp3.Response
 import org.jsoup.parser.Parser
 import java.io.IOException
 import java.util.Calendar
+import kotlin.math.roundToInt
 
 class BannerApi(private val context: Context) {
 
@@ -40,6 +44,7 @@ class BannerApi(private val context: Context) {
     private val resetRegistrationsUrl = "$inscripcionBaseUrl/registrationHistory/reset"
     private val meetingInfoUrl = "$inscripcionBaseUrl/classRegistration/getMeetingInformationForRegistrations"
     private val registrationEventsUrl = "$inscripcionBaseUrl/classRegistration/getRegistrationEvents"
+    private val attendanceBaseUrl = "https://ssb.upao.edu.pe/StudentSelfService/ssb/studentAttendanceTracking"
 
     /**
      * Ejecuta una petición HTTP a la UPAO con protección de re-login automático.
@@ -941,6 +946,201 @@ class BannerApi(private val context: Context) {
         val hora = "$hh:$mm"
         return weekday to hora
     }
+
+    /**
+     * Consulta el registro completo de asistencias desde studentAttendanceTracking/getRegisteredSections.
+     */
+    suspend fun getAsistencia(pageMaxSize: Int = 50): AsistenciaResponse = withContext(Dispatchers.IO) {
+        val allItems = mutableListOf<JsonObject>()
+        var totalCount: Int? = null
+        var offset = 0
+
+        try {
+            while (true) {
+                val url = "$attendanceBaseUrl/getRegisteredSections?filterText=&pageMaxSize=$pageMaxSize&pageOffset=$offset&sortColumn=courseReferenceNumber&sortDirection=asc"
+                val response = executeWithAuth {
+                    Request.Builder()
+                        .url(url)
+                        .header("Accept", "application/json, text/javascript, */*; q=0.01")
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .header("Referer", attendanceBaseUrl)
+                        .get()
+                        .build()
+                }
+
+                val jsonStr = response.body?.string().orEmpty()
+                val parsed = JsonParser.parseString(jsonStr)
+                if (!parsed.isJsonObject) break
+
+                val rootObj = parsed.asJsonObject
+                val rawTotal = rootObj.get("totalCount")?.asIntOrNull()
+                if (rawTotal != null) totalCount = rawTotal
+
+                val dataArr = rootObj.getAsJsonArray("data")
+                val pageItems = mutableListOf<JsonObject>()
+                if (dataArr != null) {
+                    for (elem in dataArr) {
+                        if (elem.isJsonObject) pageItems.add(elem.asJsonObject)
+                    }
+                }
+
+                allItems.addAll(pageItems)
+
+                if (pageItems.isEmpty()) break
+                if (totalCount != null && allItems.size >= totalCount) break
+                if (offset > 10000) break
+                offset += pageMaxSize
+            }
+
+            val cursos = agruparAsistencia(allItems)
+            val totalSecciones = allItems.size
+
+            AsistenciaResponse(
+                success = true,
+                totalCount = cursos.size,
+                totalSecciones = totalSecciones,
+                asistencia = cursos
+            )
+        } catch (_: Exception) {
+            AsistenciaResponse(
+                success = false,
+                totalCount = 0,
+                totalSecciones = 0,
+                asistencia = emptyList()
+            )
+        }
+    }
+
+    private fun agruparAsistencia(rawItems: List<JsonObject>): List<AsistenciaCurso> {
+        data class GrupoKey(
+            val periodo: String?,
+            val codigoMateria: String?,
+            val curso: String?,
+            val nombreCurso: String?
+        )
+
+        val grupos = mutableMapOf<GrupoKey, MutableAsistenciaCurso>()
+        val orden = mutableListOf<GrupoKey>()
+
+        for (item in rawItems) {
+            val crn = item.get("courseReferenceNumber")?.asStringOrNull()
+                ?: item.get("crn")?.asStringOrNull()
+            val cursoNum = item.get("courseNumber")?.asStringOrNull()
+                ?: item.get("courseDisplayValue")?.asStringOrNull()
+            val term = item.get("termCode")?.asStringOrNull()
+            val subjectDesc = cleanHtmlStr(item.get("subjectDesc")?.asStringOrNull())
+            val subjectCode = item.get("subjectCode")?.asStringOrNull()
+            val sectionTitle = cleanHtmlStr(item.get("sectionTitle")?.asStringOrNull())
+            val sequence = item.get("sequenceNumber")?.asStringOrNull()
+            val missed = item.get("missed")?.asIntOrNull()
+            val percentage = item.get("percentage")?.asDoubleOrNull()
+            val schedule = item.get("schedule")
+            val horarioDias = convertirHorarioDias(schedule)
+            val (hora24, hora12) = ScheduleCalculator.convertirHora(item.get("time")?.asStringOrNull())
+            val sectionMeetingId = item.get("sectionMeetingId")?.asLongOrNull()
+            val docente = item.get("instructor")?.asStringOrNull()
+                ?: item.get("instructorName")?.asStringOrNull()
+                ?: extraerProfesor(item.get("faculty"))
+            val aula = ScheduleCalculator.formatoAula(
+                item.get("building")?.asStringOrNull(),
+                item.get("room")?.asStringOrNull()
+            )
+
+            val key = GrupoKey(
+                periodo = term,
+                codigoMateria = subjectCode,
+                curso = cursoNum,
+                nombreCurso = sectionTitle
+            )
+
+            if (key !in grupos) {
+                grupos[key] = MutableAsistenciaCurso(
+                    crn = crn,
+                    materia = subjectDesc,
+                    codigoMateria = subjectCode,
+                    nombreCurso = sectionTitle,
+                    periodo = term,
+                    horarioDias = horarioDias,
+                    hora = hora24.ifBlank { null },
+                    hora12h = hora12.ifBlank { null },
+                    aula = aula,
+                    docente = docente,
+                    profesor = docente,
+                    componentes = mutableListOf()
+                )
+                orden.add(key)
+            }
+
+            grupos[key]?.componentes?.add(
+                AsistenciaComponente(
+                    crn = crn,
+                    seccion = sequence,
+                    porcentaje = percentage,
+                    faltas = missed,
+                    horarioDias = horarioDias,
+                    hora = hora24.ifBlank { null },
+                    hora12h = hora12.ifBlank { null },
+                    aula = aula,
+                    docente = docente,
+                    profesor = docente,
+                    sectionMeetingId = sectionMeetingId
+                )
+            )
+        }
+
+        return orden.mapNotNull { key ->
+            val g = grupos[key] ?: return@mapNotNull null
+            val comps = g.componentes
+            val pcts = comps.mapNotNull { it.porcentaje }
+            val promPorcentaje = if (pcts.isNotEmpty()) {
+                (pcts.average() * 10.0).roundToInt() / 10.0
+            } else {
+                null
+            }
+            val totalFaltas = comps.sumOf { it.faltas ?: 0 }
+
+            AsistenciaCurso(
+                crn = g.crn,
+                materia = g.materia,
+                codigoMateria = g.codigoMateria,
+                nombreCurso = g.nombreCurso,
+                seccion = comps.firstOrNull()?.seccion,
+                periodo = g.periodo,
+                faltas = totalFaltas,
+                porcentaje = promPorcentaje,
+                horarioDias = g.horarioDias,
+                hora = g.hora,
+                hora12h = g.hora12h,
+                aula = g.aula,
+                docente = g.docente,
+                profesor = g.profesor,
+                componentes = comps.toList(),
+                totalSecciones = comps.size
+            )
+        }
+    }
+
+    private fun convertirHorarioDias(scheduleElement: JsonElement?): String {
+        val dias = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+        if (scheduleElement == null || !scheduleElement.isJsonArray) return "Sin horario registrado"
+        val arr = scheduleElement.asJsonArray
+        val activos = mutableListOf<String>()
+        for ((idx, elem) in arr.withIndex()) {
+            if (idx >= dias.size) break
+            val isTrue = when {
+                elem.isJsonPrimitive && elem.asJsonPrimitive.isBoolean -> elem.asBoolean
+                elem.isJsonPrimitive && elem.asJsonPrimitive.isString -> {
+                    val s = elem.asString.trim()
+                    s.isNotBlank() && !s.equals("false", ignoreCase = true)
+                }
+                else -> false
+            }
+            if (isTrue) {
+                activos.add(dias[idx])
+            }
+        }
+        return if (activos.isNotEmpty()) activos.joinToString(", ") else "Sin horario registrado"
+    }
 }
 
 private data class MutableHorarioCurso(
@@ -954,4 +1154,19 @@ private data class MutableHorarioCurso(
     var nombreDocente: String? = null,
     var nombreProfesor: String? = null,
     val bloques: MutableList<HorarioBloque> = mutableListOf()
+)
+
+private data class MutableAsistenciaCurso(
+    val crn: String? = null,
+    val materia: String? = null,
+    val codigoMateria: String? = null,
+    val nombreCurso: String? = null,
+    val periodo: String? = null,
+    val horarioDias: String? = null,
+    val hora: String? = null,
+    val hora12h: String? = null,
+    val aula: String? = null,
+    val docente: String? = null,
+    val profesor: String? = null,
+    val componentes: MutableList<AsistenciaComponente> = mutableListOf()
 )

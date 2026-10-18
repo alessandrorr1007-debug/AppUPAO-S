@@ -219,8 +219,11 @@ class DashboardViewModel(app: Application, private val token: String, private va
             result.average?.let { averages[result.gradePeriod to result.career] = it }
             projections[result.gradePeriod to result.career] = result.projected
             attempt(attendanceCacheKey) {
-                val attendance = body(api.getAsistencia(auth))
-                result = result.copy(attendance = attendance); save(attendanceCacheKey, attendance)
+                val attendance = upaoRepository.getAsistencia()
+                if (attendance.success || attendance.asistencia.isNotEmpty()) {
+                    result = result.copy(attendance = attendance)
+                    save(attendanceCacheKey, attendance)
+                }
             }
             val schedules = result.schedules.toMutableMap()
             // Today, schedule and attendance reuse each distinct term's ONE response.

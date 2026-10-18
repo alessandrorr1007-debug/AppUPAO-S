@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.local.TokenManager
+import com.example.upaos.data.model.AsistenciaResponse
 import com.example.upaos.data.model.CarrerasResponse
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.DetalleCursoResponse
@@ -152,5 +153,9 @@ class UpaoRepository(private val context: Context) {
 
     fun getSemana(term: String, fechaReferencia: Date = Date()): SemanaInfo {
         return AcademicCalendar.calcularSemana(term, fechaReferencia)
+    }
+
+    suspend fun getAsistencia(): AsistenciaResponse = withContext(Dispatchers.IO) {
+        bannerApi.getAsistencia()
     }
 }
