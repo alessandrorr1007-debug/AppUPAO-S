@@ -208,21 +208,25 @@ class BannerApi(private val context: Context) {
         }
 
         val jsonStr = response.body?.string().orEmpty()
+        val parsed = try {
+            JsonParser.parseString(jsonStr)
+        } catch (e: Exception) {
+            throw UpaoUnexpectedFormatException("Error de sintaxis en JSON de cursos", cause = e)
+        }
+
+        val dataArray = when {
+            parsed.isJsonArray -> parsed.asJsonArray
+            parsed.isJsonObject && parsed.asJsonObject.has("data") && parsed.asJsonObject.get("data").isJsonArray ->
+                parsed.asJsonObject.getAsJsonArray("data")
+            parsed.isJsonObject && parsed.asJsonObject.has("items") && parsed.asJsonObject.get("items").isJsonArray ->
+                parsed.asJsonObject.getAsJsonArray("items")
+            else -> throw UpaoUnexpectedFormatException("El JSON de cursos no contiene el arreglo esperado ('data' o raíz)")
+        }
+
         val result = mutableListOf<JsonObject>()
-
-        try {
-            val parsed = JsonParser.parseString(jsonStr)
-            val dataArray = when {
-                parsed.isJsonArray -> parsed.asJsonArray
-                parsed.isJsonObject && parsed.asJsonObject.has("data") -> parsed.asJsonObject.getAsJsonArray("data")
-                else -> null
-            }
-
-            dataArray?.forEach { elem ->
-                if (elem.isJsonObject) result.add(elem.asJsonObject)
-            }
-        } catch (_: Exception) {}
-
+        dataArray.forEach { elem ->
+            if (elem.isJsonObject) result.add(elem.asJsonObject)
+        }
         return result
     }
 
@@ -498,20 +502,7 @@ class BannerApi(private val context: Context) {
             }
 
             val jsonStr = response.body?.string().orEmpty()
-            val registros = mutableListOf<JsonObject>()
-
-            try {
-                val parsed = JsonParser.parseString(jsonStr)
-                if (parsed.isJsonObject) {
-                    val dataObj = parsed.asJsonObject.getAsJsonObject("data")
-                    val regArr = dataObj?.getAsJsonArray("registrations")
-                    if (regArr != null) {
-                        for (elem in regArr) {
-                            if (elem.isJsonObject) registros.add(elem.asJsonObject)
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
+            val registros = BannerParsers.parseHorarioJson(jsonStr).toMutableList()
 
             val crns = registros.mapNotNull {
                 it.get("courseReferenceNumber")?.asStringOrNull() ?: it.get("crn")?.asStringOrNull()
@@ -561,6 +552,8 @@ class BannerApi(private val context: Context) {
                 totalBloques = cursos.sumOf { it.bloques.size },
                 cursos = cursos
             )
+        } catch (e: UpaoException) {
+            throw e
         } catch (_: Exception) {
             HorarioResponse(
                 success = false,
@@ -969,21 +962,8 @@ class BannerApi(private val context: Context) {
                 }
 
                 val jsonStr = response.body?.string().orEmpty()
-                val parsed = JsonParser.parseString(jsonStr)
-                if (!parsed.isJsonObject) break
-
-                val rootObj = parsed.asJsonObject
-                val rawTotal = rootObj.get("totalCount")?.asIntOrNull()
+                val (rawTotal, pageItems) = BannerParsers.parseAsistenciaJson(jsonStr)
                 if (rawTotal != null) totalCount = rawTotal
-
-                val dataArr = rootObj.getAsJsonArray("data")
-                val pageItems = mutableListOf<JsonObject>()
-                if (dataArr != null) {
-                    for (elem in dataArr) {
-                        if (elem.isJsonObject) pageItems.add(elem.asJsonObject)
-                    }
-                }
-
                 allItems.addAll(pageItems)
 
                 if (pageItems.isEmpty()) break
@@ -1001,6 +981,8 @@ class BannerApi(private val context: Context) {
                 totalSecciones = totalSecciones,
                 asistencia = cursos
             )
+        } catch (e: UpaoException) {
+            throw e
         } catch (_: Exception) {
             AsistenciaResponse(
                 success = false,

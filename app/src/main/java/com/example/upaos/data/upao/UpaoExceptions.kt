@@ -20,3 +20,16 @@ class UpaoNetworkException(
     message: String = "Error de conexión con la UPAO. Verifica tu conexión a internet.",
     cause: Throwable? = null
 ) : UpaoException(message, cause)
+
+class UpaoUnexpectedFormatException(
+    val detalle: String = "Estructura no esperada en la respuesta",
+    message: String = "La UPAO cambió algo en su portal y la app necesita actualizarse. Mostrando lo último guardado.",
+    cause: Throwable? = null
+) : UpaoException("$message ($detalle)", cause)
+
+// Aliases requeridos por la especificación
+typealias FormatoInesperado = UpaoUnexpectedFormatException
+typealias SesionExpirada = UpaoSessionExpiredException
+typealias SinConexion = UpaoNetworkException
+typealias UpaoNoDisponible = UpaoServiceUnavailableException
+typealias CredencialesInvalidas = UpaoInvalidCredentialsException

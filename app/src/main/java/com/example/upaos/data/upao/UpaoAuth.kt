@@ -90,16 +90,8 @@ object UpaoAuth {
             }
 
             // Paso 2: Parsear formulario de login en la página obtenida
-            val doc = Jsoup.parse(initHtml, initFinalUrl)
-            val form = doc.selectFirst("form")
-                ?: throw UpaoServiceUnavailableException("No se encontró el formulario de acceso de la UPAO.")
-
-            val actionAttr = form.attr("action")
-            val resolvedActionUrl = if (actionAttr.isNotBlank()) {
-                form.absUrl("action").ifBlank { initFinalUrl }
-            } else {
-                initFinalUrl
-            }
+            val loginFormInfo = BannerParsers.parseLoginForm(initHtml, initFinalUrl)
+            val resolvedActionUrl = loginFormInfo.actionUrl
 
             val formHttpUrl = resolvedActionUrl.toHttpUrlOrNull()
             val host = formHttpUrl?.host.orEmpty()
@@ -109,22 +101,14 @@ object UpaoAuth {
 
             // Capturar todos los inputs presentes (incluye __RequestVerificationToken)
             val formBuilder = FormBody.Builder()
-            val inputs = form.select("input")
-            val presentKeys = mutableSetOf<String>()
-
-            for (input in inputs) {
-                val name = input.attr("name")
-                val value = input.attr("value")
-                if (name.isNotBlank()) {
-                    if (name.equals("username", ignoreCase = true) || name.equals("password", ignoreCase = true)) {
-                        continue
-                    }
-                    if (name == "id_usuario" || name == "nip" || name == "btn_valida") {
-                        continue
-                    }
-                    formBuilder.add(name, value)
-                    presentKeys.add(name)
+            for ((name, value) in loginFormInfo.hiddenInputs) {
+                if (name.equals("username", ignoreCase = true) || name.equals("password", ignoreCase = true)) {
+                    continue
                 }
+                if (name == "id_usuario" || name == "nip" || name == "btn_valida") {
+                    continue
+                }
+                formBuilder.add(name, value)
             }
 
             formBuilder.add("id_usuario", user)

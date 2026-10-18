@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>UPAO SSO - Iniciar Sesión</title>
+</head>
+<body>
+    <div class="login-container">
+        <h2>Autenticación Universitaria</h2>
+        <form action="https://upaosso.upao.edu.pe/Account/Login" method="post">
+            <input type="hidden" name="__RequestVerificationToken" value="anon_csrf_token_fixture_abc123" />
+            <input type="hidden" name="returnUrl" value="/StudentSelfService/ssb/studentGrades" />
+            <div class="form-group">
+                <input type="text" name="id_usuario" placeholder="ID de estudiante" />
+            </div>
+            <div class="form-group">
+                <input type="password" name="nip" placeholder="Contraseña" />
+            </div>
+            <input type="submit" name="btn_valida" value="Iniciar sesión" />
+        </form>
+    </div>
+</body>
+</html>

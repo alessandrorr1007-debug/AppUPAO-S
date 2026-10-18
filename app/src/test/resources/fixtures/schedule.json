@@ -1,0 +1,20 @@
+{
+  "data": {
+    "registrations": [
+      {
+        "courseReferenceNumber": "1001",
+        "courseTitle": "INGENIERIA DE SOFTWARE",
+        "subject": "COMP",
+        "courseNumber": "101",
+        "sequenceNumber": "01"
+      },
+      {
+        "courseReferenceNumber": "1002",
+        "courseTitle": "REDES Y COMUNICACIONES",
+        "subject": "COMP",
+        "courseNumber": "102",
+        "sequenceNumber": "02"
+      }
+    ]
+  }
+}
