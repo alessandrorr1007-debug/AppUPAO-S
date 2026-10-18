@@ -50,6 +50,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
     private val cache = ApiCache(app)
     private val gradesCache = GradesCache(app)
     private val agendaRepository = AgendaRepository(app)
+    private val upaoRepository = com.example.upaos.data.upao.UpaoRepository(app)
     private val gson = Gson()
     private val mutable = MutableStateFlow(DashboardState())
     val state = mutable.asStateFlow()
@@ -172,9 +173,8 @@ class DashboardViewModel(app: Application, private val token: String, private va
             cache.guardar(key, gson.toJson(value)); times[key] = cache.actualizado(key)
         }
         try {
-            attempt("actualizar") { body(api.actualizarAhora(user)) }
             attempt("periodos") {
-                val periods = body(api.getPeriodos(auth))
+                val periods = upaoRepository.getPeriodos()
                 val current = detectarPeriodoActual(periods.periodos, periods.periodoActual)
                 result = result.copy(periods = periods.periodos, currentPeriod = current,
                     gradePeriod = if (gradeChosen) result.gradePeriod else current,
@@ -184,12 +184,12 @@ class DashboardViewModel(app: Application, private val token: String, private va
                 cache.guardar("periodos_$user", gson.toJson(periods.periodos))
             }
             attempt("carreras") {
-                val careers = body(api.getCarreras(auth, result.gradePeriod)).carreras
+                val careers = upaoRepository.getCarreras(result.gradePeriod).carreras
                 if (careers.isNotEmpty()) result = result.copy(careers = careers,
                     career = result.career.takeIf { it in careers } ?: careers.first())
             }
             attempt(gradeCacheKey) {
-                val grades = body(api.buscarNotas(auth, mapOf("periodo" to result.gradePeriod, "carrera" to result.career)))
+                val grades = upaoRepository.buscarNotas(result.gradePeriod, result.career)
                 gradeVariants[result.gradePeriod to result.career] = grades
                 result = result.copy(grades = grades)
                 gradesCache.guardar(gradeCacheKey, gson.toJson(grades))
@@ -197,7 +197,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
                 for (course in grades.cursos) {
                     val crn = course.crn ?: course.courseReferenceNumber ?: continue
                     attempt("proyectada_$crn") {
-                        val detail = body(api.getDetalleCurso(auth, mapOf("periodo" to result.gradePeriod, "carrera" to result.career, "crn" to crn)))
+                        val detail = upaoRepository.getDetalleCurso(result.gradePeriod, result.career, crn)
                         val compEvaluados = detail.detalles.filter { !isPendiente(it.displayNota) }
                         val sumaPonderada = if (compEvaluados.isNotEmpty()) {
                             compEvaluados.sumOf { comp ->
@@ -212,7 +212,10 @@ class DashboardViewModel(app: Application, private val token: String, private va
                     }
                 }
             }
-            attempt("promedio") { result = result.copy(average = body(api.getPromedioPeriodo(result.gradePeriod, auth))) }
+            attempt("promedio") {
+                val avg = upaoRepository.getPromedioPeriodo(result.gradePeriod, result.grades?.cursos)
+                result = result.copy(average = avg)
+            }
             result.average?.let { averages[result.gradePeriod to result.career] = it }
             projections[result.gradePeriod to result.career] = result.projected
             attempt(attendanceCacheKey) {
