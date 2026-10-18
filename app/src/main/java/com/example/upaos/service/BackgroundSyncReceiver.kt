@@ -16,12 +16,13 @@ class BackgroundSyncReceiver : BroadcastReceiver() {
         val shouldRun = prefs.checkAsistenciaEnabled || prefs.checkNotasEnabled
 
         when (action) {
-            SyncScheduler.ACTION_SYNC -> {
+            SyncScheduler.ACTION_SYNC,
+            "com.example.upaos.ACTION_SYNC_5MIN" -> {
                 if (shouldRun) {
                     // Ejecuta la sincronización en segundo plano
                     AsistenciaWorker.runOnce(context)
-                    // Reprograma la siguiente alarma para dentro de 5 minutos
-                    SyncScheduler.scheduleNext(context, SyncScheduler.INTERVAL_MINUTES)
+                    // Reprograma la siguiente alarma con el intervalo adaptativo calculado
+                    SyncScheduler.scheduleNext(context)
                 } else {
                     SyncScheduler.cancel(context)
                 }

@@ -39,8 +39,6 @@ import com.example.upaos.ui.components.cursoColor
 import com.example.upaos.ui.components.toTitleCase
 import kotlinx.coroutines.launch
 
-private const val INTERVALO_FIJO_MINUTOS = 5
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -98,7 +96,7 @@ fun SettingsScreen(
                     } else {
                         SyncScheduler.cancel(context)
                     }
-                    val msg = if (cambiarNotas) "Notificaciones de notas activadas (cada 5 min)" else "Notificaciones de notas desactivadas"
+                    val msg = if (cambiarNotas) "Notificaciones de notas activadas" else "Notificaciones de notas desactivadas"
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
                 if (cambiarAsistencia != null) {
@@ -107,7 +105,7 @@ fun SettingsScreen(
                     if (cambiarAsistencia || checkNotasEnabled) {
                         SyncScheduler.start(context)
                         SyncScheduler.runNow(context)
-                        Toast.makeText(context, "Notificaciones de asistencias activadas (cada 5 min)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Notificaciones de asistencias activadas", Toast.LENGTH_SHORT).show()
                     } else {
                         SyncScheduler.cancel(context)
                         Toast.makeText(context, "Notificaciones de asistencia desactivadas", Toast.LENGTH_SHORT).show()
@@ -251,9 +249,11 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Elige qué alertas deseas recibir en tu celular:",
+                                text = "Revisión automática cada ~10 min (más espaciada de noche y domingos)",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
@@ -418,7 +418,7 @@ fun SettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Para que el teléfono no detenga la revisión cada 5 minutos cuando la pantalla está apagada (Xiaomi, Samsung, etc.), desactiva el ahorro de batería para UPAO S.",
+                                        text = "Para que el teléfono no detenga la revisión automática en segundo plano cuando la pantalla está apagada (Xiaomi, Samsung, etc.), desactiva el ahorro de batería para UPAO S.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onErrorContainer,
                                         fontSize = 11.sp

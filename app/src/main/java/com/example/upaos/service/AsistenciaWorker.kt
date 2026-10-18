@@ -59,7 +59,9 @@ class AsistenciaWorker(
                 val loginRes = UpaoAuth.ensureSession(user, pass)
                 if (!loginRes.success) {
                     Log.w(TAG, "No se pudo asegurar sesión directa con UPAO SSO.")
-                    SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
+                    val fallos = notificationPrefs.syncConsecutiveFailures + 1
+                    notificationPrefs.syncConsecutiveFailures = fallos
+                    SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
                     return@withContext Result.success()
                 }
 
@@ -73,14 +75,17 @@ class AsistenciaWorker(
                     revisarNotas(user)
                 }
 
-                // Reprograma la siguiente verificación periódica
-                SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
-                Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próxima en 10 min.")
+                // Reprograma la siguiente verificación periódica con éxito (resetea fallos a 0)
+                notificationPrefs.syncConsecutiveFailures = 0
+                SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = 0)
+                Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próximo ciclo adaptativo programado.")
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Log.e(TAG, "Error en AsistenciaWorker/BackgroundSync: ${e.localizedMessage}", e)
-                SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
+                val fallos = notificationPrefs.syncConsecutiveFailures + 1
+                notificationPrefs.syncConsecutiveFailures = fallos
+                SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
                 Result.retry()
             }
         } finally {
@@ -343,12 +348,12 @@ class AsistenciaWorker(
         private const val TAG = "UPAO_BackgroundSync"
         private val syncMutex = com.example.upaos.data.refresh.ForegroundRefreshGate.lock
 
-        fun schedule(context: Context, intervalMinutes: Long = 5) {
+        fun schedule(context: Context) {
             SyncScheduler.start(context)
         }
 
         fun scheduleFiveMinuteCheck(context: Context) {
-            SyncScheduler.scheduleNext(context, 5L)
+            SyncScheduler.scheduleNext(context)
         }
 
         fun cancel(context: Context) {
