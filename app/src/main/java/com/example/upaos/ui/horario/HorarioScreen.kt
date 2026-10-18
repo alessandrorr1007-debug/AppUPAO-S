@@ -29,6 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -558,6 +562,20 @@ private fun HorarioSemanalGrid(
     val vertScroll = rememberScrollState()
     val density = androidx.compose.ui.platform.LocalDensity.current
 
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                // Consumir el delta horizontal residual para que el HorizontalPager padre
+                // no robe el gesto cuando el usuario desliza los chips/columnas del horario
+                return Offset(available.x, 0f)
+            }
+        }
+    }
+
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val screenWidthDp = maxWidth.value
         LaunchedEffect(hoy, screenWidthDp) {
@@ -591,7 +609,11 @@ private fun HorarioSemanalGrid(
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
-            Row(modifier = Modifier.horizontalScroll(horScroll)) {
+            Row(
+                modifier = Modifier
+                    .nestedScroll(nestedScrollConnection)
+                    .horizontalScroll(horScroll)
+            ) {
                 NOMBRES_DIAS.forEachIndexed { index, nombre ->
                     val esHoy = ScheduleCalculator.esHoy(index)
                     Column(
@@ -627,6 +649,7 @@ private fun HorarioSemanalGrid(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .nestedScroll(nestedScrollConnection)
                     .horizontalScroll(horScroll)
             ) {
                 NOMBRES_DIAS.forEachIndexed { index, _ ->

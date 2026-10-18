@@ -171,7 +171,9 @@ private fun ProximoCursoContent(data: ProximoCursoWidgetData) {
             .fillMaxSize()
             .background(ColorProvider(Color(0xFF1A237E)))
             .padding(12.dp)
-            .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
+            .clickable(actionStartActivity(Intent(context, MainActivity::class.java).apply {
+                putExtra("destination_tab", "horario")
+            }))
     ) {
         Text(
             text = if (data.esAhora) "CLASE EN CURSO" else "PRÓXIMA CLASE",

@@ -32,7 +32,9 @@ object NotificationService {
             notificationManager.createNotificationChannel(channel)
         }
 
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        val launchIntent = (context.packageManager.getLaunchIntentForPackage(context.packageName) ?: android.content.Intent(context, com.example.upaos.MainActivity::class.java)).apply {
+            putExtra("destination_tab", "horario")
+        }
         val pendingIntent = PendingIntent.getActivity(
             context,
             id,
@@ -71,7 +73,9 @@ object NotificationService {
             notificationManager.createNotificationChannel(channel)
         }
 
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        val launchIntent = (context.packageManager.getLaunchIntentForPackage(context.packageName) ?: android.content.Intent(context, com.example.upaos.MainActivity::class.java)).apply {
+            putExtra("destination_tab", "asistencia")
+        }
         val pendingIntent = PendingIntent.getActivity(
             context,
             1,
@@ -111,7 +115,9 @@ object NotificationService {
             notificationManager.createNotificationChannel(channel)
         }
 
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        val launchIntent = (context.packageManager.getLaunchIntentForPackage(context.packageName) ?: android.content.Intent(context, com.example.upaos.MainActivity::class.java)).apply {
+            putExtra("destination_tab", "notas")
+        }
         val pendingIntent = PendingIntent.getActivity(
             context,
             0,

@@ -94,7 +94,9 @@ private fun ResumenNotasContent(data: NotasWidgetData) {
             .fillMaxSize()
             .background(ColorProvider(Color(0xFFFFFFFF)))
             .padding(12.dp)
-            .clickable(actionStartActivity(Intent(context, MainActivity::class.java))),
+            .clickable(actionStartActivity(Intent(context, MainActivity::class.java).apply {
+                putExtra("destination_tab", "notas")
+            })),
         contentAlignment = Alignment.CenterStart
     ) {
         Column(modifier = GlanceModifier.fillMaxWidth()) {

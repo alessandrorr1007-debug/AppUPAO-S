@@ -54,6 +54,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     token: String,
+    initialTab: String? = null,
+    onTabHandled: () -> Unit = {},
     openAgenda: Boolean = false,
     onAgendaOpened: () -> Unit = {},
     isDarkTheme: Boolean,
@@ -68,8 +70,26 @@ fun HomeScreen(
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
     val coroutineScope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 5 })
+    val initialPageIndex = remember {
+        when (initialTab) {
+            "notas" -> 1
+            "horario" -> 2
+            "asistencia" -> 3
+            else -> 0
+        }
+    }
+    val pagerState = rememberPagerState(initialPage = initialPageIndex, pageCount = { 5 })
     LaunchedEffect(openAgenda) { if (openAgenda) pagerState.scrollToPage(0) }
+    LaunchedEffect(initialTab) {
+        if (initialTab != null) {
+            when (initialTab) {
+                "notas" -> pagerState.scrollToPage(1)
+                "horario" -> pagerState.scrollToPage(2)
+                "asistencia" -> pagerState.scrollToPage(3)
+            }
+            onTabHandled()
+        }
+    }
 
     val usuario = tokenManager.getSavedUser()
 
@@ -348,6 +368,7 @@ fun HomeScreen(
             }
             HorizontalPager(
                 state = pagerState,
+                beyondViewportPageCount = 2,
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)

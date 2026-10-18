@@ -61,6 +61,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
     private var agendaRequest by mutableStateOf<String?>(null)
+    private var destinationTabRequest by mutableStateOf<String?>(null)
     private val securityPrefs by lazy { SecurityPreferences(this) }
     private var ultimaVezEnSegundoPlano: Long? = null
     private var yaAutenticadoEnEstaSesion by mutableStateOf(false)
@@ -70,6 +71,7 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         agendaRequest = intent.getStringExtra("agenda_user")
+        destinationTabRequest = intent.getStringExtra("destination_tab")
     }
 
     private val requestNotificationPermission =
@@ -137,6 +139,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         agendaRequest = intent.getStringExtra("agenda_user")
+        destinationTabRequest = intent.getStringExtra("destination_tab")
 
         actualizarProteccionPantalla()
         if (SecurityLockPolicy.debeBloquear(
@@ -289,6 +292,8 @@ class MainActivity : FragmentActivity() {
                             val token = backStackEntry.arguments?.getString("token") ?: ""
                             HomeScreen(
                                 token = token,
+                                initialTab = destinationTabRequest,
+                                onTabHandled = { destinationTabRequest = null },
                                 openAgenda = agendaRequest == tokenManager.getSavedUser() && agendaRequest != null,
                                 onAgendaOpened = { agendaRequest = null },
                                 isDarkTheme = darkTheme,
