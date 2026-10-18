@@ -318,7 +318,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (semanaEtiqueta != null) {
+            if (semanaEtiqueta != null && pagerState.currentPage == 0) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()

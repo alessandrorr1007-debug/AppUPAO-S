@@ -95,11 +95,26 @@ class AcademicCalendarTest {
     }
 
     @Test
+    fun `test ciclo 202620 semana 7 domingo y semana 8 lunes`() {
+        // Ciclo 202620 inició el 2026-08-31
+        val domingoSemana7 = sdf.parse("2026-10-18")!!
+        val infoDomingo = AcademicCalendar.calcularSemana("202620", domingoSemana7)
+        assertEquals(7, infoDomingo.semana)
+        assertEquals("Semana 7 de 16", infoDomingo.etiqueta)
+
+        val lunesSemana8 = sdf.parse("2026-10-19")!!
+        val infoLunes = AcademicCalendar.calcularSemana("202620", lunesSemana8)
+        assertEquals(8, infoLunes.semana)
+        assertEquals("Semana 8 de 16", infoLunes.etiqueta)
+    }
+
+    @Test
     fun `test estimarFechaInicio dinamico`() {
         assertEquals("2027-03-23", AcademicCalendar.estimarFechaInicio("202710"))
-        assertEquals("2027-08-17", AcademicCalendar.estimarFechaInicio("202720"))
+        assertEquals("2027-08-31", AcademicCalendar.estimarFechaInicio("202720"))
         assertEquals("2027-01-05", AcademicCalendar.estimarFechaInicio("202700"))
         // Si está en el mapa, devuelve el valor exacto
         assertEquals("2026-03-23", AcademicCalendar.estimarFechaInicio("202610"))
+        assertEquals("2026-08-31", AcademicCalendar.estimarFechaInicio("202620"))
     }
 }

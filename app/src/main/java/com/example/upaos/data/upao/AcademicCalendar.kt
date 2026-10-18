@@ -19,9 +19,9 @@ object AcademicCalendar {
      */
     val FECHAS_INICIO_CICLO: Map<String, String> = mapOf(
         "202610" to "2026-03-23",
-        "202620" to "2026-08-17",
+        "202620" to "2026-08-31",
         "202510" to "2025-03-24",
-        "202520" to "2025-08-18"
+        "202520" to "2025-09-01"
     )
 
     fun estimarFechaInicio(term: String): String {
@@ -32,7 +32,7 @@ object AcademicCalendar {
             return when (tipo) {
                 "00" -> "$year-01-05"
                 "10" -> "$year-03-23"
-                "20" -> "$year-08-17"
+                "20" -> "$year-08-31"
                 else -> "$year-03-23"
             }
         }
