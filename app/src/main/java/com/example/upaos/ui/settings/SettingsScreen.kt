@@ -23,9 +23,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
+import com.example.upaos.data.local.BiometricHelper
 import com.example.upaos.data.local.NotificationPreferences
+import com.example.upaos.data.local.SecurityPreferences
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.service.AsistenciaWorker
 import com.example.upaos.service.NotificationService
@@ -48,6 +51,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val notificationPrefs = remember { NotificationPreferences(context) }
+    val securityPrefs = remember { SecurityPreferences(context) }
+    val puedeUsarBiometria = remember { BiometricHelper.puedeAutenticar(context) }
+    var biometricLockEnabled by remember { mutableStateOf(securityPrefs.isBiometricLockEnabled) }
 
     var checkNotasEnabled by remember { mutableStateOf(notificationPrefs.checkNotasEnabled) }
     var checkAsistenciaEnabled by remember { mutableStateOf(notificationPrefs.checkAsistenciaEnabled) }
@@ -443,6 +449,78 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Sección Seguridad y Bloqueo de la App
+            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Bloqueo de la app",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (puedeUsarBiometria) {
+                                    "Solicitar huella, rostro o PIN al abrir o tras 1 min en segundo plano"
+                                } else {
+                                    "No disponible: configura un PIN, patrón o huella en tu teléfono para activar el bloqueo"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (puedeUsarBiometria) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = biometricLockEnabled,
+                            onCheckedChange = { nuevo ->
+                                if (nuevo && !puedeUsarBiometria) {
+                                    Toast.makeText(
+                                        context,
+                                        "Tu dispositivo no tiene biometría ni PIN/patrón configurado en los Ajustes del sistema.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } else {
+                                    biometricLockEnabled = nuevo
+                                    securityPrefs.isBiometricLockEnabled = nuevo
+                                    (context as? android.app.Activity)?.let { act ->
+                                        if (nuevo) {
+                                            act.window.setFlags(
+                                                android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                                                android.view.WindowManager.LayoutParams.FLAG_SECURE
+                                            )
+                                        } else {
+                                            act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = puedeUsarBiometria || biometricLockEnabled
+                        )
                     }
                 }
             }

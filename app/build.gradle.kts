@@ -66,6 +66,7 @@ dependencies {
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.biometric:biometric:1.1.0")
 
     // Glance (Widgets modernos con Compose)
     implementation("androidx.glance:glance-appwidget:1.1.1")
