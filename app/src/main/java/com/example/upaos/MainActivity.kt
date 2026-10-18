@@ -38,10 +38,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.ThemePreferences
 import com.example.upaos.data.local.TokenManager
-import com.example.upaos.service.FcmTokenHelper
 import com.example.upaos.ui.calculadora.CalculadoraScreen
 import com.example.upaos.ui.grades.CourseDetailScreen
 import com.example.upaos.ui.home.HomeScreen
@@ -49,7 +47,6 @@ import com.example.upaos.ui.login.EligeCuentaScreen
 import com.example.upaos.ui.login.LoginScreen
 import com.example.upaos.ui.notificaciones.NotificacionesScreen
 import com.example.upaos.ui.settings.SettingsScreen
-import com.example.upaos.ui.sugerencias.SugerenciasScreen
 import com.example.upaos.ui.theme.UPAOSTheme
 import com.example.upaos.widget.ProximoCursoWidget
 import com.example.upaos.widget.ResumenNotasWidget
@@ -66,16 +63,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) {
-                FcmTokenHelper.register(this)
-            }
-        }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* Permission granted */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         agendaRequest = intent.getStringExtra("agenda_user")
-        com.example.upaos.data.api.RetrofitClient.init(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
@@ -97,7 +89,6 @@ class MainActivity : ComponentActivity() {
             var isDownloadingUpdate by remember { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
-                FcmTokenHelper.register(context)
                 val notifPrefs = com.example.upaos.data.local.NotificationPreferences(context)
                 if (notifPrefs.checkAsistenciaEnabled || notifPrefs.checkNotasEnabled) {
                     com.example.upaos.service.SyncScheduler.start(context)
@@ -295,21 +286,7 @@ class MainActivity : ComponentActivity() {
                             SettingsScreen(
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() },
-                                onOpenSugerencias = { navController.navigate("sugerencias") },
                                 onAccountRemoved = { navController.navigate("elige-cuenta") { popUpTo(0) { inclusive = true } } }
-                            )
-                        }
-
-                        composable(
-                            "sugerencias",
-                            enterTransition = { slideInHorizontally(tween(280)) { it } },
-                            exitTransition = { fadeOut(tween(180)) },
-                            popEnterTransition = { fadeIn(tween(220)) },
-                            popExitTransition = { slideOutHorizontally(tween(280)) { it } }
-                        ) {
-                            SugerenciasScreen(
-                                usuario = tokenManager.getSavedUser(),
-                                onBack = { navController.popBackStack() }
                             )
                         }
 

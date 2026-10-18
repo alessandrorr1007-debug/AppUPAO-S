@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.gms.google-services")
 }
 
 android {
@@ -65,10 +64,6 @@ dependencies {
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-
-    // Firebase Cloud Messaging
-    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
-    implementation("com.google.firebase:firebase-messaging")
 
     // Glance (Widgets modernos con Compose)
     implementation("androidx.glance:glance-appwidget:1.1.1")

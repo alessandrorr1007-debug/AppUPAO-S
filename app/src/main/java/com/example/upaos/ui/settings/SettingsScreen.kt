@@ -11,7 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.EmojiObjects
-import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,13 +26,10 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
 import com.example.upaos.data.local.NotificationPreferences
+import com.example.upaos.data.local.TokenManager
 import com.example.upaos.service.AsistenciaWorker
 import com.example.upaos.service.NotificationService
 import com.example.upaos.service.SyncScheduler
-import com.example.upaos.data.api.RetrofitClient
-import com.example.upaos.data.model.AutoCheckRequest
-import com.example.upaos.data.model.IntervaloRequest
-import com.example.upaos.data.model.RankingOptinRequest
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.cursoColor
@@ -47,7 +43,6 @@ private const val INTERVALO_FIJO_MINUTOS = 5
 fun SettingsScreen(
     usuario: String?,
     onBack: () -> Unit,
-    onOpenSugerencias: () -> Unit,
     onAccountRemoved: () -> Unit
 ) {
     val context = LocalContext.current
@@ -56,12 +51,10 @@ fun SettingsScreen(
 
     var checkNotasEnabled by remember { mutableStateOf(notificationPrefs.checkNotasEnabled) }
     var checkAsistenciaEnabled by remember { mutableStateOf(notificationPrefs.checkAsistenciaEnabled) }
-    var tieneTokenFcm by remember { mutableStateOf(false) }
     var cargando by remember { mutableStateOf(true) }
     var guardando by remember { mutableStateOf(false) }
 
     var nombreEstudiante by remember { mutableStateOf<String?>(null) }
-    var rankingOptin by remember { mutableStateOf(false) }
 
     var buscandoActualizacion by remember { mutableStateOf(false) }
     var dialogActualizacionInfo by remember { mutableStateOf<com.example.upaos.util.UpdateInfo?>(null) }
@@ -72,49 +65,12 @@ fun SettingsScreen(
             cargando = false
             return@LaunchedEffect
         }
-        try {
-            val res = RetrofitClient.apiService.getSettings(usuario)
-            if (res.isSuccessful && res.body() != null) {
-                val body = res.body()!!
-                // Si el usuario ya lo activó localmente, se mantiene siempre activo
-                if (notificationPrefs.checkNotasEnabled) {
-                    checkNotasEnabled = true
-                    if (!body.autoCheckEnabled) {
-                        try {
-                            RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(true))
-                        } catch (_: Exception) {}
-                    }
-                } else {
-                    checkNotasEnabled = body.autoCheckEnabled
-                    notificationPrefs.checkNotasEnabled = body.autoCheckEnabled
-                }
-                tieneTokenFcm = body.tieneTokenFcm
-                // El servidor revisará siempre cada 5 minutos
-                if (body.intervaloMinutos != INTERVALO_FIJO_MINUTOS) {
-                    try {
-                        RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
-                    } catch (e: Exception) {
-                        // Silencioso
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Silencioso
-        }
+        val cuentaGuardada = TokenManager(context).getCuentas().firstOrNull { it.usuario == usuario }
+        nombreEstudiante = cuentaGuardada?.nombre
         checkAsistenciaEnabled = notificationPrefs.checkAsistenciaEnabled
         checkNotasEnabled = notificationPrefs.checkNotasEnabled
         if (checkAsistenciaEnabled || checkNotasEnabled) {
             SyncScheduler.start(context)
-        }
-        try {
-            val resCuenta = RetrofitClient.apiService.getCuenta(usuario)
-            if (resCuenta.isSuccessful && resCuenta.body() != null) {
-                val cuenta = resCuenta.body()!!
-                nombreEstudiante = cuenta.nombre
-                rankingOptin = cuenta.rankingOptin
-            }
-        } catch (e: Exception) {
-            // El perfil es opcional
         }
         cargando = false
     }
@@ -130,10 +86,6 @@ fun SettingsScreen(
                 if (cambiarNotas != null) {
                     checkNotasEnabled = cambiarNotas
                     notificationPrefs.checkNotasEnabled = cambiarNotas
-                    try {
-                        RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(cambiarNotas))
-                        RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
-                    } catch (_: Exception) {}
 
                     if (cambiarNotas || checkAsistenciaEnabled) {
                         SyncScheduler.start(context)
@@ -159,23 +111,6 @@ fun SettingsScreen(
                 Toast.makeText(context, "Error al guardar: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
             guardando = false
-        }
-    }
-
-    fun cambiarRankingOptin(nuevo: Boolean) {
-        if (usuario == null) return
-        rankingOptin = nuevo
-        scope.launch {
-            try {
-                val res = RetrofitClient.apiService.postRankingOptin(RankingOptinRequest(usuario, nuevo))
-                if (!res.isSuccessful) {
-                    rankingOptin = !nuevo
-                    Toast.makeText(context, "No se pudo actualizar el ranking (${res.code()})", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                rankingOptin = !nuevo
-                Toast.makeText(context, "Error de conexión: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-            }
         }
     }
 
@@ -279,39 +214,6 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            AppCard(
-                corner = 20.dp,
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    ListItem(
-                        headlineContent = { Text("Buzón de sugerencias") },
-                        supportingContent = { Text("Envíanos ideas y revisa su estado") },
-                        leadingContent = {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.EmojiObjects,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        },
-                        trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                        modifier = Modifier.clickable(onClick = onOpenSugerencias)
-                    )
                 }
             }
 
@@ -615,19 +517,11 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (!tieneTokenFcm) {
-                Text(
-                    text = "Nota: este dispositivo aún no ha registrado su token push. Abre la app con conexión para sincronizarlo.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            } else {
-                Text(
-                    text = "Tu dispositivo está listo para recibir notificaciones de notas y asistencias.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            }
+            Text(
+                text = "Tu dispositivo está listo para recibir notificaciones de notas y asistencias en segundo plano.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
 
             dialogActualizacionInfo?.let { info ->
                 com.example.upaos.ui.components.UpdateDialog(

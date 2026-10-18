@@ -2,24 +2,12 @@ package com.example.upaos.data.model
 
 import com.google.gson.annotations.SerializedName
 
-data class LoginRequest(
-    @SerializedName("usuario") val usuario: String,
-    @SerializedName("password") val password: String
-)
-
-data class ManualCaptchaRequest(
-    @SerializedName("usuario") val usuario: String,
-    @SerializedName("password") val password: String,
-    @SerializedName("codigo_manual") val codigoManual: String,
-    @SerializedName("captcha_id") val captchaId: String? = null
-)
-
 data class LoginResponse(
     @SerializedName("success") val success: Boolean,
     @SerializedName("token") val token: String?,
-    @SerializedName("necesita_captcha") val necesitaCaptcha: Boolean,
-    @SerializedName("imagen_base64") val imagenBase64: String?,
-    @SerializedName("message") val message: String?,
+    @SerializedName("necesita_captcha") val necesitaCaptcha: Boolean = false,
+    @SerializedName("imagen_base64") val imagenBase64: String? = null,
+    @SerializedName("message") val message: String? = null,
     @SerializedName("error_code") val errorCode: String? = null,
     @SerializedName("captcha_id") val captchaId: String? = null
 )

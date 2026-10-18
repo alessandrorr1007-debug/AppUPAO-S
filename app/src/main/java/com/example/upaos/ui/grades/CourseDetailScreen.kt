@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState

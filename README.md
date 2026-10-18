@@ -52,7 +52,7 @@ Puedes descargar e instalar la versión más reciente del APK directamente en tu
 - **Lenguaje & UI**: Kotlin, Jetpack Compose, Material 3, Navigation Compose.
 - **Conexión a Red**: Retrofit 2 + OkHttp + Gson.
 - **Almacenamiento Local**: Jetpack DataStore y EncryptedSharedPreferences (credenciales seguras).
-- **Notificaciones**: Firebase Cloud Messaging (FCM) + Android WorkManager.
+- **Notificaciones**: Notificaciones locales automáticas con Android WorkManager y AlarmManager.
 - **Versión de SDK**: `minSdk 24` (Android 7.0+) | `targetSdk / compileSdk 37`.
 - **CI/CD**: GitHub Actions para compilación y despliegue automático de APKs en GitHub Releases.
 
@@ -60,8 +60,9 @@ Puedes descargar e instalar la versión más reciente del APK directamente en tu
 
 ## 🔒 Privacidad y Seguridad
 
-- **Cero secretos en el repositorio**: Claves de API, credenciales privadas, keystores y archivos locales (`google-services.json`, `local.properties`) están estrictamente excluidos en `.gitignore`.
+- **Cero secretos en el repositorio**: Claves de API, credenciales privadas, keystores y archivos locales (`local.properties`) están estrictamente excluidos en `.gitignore`.
 - **Cifrado local**: Las credenciales se guardan de forma local en el dispositivo utilizando almacenamiento cifrado del sistema Android (`EncryptedSharedPreferences`).
+- **Conexión directa**: Comunicación directa App → UPAO sin servidores intermediarios.
 
 ---
 
@@ -71,10 +72,10 @@ Puedes descargar e instalar la versión más reciente del APK directamente en tu
 app/src/main/java/com/example/upaos/
 ├── MainActivity.kt            # Punto de entrada y navegación (NavHost)
 ├── data/
-│   ├── api/                   # RetrofitClient, ApiService, interceptores de sesión
+│   ├── upao/                  # BannerApi, UpaoAuth, UpaoHttpClient, UpaoRepository
 │   ├── local/                 # TokenManager, preferencias y persistencia local
 │   └── model/                 # Modelos de datos (notas, horario, asistencia, etc.)
-├── service/                   # Notificaciones push (FCM) y sincronización en segundo plano
+├── service/                   # Notificaciones locales y sincronización en segundo plano (WorkManager)
 └── ui/
     ├── home/                  # Contenedor principal (HorizontalPager para Notas, Horario, Asistencia)
     ├── grades/                # Pantalla y detalle de notas
@@ -82,7 +83,6 @@ app/src/main/java/com/example/upaos/
     ├── asistencia/            # Pantalla de asistencias con desglose de teoría y laboratorio
     ├── calculadora/           # Calculadora predictiva de notas
     ├── settings/              # Ajustes de la app y preferencias
-    ├── sugerencias/           # Buzón de sugerencias
     ├── login/                 # Autenticación y selector multi-cuenta
     ├── components/            # Componentes reutilizables de UI
     └── theme/                 # Paleta de colores UPAO, tipografías y temas
@@ -99,8 +99,7 @@ Si eres desarrollador y deseas compilar el código fuente por tu cuenta:
    git clone https://github.com/alessandrorr1007-debug/AppUPAO-S.git
    ```
 2. Abre el proyecto en **Android Studio**.
-3. Asegúrate de contar con el archivo `google-services.json` de tu proyecto Firebase dentro de la carpeta `app/`.
-4. Compila el APK:
+3. Compila el APK:
    ```bash
    ./gradlew assembleDebug
    ```

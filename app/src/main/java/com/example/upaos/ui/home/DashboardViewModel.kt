@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.upaos.data.agenda.AgendaItem
 import com.example.upaos.data.agenda.AgendaRepository
-import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.model.*
@@ -22,7 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
-import retrofit2.Response
 
 data class DashboardState(
     val periods: List<String> = emptyList(),
@@ -149,11 +147,6 @@ class DashboardViewModel(app: Application, private val token: String, private va
         loaded = true
     }
 
-    private suspend fun <T> body(response: Response<T>): T {
-        check(response.isSuccessful) { "Error HTTP ${response.code()}" }
-        return response.body() ?: error("Respuesta vacía")
-    }
-
     private suspend fun refreshRound() = ForegroundRefreshGate.lock.withLock {
         loadCache()
         val version = selectionVersion
@@ -162,8 +155,6 @@ class DashboardViewModel(app: Application, private val token: String, private va
         val errors = mutableMapOf<String, String>()
         val fresh = mutableSetOf<String>()
         val times = result.times.toMutableMap()
-        val api = RetrofitClient.apiService
-        val auth = "Bearer $token"
         suspend fun attempt(key: String, action: suspend () -> Unit) {
             try { action(); fresh += key }
             catch (e: CancellationException) { throw e }
