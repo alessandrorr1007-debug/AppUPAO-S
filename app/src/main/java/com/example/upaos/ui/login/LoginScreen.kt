@@ -75,15 +75,7 @@ fun LoginScreen(
     )
 
     fun procesarLogin(studentName: String?) {
-        tokenManager.saveToken(usuario)
-        tokenManager.saveUserId(usuario)
-        if (guardarPassword) {
-            tokenManager.saveCredentials(usuario, password)
-            tokenManager.saveCuenta(usuario, password, studentName)
-        } else {
-            tokenManager.forgetCurrentPassword()
-        }
-        tokenManager.setKeepLoggedIn(mantenerSesion)
+        tokenManager.saveLogin(usuario, password.takeIf { guardarPassword }, mantenerSesion, studentName)
         onLoginSuccess(usuario)
     }
 

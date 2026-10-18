@@ -13,6 +13,7 @@ import org.junit.Before
 import org.junit.Test
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.SecretKeySpec
 
 class SecureStoreTest {
 
@@ -122,11 +123,86 @@ class SecureStoreTest {
         assertTrue("El almacén legacy debe quedar vacío tras migración exitosa", legacyPrefs.all.isEmpty())
     }
 
+    @Test fun recreatedStoreKeepsSessionAndUsesDifferentIvs() {
+        val tokens = TokenManager(FakeContext(), secureStore, FakeSharedPreferences())
+        tokens.saveLogin("000000001", "synthetic-password", true)
+        secureStore.put("probe", "synthetic-value")
+        val first = mockPrefs.getString("probe", null)
+        secureStore.put("probe", "synthetic-value")
+        assertTrue(first != mockPrefs.getString("probe", null))
+        val recreated = TokenManager(FakeContext(), SecureStore(FakeContext(), customKey = testKey, customPrefs = mockPrefs), FakeSharedPreferences())
+        assertEquals("000000001", recreated.getSavedUser())
+        assertEquals("synthetic-password", recreated.getSavedPass())
+        assertTrue(recreated.shouldKeepLoggedIn())
+        assertEquals(1, recreated.getCuentas().size)
+    }
+
+    @Test fun failedDecryptionPreservesCiphertextForRecovery() {
+        secureStore.put("probe", "synthetic-value")
+        val otherKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val unavailable = SecureStore(FakeContext(), customKey = otherKey, customPrefs = mockPrefs)
+        assertNull(unavailable.get("probe"))
+        assertTrue(mockPrefs.contains("probe"))
+        assertEquals("synthetic-value", secureStore.get("probe"))
+    }
+
+    @Test fun encryptionFailureDoesNotPartiallyReplaceSession() {
+        secureStore.put("user_id", "000000001")
+        val broken = SecureStore(FakeContext(), customKey = SecretKeySpec(ByteArray(5), "AES"), customPrefs = mockPrefs)
+        try {
+            broken.putAll(mapOf("user_id" to "000000002", "user_pass" to "synthetic"))
+            org.junit.Assert.fail("Expected storage failure")
+        } catch (_: IllegalStateException) { }
+        assertEquals("000000001", secureStore.get("user_id"))
+        assertFalse(mockPrefs.contains("user_pass"))
+    }
+
+    @Test fun diskFailureIsReportedAndLegacyIsPreserved() {
+        val prefs = FakeSharedPreferences().apply { failCommit = true }
+        val failing = SecureStore(FakeContext(), customKey = testKey, customPrefs = prefs)
+        val legacy = FakeSharedPreferences().apply { edit().putString("user_id", "000000001").commit() }
+        TokenManager(FakeContext(), failing, legacy)
+        assertTrue(legacy.contains("user_id"))
+        try {
+            failing.put("probe", "synthetic")
+            org.junit.Assert.fail("Expected persistence failure")
+        } catch (_: IllegalStateException) { }
+    }
+
+    @Test fun encryptedLegacyMigrationMergesAccountsWithoutChangingNewActiveUser() {
+        val encrypted = FakeSharedPreferences().apply {
+            edit().putString("user_id", "000000001").putString("user_pass", "old-password")
+                .putString("cuentas_guardadas", """[{"usuario":"000000001","password":"old-password"}]""").commit()
+        }
+        val tokens = TokenManager(FakeContext(), secureStore, FakeSharedPreferences())
+        tokens.saveLogin("000000002", "new-password", false)
+        val migrated = TokenManager(FakeContext(), secureStore, FakeSharedPreferences(), encrypted)
+        assertEquals("000000002", migrated.getSavedUser())
+        assertEquals("new-password", migrated.getSavedPass())
+        assertFalse(migrated.shouldKeepLoggedIn())
+        assertEquals(2, migrated.getCuentas().size)
+        assertTrue(encrypted.all.isEmpty())
+        migrated.clearSession()
+        val recreated = TokenManager(FakeContext(), secureStore, FakeSharedPreferences(), encrypted)
+        assertNull(recreated.getSavedUser())
+    }
+
+    @Test fun loginWithoutRememberingPasswordRemovesOnlyCurrentAccountPassword() {
+        val tokens = TokenManager(FakeContext(), secureStore, FakeSharedPreferences())
+        tokens.saveLogin("000000001", "synthetic", true)
+        tokens.saveLogin("000000002", "other-synthetic", true)
+        tokens.saveLogin("000000001", null, false)
+        assertNull(tokens.getSavedPass())
+        assertFalse(tokens.shouldKeepLoggedIn())
+        assertEquals(listOf("000000002"), tokens.getCuentas().map { it.usuario })
+    }
+
     // --- Fake SharedPreferences y Context para tests JVM sin dependencias de Android framework ---
 
     private class FakeContext : android.content.ContextWrapper(null)
 
     private class FakeSharedPreferences : SharedPreferences {
+        var failCommit = false
         private val data = mutableMapOf<String, Any>()
 
         override fun getAll(): MutableMap<String, *> = HashMap(data)
@@ -176,6 +252,7 @@ class SecureStoreTest {
                 return this
             }
             override fun commit(): Boolean {
+                if (prefs.failCommit) return false
                 prefs.data.clear()
                 prefs.data.putAll(temp)
                 return true

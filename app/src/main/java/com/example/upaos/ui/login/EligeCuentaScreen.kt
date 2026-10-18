@@ -56,12 +56,8 @@ fun EligeCuentaScreen(
             try {
                 val result = UpaoAuth.login(cuenta.usuario, cuenta.password)
                 if (result.success) {
-                    tokenManager.saveToken(cuenta.usuario)
-                    tokenManager.setKeepLoggedIn(true)
-                    tokenManager.saveUserId(cuenta.usuario)
-                    tokenManager.saveCredentials(cuenta.usuario, cuenta.password)
                     val nombreFinal = result.studentName ?: cuenta.nombre
-                    tokenManager.saveCuenta(cuenta.usuario, cuenta.password, nombreFinal)
+                    tokenManager.saveLogin(cuenta.usuario, cuenta.password, true, nombreFinal)
                     autenticando = null
                     onLoginSuccess(cuenta.usuario)
                 } else {

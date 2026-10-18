@@ -2,13 +2,11 @@ package com.example.upaos.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Log
 import java.security.GeneralSecurityException
 import java.security.KeyStore
-import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -34,6 +32,7 @@ class SecureStore(
         private const val AES_GCM_NOPADDING = "AES/GCM/NoPadding"
         private const val GCM_IV_LENGTH_BYTES = 12
         private const val GCM_TAG_LENGTH_BITS = 128
+        private val keyLock = Any()
 
         object Base64Compat {
             fun encode(bytes: ByteArray): String {
@@ -57,11 +56,11 @@ class SecureStore(
     private val prefs: SharedPreferences = customPrefs
         ?: context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
-    private val secretKey: SecretKey = customKey ?: getOrCreateKey()
+    // A failed Keystore access must never create a key that disappears with the process.
+    private val secretKey: SecretKey by lazy { customKey ?: getOrCreateKey() }
 
-    @Synchronized
-    private fun getOrCreateKey(): SecretKey {
-        return try {
+    private fun getOrCreateKey(): SecretKey = synchronized(keyLock) {
+        try {
             val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
             if (!keyStore.containsAlias(KEY_ALIAS)) {
                 val keyGen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
@@ -80,18 +79,15 @@ class SecureStore(
                 keyStore.getKey(KEY_ALIAS, null) as SecretKey
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Error accediendo a AndroidKeyStore, generando clave de respaldo local", e)
-            // Fallback para entornos de testing o dispositivos con Keystore corrupto
-            val keyGen = KeyGenerator.getInstance("AES")
-            keyGen.init(256)
-            keyGen.generateKey()
+            throw GeneralSecurityException("No se pudo acceder al almacenamiento seguro", e)
         }
     }
 
     private fun encrypt(plainText: String): String {
-        val iv = ByteArray(GCM_IV_LENGTH_BYTES).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance(AES_GCM_NOPADDING)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv = cipher.iv
+        check(iv.size == GCM_IV_LENGTH_BYTES) { "IV GCM incompatible" }
         val cipherText = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
 
         // Empaquetar IV (12 bytes) + CipherText (incluye tag de 16 bytes)
@@ -120,22 +116,26 @@ class SecureStore(
     }
 
     fun put(key: String, value: String) {
+        putAll(mapOf(key to value))
+    }
+
+    /** Encrypt everything before editing; commit reports persistence failures to the caller. */
+    fun putAll(values: Map<String, String>, removals: Set<String> = emptySet()) {
         try {
-            val encryptedValue = encrypt(value)
-            prefs.edit().putString(key, encryptedValue).apply()
-        } catch (e: GeneralSecurityException) {
-            Log.e(TAG, "Fallo al cifrar valor para la clave $key", e)
+            val encrypted = values.mapValues { encrypt(it.value) }
+            val editor = prefs.edit()
+            removals.forEach { editor.remove(it) }
+            encrypted.forEach { (key, value) -> editor.putString(key, value) }
+            check(editor.commit()) { "No se pudo persistir el almacenamiento seguro" }
+        } catch (e: Exception) {
+            throw IllegalStateException("No se pudo guardar la sesión de forma segura. Inténtalo de nuevo.", e)
         }
     }
 
     fun get(key: String): String? {
         val raw = prefs.getString(key, null) ?: return null
-        val decrypted = decrypt(raw)
-        if (decrypted == null) {
-            // El valor no se pudo descifrar con la clave actual
-            remove(key)
-        }
-        return decrypted
+        // Preserve ciphertext on transient Keystore failures; a later read can recover it.
+        return decrypt(raw)
     }
 
     fun putBoolean(key: String, value: Boolean) {

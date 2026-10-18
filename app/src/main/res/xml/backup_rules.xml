@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+        <exclude domain="sharedpref" path="upao_secure_store.xml" />
         <exclude domain="sharedpref" path="secret_upao_prefs.xml" />
         <exclude domain="sharedpref" path="upao_session_permanent.xml" />
 </full-backup-content>

@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="sharedpref" path="upao_secure_store.xml" />
         <exclude domain="sharedpref" path="secret_upao_prefs.xml" />
         <exclude domain="sharedpref" path="upao_session_permanent.xml" />
     </cloud-backup>
     <device-transfer>
+        <exclude domain="sharedpref" path="upao_secure_store.xml" />
         <exclude domain="sharedpref" path="secret_upao_prefs.xml" />
         <exclude domain="sharedpref" path="upao_session_permanent.xml" />
     </device-transfer>

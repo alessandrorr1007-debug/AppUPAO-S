@@ -60,7 +60,13 @@ fun nextClass(courses: List<HorarioCurso>, now: Long): NextClass? {
 @OptIn(ExperimentalLayoutApi::class)
 fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?, onSchedule: () -> Unit, onCanvas: () -> Unit, onNotifications: () -> Unit,
                  openAgenda: Boolean = false, onAgendaOpened: () -> Unit = {}) {
-    if (usuario.isNullOrBlank()) return
+    if (usuario.isNullOrBlank()) {
+        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+            Text("No se pudo recuperar la sesión", style = MaterialTheme.typography.titleMedium)
+            Text("Vuelve a iniciar sesión desde el menú para cargar tu información.")
+        }
+        return
+    }
     val context = LocalContext.current
     val shared by dashboard.state.collectAsState()
     LaunchedEffect(openAgenda) { if (openAgenda) onAgendaOpened() }

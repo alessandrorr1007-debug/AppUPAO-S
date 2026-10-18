@@ -3,6 +3,8 @@ package com.example.upaos.data.local
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -15,17 +17,28 @@ data class CuentaGuardada(
 class TokenManager(
     context: Context,
     customStore: SecureStore? = null,
-    customLegacyPrefs: SharedPreferences? = null
+    customLegacyPrefs: SharedPreferences? = null,
+    customEncryptedLegacyPrefs: SharedPreferences? = null
 ) {
 
     private val store: SecureStore = customStore ?: SecureStore(context)
 
     private val fallbackPrefs: SharedPreferences = customLegacyPrefs
         ?: context.getSharedPreferences("upao_session_permanent", Context.MODE_PRIVATE)
+    private val gson = Gson()
 
     init {
         synchronized(migrationLock) {
-            migrarDesdeLegacySiAplica()
+            try {
+                val encryptedLegacy = customEncryptedLegacyPrefs ?: if (customLegacyPrefs == null &&
+                    context.getSharedPreferences("secret_upao_prefs", Context.MODE_PRIVATE).all.isNotEmpty()) {
+                    abrirAlmacenAnterior(context)
+                } else null
+                encryptedLegacy?.let { migrarDesdeLegacySiAplica(it) }
+                migrarDesdeLegacySiAplica(fallbackPrefs)
+            } catch (_: Exception) {
+                Log.w(TAG, "No se pudo migrar la sesión; se conserva el almacén anterior")
+            }
         }
     }
 
@@ -39,45 +52,51 @@ class TokenManager(
      * Verifica que los datos migrados se lean correctamente antes de limpiar el almacén anterior.
      * Respeta todas las cuentas guardadas (multi-cuenta).
      */
-    private fun migrarDesdeLegacySiAplica() {
+    @Suppress("DEPRECATION")
+    private fun abrirAlmacenAnterior(context: Context): SharedPreferences {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        return EncryptedSharedPreferences.create(
+            context, "secret_upao_prefs", masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    private fun migrarDesdeLegacySiAplica(source: SharedPreferences) {
         try {
-            val legacy = fallbackPrefs.all
+            val legacy = source.all
             if (legacy.isNotEmpty()) {
-                var migradosExitosamente = true
-
-                // 1. Escribir datos en SecureStore
+                val pending = mutableMapOf<String, String>()
+                val currentUser = store.get("user_id")
+                val legacyUser = legacy["user_id"] as? String
+                val sessionKeys = setOf("user_id", "user_pass", "auth_token", "keep_logged_in")
                 legacy.forEach { (key, value) ->
-                    if (!store.contains(key)) {
-                        when (value) {
-                            is String -> store.put(key, value)
-                            is Boolean -> store.putBoolean(key, value)
-                            is Number -> store.put(key, value.toString())
-                        }
+                    // Never attach an old account's password/token to a newer active account.
+                    if (key in sessionKeys && currentUser != null && currentUser != legacyUser) return@forEach
+                    val oldValue = when (value) {
+                        is String -> value
+                        is Boolean, is Number -> value.toString()
+                        else -> return@forEach
+                    }
+                    val current = store.get(key)
+                    check(!store.contains(key) || current != null) { "Almacén nuevo no disponible" }
+                    if (key == "cuentas_guardadas") {
+                        val type = object : TypeToken<List<CuentaGuardada>>() {}.type
+                        val oldAccounts = gson.fromJson<List<CuentaGuardada>>(oldValue, type).orEmpty()
+                        val newAccounts = current?.let { gson.fromJson<List<CuentaGuardada>>(it, type) }.orEmpty()
+                        pending[key] = gson.toJson((oldAccounts + newAccounts).associateBy { it.usuario }.values.toList())
+                    } else if (current == null) {
+                        pending[key] = oldValue
                     }
                 }
-
-                // 2. Verificar que todos los datos clave se leen correctamente en SecureStore
-                legacy.forEach { (key, value) ->
-                    val readBack = store.get(key)
-                    if (readBack == null && value != null) {
-                        migradosExitosamente = false
-                    }
-                }
-
-                // 3. Solo si todo se verificó con éxito, limpiar el almacén viejo
-                if (migradosExitosamente) {
-                    val cleared = fallbackPrefs.edit().clear().commit()
-                    if (!cleared) {
-                        Log.w(TAG, "No se pudo limpiar el respaldo antiguo tras migración exitosa")
-                    } else {
-                        Log.i(TAG, "Migración a SecureStore completada con éxito")
-                    }
-                } else {
-                    Log.w(TAG, "La verificación de migración falló. Se preserva el almacén antiguo.")
-                }
+                store.putAll(pending)
+                check(pending.all { (key, value) -> store.get(key) == value })
+                check(source.edit().clear().commit())
+                Log.i(TAG, "Migración a SecureStore completada")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error durante la migración a SecureStore; se preserva almacén antiguo", e)
+        } catch (_: Exception) {
+            Log.w(TAG, "Error durante la migración; se preserva almacén antiguo")
         }
     }
 
@@ -90,8 +109,7 @@ class TokenManager(
     }
 
     fun saveCredentials(user: String, pass: String) {
-        store.put("user_id", user)
-        store.put("user_pass", pass)
+        store.putAll(mapOf("user_id" to user, "user_pass" to pass))
     }
 
     fun saveUserId(user: String) {
@@ -134,7 +152,17 @@ class TokenManager(
         return store.getBoolean("keep_logged_in", true)
     }
 
-    private val gson = Gson()
+    /** Persist the complete login before allowing navigation to the authenticated UI. */
+    fun saveLogin(user: String, password: String?, keep: Boolean, name: String? = null) {
+        val accounts = getCuentas().filterNot { it.usuario == user }.toMutableList()
+        if (password != null) accounts.add(CuentaGuardada(user, password, name))
+        val values = mutableMapOf(
+            "user_id" to user, "auth_token" to user, "keep_logged_in" to keep.toString(),
+            "cuentas_guardadas" to gson.toJson(accounts)
+        )
+        if (password != null) values["user_pass"] = password
+        store.putAll(values, if (password == null) setOf("user_pass") else emptySet())
+    }
 
     fun saveCuenta(usuario: String, password: String, nombre: String? = null) {
         val actuales = getCuentas().toMutableList()
