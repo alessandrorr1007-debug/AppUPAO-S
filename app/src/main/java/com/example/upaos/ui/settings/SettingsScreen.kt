@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import com.example.upaos.data.local.BiometricHelper
 import com.example.upaos.data.local.NotificationPreferences
 import com.example.upaos.data.local.SecurityPreferences
@@ -55,6 +56,7 @@ fun SettingsScreen(
 
     var checkNotasEnabled by remember { mutableStateOf(notificationPrefs.checkNotasEnabled) }
     var checkAsistenciaEnabled by remember { mutableStateOf(notificationPrefs.checkAsistenciaEnabled) }
+    var recordatorioClasesEnabled by remember { mutableStateOf(notificationPrefs.recordatorioClasesEnabled) }
     var cargando by remember { mutableStateOf(true) }
     var guardando by remember { mutableStateOf(false) }
 
@@ -73,15 +75,20 @@ fun SettingsScreen(
         nombreEstudiante = cuentaGuardada?.nombre
         checkAsistenciaEnabled = notificationPrefs.checkAsistenciaEnabled
         checkNotasEnabled = notificationPrefs.checkNotasEnabled
+        recordatorioClasesEnabled = notificationPrefs.recordatorioClasesEnabled
         if (checkAsistenciaEnabled || checkNotasEnabled) {
             SyncScheduler.start(context)
+        }
+        if (recordatorioClasesEnabled) {
+            com.example.upaos.service.ClassReminderScheduler.reprogramar(context)
         }
         cargando = false
     }
 
     fun guardar(
         cambiarNotas: Boolean? = null,
-        cambiarAsistencia: Boolean? = null
+        cambiarAsistencia: Boolean? = null,
+        cambiarRecordatorioClases: Boolean? = null
     ) {
         if (usuario == null) return
         guardando = true
@@ -109,6 +116,17 @@ fun SettingsScreen(
                     } else {
                         SyncScheduler.cancel(context)
                         Toast.makeText(context, "Notificaciones de asistencia desactivadas", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                if (cambiarRecordatorioClases != null) {
+                    recordatorioClasesEnabled = cambiarRecordatorioClases
+                    notificationPrefs.recordatorioClasesEnabled = cambiarRecordatorioClases
+                    if (cambiarRecordatorioClases) {
+                        com.example.upaos.service.ClassReminderScheduler.reprogramar(context)
+                        Toast.makeText(context, "Recordatorios de clase activados", Toast.LENGTH_SHORT).show()
+                    } else {
+                        com.example.upaos.service.ClassReminderScheduler.cancelarTodos(context)
+                        Toast.makeText(context, "Recordatorios de clase desactivados", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
@@ -347,6 +365,53 @@ fun SettingsScreen(
                             onCheckedChange = { nuevo ->
                                 checkAsistenciaEnabled = nuevo
                                 guardar(cambiarAsistencia = nuevo)
+                            },
+                            enabled = !guardando
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Opción 3: Recordatorio de Clases
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Schedule,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Recordatorio de Clases",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Avisa 15 minutos antes con aula y pabellón",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = recordatorioClasesEnabled,
+                            onCheckedChange = { nuevo ->
+                                recordatorioClasesEnabled = nuevo
+                                guardar(cambiarRecordatorioClases = nuevo)
                             },
                             enabled = !guardando
                         )

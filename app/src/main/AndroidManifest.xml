@@ -45,6 +45,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- Receptor de recordatorio de clases 15 min antes -->
+        <receiver
+            android:name=".service.ClassReminderReceiver"
+            android:exported="false" />
+
 
         <!-- Widget: Resumen de Notas -->
         <receiver

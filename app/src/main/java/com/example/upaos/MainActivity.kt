@@ -174,6 +174,9 @@ class MainActivity : FragmentActivity() {
                 if (notifPrefs.checkAsistenciaEnabled || notifPrefs.checkNotasEnabled) {
                     com.example.upaos.service.SyncScheduler.start(context)
                 }
+                if (notifPrefs.recordatorioClasesEnabled) {
+                    com.example.upaos.service.ClassReminderScheduler.reprogramar(context)
+                }
 
                 // Comprobar si hay una nueva versión en GitHub
                 launch(kotlinx.coroutines.Dispatchers.IO) {

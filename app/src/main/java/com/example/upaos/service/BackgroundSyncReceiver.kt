@@ -31,10 +31,13 @@ class BackgroundSyncReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED,
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON" -> {
-                Log.d(TAG, "Dispositivo iniciado o app actualizada. Reiniciando sincronizador...")
+                Log.d(TAG, "Dispositivo iniciado o app actualizada. Reiniciando sincronizador y recordatorios...")
                 if (shouldRun) {
                     SyncScheduler.start(context)
                     AsistenciaWorker.runOnce(context)
+                }
+                if (prefs.recordatorioClasesEnabled) {
+                    ClassReminderScheduler.reprogramar(context)
                 }
             }
         }

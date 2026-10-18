@@ -228,6 +228,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
                         if (term == result.currentPeriod) {
                             save("horario_ultimo_$user", schedule)
                             cache.guardar("horario_ultimo_periodo_$user", term)
+                            com.example.upaos.service.ClassReminderScheduler.reprogramar(getApplication())
                         }
                     }
                 }
