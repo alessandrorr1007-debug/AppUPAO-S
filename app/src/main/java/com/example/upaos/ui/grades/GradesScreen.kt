@@ -22,8 +22,10 @@ import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.example.upaos.data.local.TokenManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,6 +89,10 @@ fun GradesContent(
     val promedioGeneral = shared.grades?.promedioGeneral
     val promedioBasadoEn = shared.grades?.promedioBasadoEn
     val promedioPeriodoRes = shared.average
+    val nombreEstudiante = remember(usuario) {
+        usuario?.let { u -> TokenManager(context).getCuentas().firstOrNull { it.usuario == u }?.nombre }
+    }
+    var mostrarDialogCompartir by remember { mutableStateOf(false) }
     fun loadGrades() = dashboard.refresh()
 
     Column(
@@ -157,6 +163,22 @@ fun GradesContent(
                         )
                     }
                 }
+            }
+
+            IconButton(
+                onClick = {
+                    if (cursos.isEmpty()) {
+                        Toast.makeText(context, "No hay notas para compartir todavía", Toast.LENGTH_SHORT).show()
+                    } else {
+                        mostrarDialogCompartir = true
+                    }
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Share,
+                    contentDescription = "Compartir resumen de notas",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
 
@@ -261,6 +283,19 @@ fun GradesContent(
                 }
             }
         }
+    }
+
+    if (mostrarDialogCompartir) {
+        com.example.upaos.ui.share.CompartirNotasDialog(
+            cursos = cursos,
+            periodo = selectedPeriodo,
+            carrera = selectedCarrera,
+            promedioGeneral = promedioGeneral,
+            promedioPeriodoRes = promedioPeriodoRes,
+            notasProyectadas = notasProyectadas,
+            nombreEstudiante = nombreEstudiante,
+            onDismiss = { mostrarDialogCompartir = false }
+        )
     }
 }
 

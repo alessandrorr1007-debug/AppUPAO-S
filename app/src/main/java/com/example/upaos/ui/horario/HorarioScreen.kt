@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Room
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -257,6 +258,7 @@ fun HorarioContent(
 
     val asistenciaCursos = shared.attendance?.asistencia ?: emptyList()
     var bloqueSeleccionado by remember { mutableStateOf<Pair<HorarioCurso, HorarioBloque>?>(null) }
+    var mostrarDialogCompartir by remember { mutableStateOf(false) }
     val isLoading = shared.busy
     val isRefreshing = shared.busy
     fun claveCache() = dashboard.scheduleCacheKey(selectedPeriodo)
@@ -318,6 +320,22 @@ fun HorarioContent(
                 Icon(
                     imageVector = Icons.Filled.CalendarMonth,
                     contentDescription = "Agregar al calendario",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    if (cursosAMostrar.isEmpty()) {
+                        Toast.makeText(context, "No hay horario cargado todavía para compartir", Toast.LENGTH_SHORT).show()
+                    } else {
+                        mostrarDialogCompartir = true
+                    }
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Share,
+                    contentDescription = "Compartir horario",
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -435,6 +453,14 @@ fun HorarioContent(
             bloque = bloque,
             infoComponente = infoComp,
             onDismiss = { bloqueSeleccionado = null }
+        )
+    }
+
+    if (mostrarDialogCompartir) {
+        com.example.upaos.ui.share.CompartirHorarioDialog(
+            cursos = cursosAMostrar,
+            periodo = selectedPeriodo,
+            onDismiss = { mostrarDialogCompartir = false }
         )
     }
 }
