@@ -95,7 +95,7 @@ object UpaoAuth {
 
             val formHttpUrl = resolvedActionUrl.toHttpUrlOrNull()
             val host = formHttpUrl?.host.orEmpty()
-            if (!host.contains("upaosso.upao.edu.pe") && !host.contains("ssb.upao.edu.pe")) {
+            if (formHttpUrl == null || !com.example.upaos.data.api.TrustedServers.isLogin(formHttpUrl)) {
                 throw UpaoServiceUnavailableException("Redirección no autorizada a servidor desconocido ($host).")
             }
 

@@ -12,7 +12,7 @@ import java.util.Locale
  */
 object AcademicCalendar {
 
-    const val TOTAL_SEMANAS_REGULARES = 16
+    const val TOTAL_SEMANAS_REGULARES = 17
 
     /**
      * Fechas oficiales o estimadas de inicio de clases por periodo académico (formato YYYY-MM-DD).
@@ -78,8 +78,6 @@ object AcademicCalendar {
         val (etiqueta, fuera) = when {
             semana == 0 -> "El ciclo aún no inicia" to true
             semana in 1..TOTAL_SEMANAS_REGULARES -> "Semana $semana de $TOTAL_SEMANAS_REGULARES" to false
-            semana == TOTAL_SEMANAS_REGULARES + 1 -> "Semana 17 · Sustitutorios" to false
-            semana == TOTAL_SEMANAS_REGULARES + 2 -> "Semana 18 · Exámenes Finales" to false
             else -> "Ciclo concluido" to true
         }
 

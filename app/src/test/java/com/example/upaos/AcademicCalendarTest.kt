@@ -32,7 +32,7 @@ class AcademicCalendarTest {
         assertTrue(infoInicio.configurada)
         assertFalse(infoInicio.fueraDeCiclo == true)
         assertEquals(1, infoInicio.semana)
-        assertEquals("Semana 1 de 16", infoInicio.etiqueta)
+        assertEquals("Semana 1 de 17", infoInicio.etiqueta)
 
         // 4 días después sigue en semana 1
         val dia4 = sdf.parse("2026-03-27")!!
@@ -47,7 +47,7 @@ class AcademicCalendarTest {
         val info = AcademicCalendar.calcularSemana("202610", fecha)
 
         assertEquals(8, info.semana)
-        assertEquals("Semana 8 de 16", info.etiqueta)
+        assertEquals("Semana 8 de 17", info.etiqueta)
         assertFalse(info.fueraDeCiclo == true)
     }
 
@@ -58,7 +58,7 @@ class AcademicCalendarTest {
         val info = AcademicCalendar.calcularSemana("202610", fecha)
 
         assertEquals(16, info.semana)
-        assertEquals("Semana 16 de 16", info.etiqueta)
+        assertEquals("Semana 16 de 17", info.etiqueta)
         assertFalse(info.fueraDeCiclo == true)
     }
 
@@ -68,20 +68,20 @@ class AcademicCalendarTest {
         val fecha = sdf.parse("2026-07-13")!!
         val info = AcademicCalendar.calcularSemana("202610", fecha)
 
-        assertNull(info.semana)
-        assertEquals("Semana 17 · Sustitutorios", info.etiqueta)
+        assertEquals(17, info.semana)
+        assertEquals("Semana 17 de 17", info.etiqueta)
         assertFalse(info.fueraDeCiclo == true)
     }
 
     @Test
-    fun `test semana 18 finales`() {
+    fun `test semana 18 fuera de ciclo`() {
         // 17 semanas * 7 días = 119 días después de 2026-03-23 -> 2026-07-20
         val fecha = sdf.parse("2026-07-20")!!
         val info = AcademicCalendar.calcularSemana("202610", fecha)
 
         assertNull(info.semana)
-        assertEquals("Semana 18 · Exámenes Finales", info.etiqueta)
-        assertFalse(info.fueraDeCiclo == true)
+        assertEquals("Ciclo concluido", info.etiqueta)
+        assertTrue(info.fueraDeCiclo == true)
     }
 
     @Test
@@ -100,12 +100,12 @@ class AcademicCalendarTest {
         val domingoSemana7 = sdf.parse("2026-10-18")!!
         val infoDomingo = AcademicCalendar.calcularSemana("202620", domingoSemana7)
         assertEquals(7, infoDomingo.semana)
-        assertEquals("Semana 7 de 16", infoDomingo.etiqueta)
+        assertEquals("Semana 7 de 17", infoDomingo.etiqueta)
 
         val lunesSemana8 = sdf.parse("2026-10-19")!!
         val infoLunes = AcademicCalendar.calcularSemana("202620", lunesSemana8)
         assertEquals(8, infoLunes.semana)
-        assertEquals("Semana 8 de 16", infoLunes.etiqueta)
+        assertEquals("Semana 8 de 17", infoLunes.etiqueta)
     }
 
     @Test

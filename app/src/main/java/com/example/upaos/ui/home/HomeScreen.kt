@@ -288,6 +288,13 @@ fun HomeScreen(
                 )
             },
             bottomBar = {
+                val navBarColors = NavigationBarItemDefaults.colors(
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     tonalElevation = 2.dp
@@ -296,7 +303,8 @@ fun HomeScreen(
                         selected = pagerState.currentPage == 0,
                         onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
                         icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Hoy", fontSize = 12.sp) }
+                        label = { Text("Hoy", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 1,
@@ -304,7 +312,8 @@ fun HomeScreen(
                             coroutineScope.launch { pagerState.animateScrollToPage(1) }
                         },
                         icon = { Icon(Icons.Filled.School, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Cursos", fontSize = 12.sp) }
+                        label = { Text("Cursos", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 2,
@@ -312,7 +321,8 @@ fun HomeScreen(
                             coroutineScope.launch { pagerState.animateScrollToPage(2) }
                         },
                         icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Horario", fontSize = 12.sp) }
+                        label = { Text("Horario", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 3,
@@ -320,7 +330,8 @@ fun HomeScreen(
                             coroutineScope.launch { pagerState.animateScrollToPage(3) }
                         },
                         icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Asistencia", fontSize = 12.sp) }
+                        label = { Text("Asistencia", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 4,
@@ -328,7 +339,8 @@ fun HomeScreen(
                             coroutineScope.launch { pagerState.animateScrollToPage(4) }
                         },
                         icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Canvas", fontSize = 12.sp) }
+                        label = { Text("Canvas", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                 }
             }
@@ -343,7 +355,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     shape = RoundedCornerShape(50)
                 ) {
                     Row(
@@ -353,7 +365,7 @@ fun HomeScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.EventNote,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -361,7 +373,7 @@ fun HomeScreen(
                             text = semanaEtiqueta!!,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }

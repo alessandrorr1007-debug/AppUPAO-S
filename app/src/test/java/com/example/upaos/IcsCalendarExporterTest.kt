@@ -48,8 +48,8 @@ class IcsCalendarExporterTest {
         assertTrue(ics.contains("UID:upao-202620-12345-0-071500@upaos"))
         assertTrue(ics.contains("DTSTART;TZID=America/Lima:20260831T071500"))
         assertTrue(ics.contains("DTEND;TZID=America/Lima:20260831T085000"))
-        // 16 semanas: fin de semana 16 es domingo 2026-12-20 a las 23:59:59 PET -> 2026-12-21 04:59:59 UTC
-        assertTrue(ics.contains("RRULE:FREQ=WEEKLY;UNTIL=20261221T045959Z"))
+        // 17 semanas: fin de semana 17 es domingo 2026-12-27 a las 23:59:59 PET -> 2026-12-28 04:59:59 UTC
+        assertTrue(ics.contains("RRULE:FREQ=WEEKLY;UNTIL=20261228T045959Z"))
         // Caracteres especiales escapados: ';' -> '\;' y ',' -> '\,'
         assertTrue(ics.contains("SUMMARY:Ingeniería de Software\\; Pruebas\\, Calidad"))
         assertTrue(ics.contains("LOCATION:Pabellón H - Aula 302"))

@@ -29,7 +29,7 @@ data class DashboardState(
     val career: String = "UG",
     val careers: List<String> = listOf("UG"),
     val schedulePeriod: String = "202610",
-    val attendancePeriod: String = "202620",
+    val attendancePeriod: String = "202610",
     val grades: GradesResponse? = null,
     val average: PromedioPeriodoResponse? = null,
     val projected: Map<String, Any?> = emptyMap(),
@@ -73,23 +73,26 @@ class DashboardViewModel(app: Application, private val token: String, private va
 
     fun selectGrades(term: String, career: String? = null) {
         gradeChosen = true
-        selectionVersion++
-        val level = career ?: state.value.career
-        mutable.value = state.value.copy(gradePeriod = term, career = level,
-            grades = gradeVariants[term to level], average = averages[term to level], projected = projections[term to level] ?: emptyMap())
-        if (state.value.grades == null) refreshSelection()
-    }
-    fun selectSchedule(term: String) {
         scheduleChosen = true
-        selectionVersion++
-        mutable.value = state.value.copy(schedulePeriod = term)
-        ensureSchedule(term)
-    }
-    fun selectAttendance(term: String) {
         attendanceChosen = true
         selectionVersion++
-        mutable.value = state.value.copy(attendancePeriod = term)
-        ensureSchedule(term)
+        val level = career ?: state.value.career
+        mutable.value = state.value.copy(
+            gradePeriod = term,
+            schedulePeriod = term,
+            attendancePeriod = term,
+            career = level,
+            grades = gradeVariants[term to level],
+            average = averages[term to level],
+            projected = projections[term to level] ?: emptyMap()
+        )
+        if (state.value.grades == null || term !in state.value.schedules) refreshSelection()
+    }
+    fun selectSchedule(term: String) {
+        selectGrades(term)
+    }
+    fun selectAttendance(term: String) {
+        selectGrades(term)
     }
     private fun ensureSchedule(term: String) {
         if (term !in state.value.schedules) refreshSelection()
@@ -97,6 +100,18 @@ class DashboardViewModel(app: Application, private val token: String, private va
     private fun refreshSelection() {
         viewModelScope.launch {
             val version = selectionVersion
+            val term = state.value.gradePeriod
+            val level = state.value.career
+            if (state.value.grades == null && term != state.value.currentPeriod) {
+                try {
+                    cache.cargar("notas_${user}_$term")?.let { gson.fromJson(it, GradesResponse::class.java) }?.let { historical ->
+                        gradeVariants[term to level] = historical
+                        if (state.value.gradePeriod == term) {
+                            mutable.value = state.value.copy(grades = historical)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
             loop.requestRefresh().join()
             // A user selection made during a round is handled once, centrally, after that round.
             if (version > completedSelectionVersion && !state.value.busy) loop.requestRefresh()
@@ -119,8 +134,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
             if (term.toIntOrNull() == null) null else try { term to gson.fromJson(json, HorarioResponse::class.java) }
             catch (_: Exception) { null }
         }.toMap().toMutableMap()
-        val lastTerm = cache.cargar("horario_ultimo_periodo_$user") ?: current
-        cached<HorarioResponse>("horario_ultimo_$user")?.let { schedules.putIfAbsent(lastTerm, it) }
+        cached<HorarioResponse>("horario_ultimo_$user")?.let { schedules.putIfAbsent(current, it) }
         val agenda = agendaRepository.cached(user)
         val times = mutableMapOf<String, Long?>()
         for (key in listOf("agenda_$user", "notificaciones_$user", attendanceCacheKey) + schedules.keys.map(::scheduleCacheKey)) {
@@ -138,12 +152,26 @@ class DashboardViewModel(app: Application, private val token: String, private va
             gradeVariants[key] = it
             projections[key] = savedProjected
         }
-        mutable.value = state.value.copy(periods = periods?.periodos ?: emptyList(), currentPeriod = current,
-            gradePeriod = savedGrades?.periodo ?: current, career = savedGrades?.carrera ?: "UG", grades = savedGrades,
-            projected = savedProjected,
-            schedulePeriod = lastTerm, attendance = cached(attendanceCacheKey), schedules = schedules,
-            notices = cached("notificaciones_$user"), agenda = agenda.first, times = times,
-            week = cached("semana_$user"))
+        val isCurrentGrades = savedGrades?.periodo == current
+        val initialGrades = if (isCurrentGrades) savedGrades else null
+        val initialProjected = if (isCurrentGrades) savedProjected else emptyMap()
+
+        mutable.value = state.value.copy(
+            periods = periods?.periodos ?: emptyList(),
+            currentPeriod = current,
+            gradePeriod = current,
+            career = initialGrades?.carrera ?: savedGrades?.carrera ?: "UG",
+            grades = initialGrades,
+            projected = initialProjected,
+            schedulePeriod = current,
+            attendancePeriod = current,
+            attendance = cached(attendanceCacheKey),
+            schedules = schedules,
+            notices = cached("notificaciones_$user"),
+            agenda = agenda.first,
+            times = times,
+            week = cached("semana_$user")
+        )
         loaded = true
     }
 
@@ -183,8 +211,12 @@ class DashboardViewModel(app: Application, private val token: String, private va
                 val grades = upaoRepository.buscarNotas(result.gradePeriod, result.career)
                 gradeVariants[result.gradePeriod to result.career] = grades
                 result = result.copy(grades = grades)
-                gradesCache.guardar(gradeCacheKey, gson.toJson(grades))
-                times[gradeCacheKey] = gradesCache.observarFecha(gradeCacheKey).first()
+                if (result.gradePeriod == result.currentPeriod) {
+                    gradesCache.guardar(gradeCacheKey, gson.toJson(grades))
+                    times[gradeCacheKey] = gradesCache.observarFecha(gradeCacheKey).first()
+                } else {
+                    cache.guardar("notas_${user}_${result.gradePeriod}", gson.toJson(grades))
+                }
                 for (course in grades.cursos) {
                     val crn = course.crn ?: course.courseReferenceNumber ?: continue
                     attempt("proyectada_$crn") {

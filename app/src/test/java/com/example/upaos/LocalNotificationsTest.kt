@@ -75,4 +75,43 @@ class LocalNotificationsTest {
         val pluralAsist = if (difAsist == 1) "asistencia" else "$difAsist asistencias"
         assertEquals("2 asistencias", pluralAsist)
     }
+
+    @Test
+    fun `test tiempoRelativo fecha reciente no muestra desfase de 5 horas`() {
+        val now = java.util.Date()
+        // Formato UTC estándar
+        val utcFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val utcStr = utcFormat.format(now)
+        val relUtc = com.example.upaos.ui.components.tiempoRelativo(utcStr)
+        assertEquals("hace un momento", relUtc)
+
+        // Formato local naive (sin zona horaria, como guardaba la versión previa localmente)
+        val localFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getDefault()
+        }
+        val localNaiveStr = localFormat.format(now)
+        val relNaive = com.example.upaos.ui.components.tiempoRelativo(localNaiveStr)
+        assertEquals("hace un momento", relNaive)
+    }
+
+    @Test
+    fun `test formato de notificacion para subcomponentes de curso`() {
+        val cursoNombre = "Algoritmos y Estructura de Datos"
+        val compNombre = "EVALUACIÓN DE PROCESO 1"
+        val subNombre = "PRÁCTICA CALIFICADA 1"
+        val nota = "18"
+
+        val compCorto = when {
+            compNombre.contains("PROCESO 1") || compNombre.contains("EP1") -> "EP1"
+            else -> compNombre
+        }
+        val subFormateado = com.example.upaos.ui.components.toTitleCase(subNombre)
+        val etiqueta = "$compCorto: $subFormateado"
+        val mensaje = "$cursoNombre: Calificación en $subFormateado ($compCorto): $nota."
+
+        assertEquals("EP1: Práctica Calificada 1", etiqueta)
+        assertEquals("Algoritmos y Estructura de Datos: Calificación en Práctica Calificada 1 (EP1): 18.", mensaje)
+    }
 }

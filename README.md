@@ -8,7 +8,7 @@ Aplicación Android moderna (Kotlin + Jetpack Compose con Material 3) diseñada 
 
 Puedes descargar e instalar la versión más reciente del APK directamente en tu celular Android:
 
-👉 **[Descargar última versión de UPAO S (Releases)](https://github.com/alessandrorr1007-debug/AppUPAO-S/releases/latest)**
+👉 **[Descargar última versión de UPAO S (Releases)](https://github.com/alessandrorr1007-debug/UPAOS-APK/releases/latest)**
 
 1. Entra al enlace anterior.
 2. En la sección **Assets**, pulsa sobre **`UPAO-S.apk`**.

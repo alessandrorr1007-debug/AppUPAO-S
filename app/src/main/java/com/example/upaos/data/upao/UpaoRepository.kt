@@ -74,7 +74,23 @@ class UpaoRepository(private val context: Context) {
                                 gradesCache.guardar("proyectada_${currentUser}_$crn", detail.notaProyectada.toString())
                             }
 
-                            curso.copy(notaActual = notaActual)
+                            val compEp1 = detail.detalles.firstOrNull { c ->
+                                val t = listOfNotNull(c.nombre, c.description, c.codigo).joinToString(" ").uppercase(Locale.ROOT)
+                                t.contains("EP1") || t.contains("PROCESO 1") || t.contains("PERMANENTE 1") || t.contains("EP 1")
+                            }
+                            val compEp2 = detail.detalles.firstOrNull { c ->
+                                val t = listOfNotNull(c.nombre, c.description, c.codigo).joinToString(" ").uppercase(Locale.ROOT)
+                                t.contains("EP2") || t.contains("PROCESO 2") || t.contains("PERMANENTE 2") || t.contains("EP 2")
+                            }
+                            val gradeSectionEp1 = com.example.upaos.data.model.GradeSection(nota = compEp1?.displayNota)
+                            val gradeSectionEp2 = com.example.upaos.data.model.GradeSection(nota = compEp2?.displayNota)
+
+                            curso.copy(
+                                notaActual = notaActual,
+                                componentes = detail.detalles,
+                                ep1 = gradeSectionEp1,
+                                ep2 = gradeSectionEp2
+                            )
                         } catch (_: Exception) {
                             curso
                         }
@@ -91,7 +107,9 @@ class UpaoRepository(private val context: Context) {
             null
         }
 
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
         val fechaActualizacion = dateFormat.format(Date())
 
         GradesResponse(
@@ -181,7 +199,9 @@ class UpaoRepository(private val context: Context) {
         componente: String? = null
     ): NotificacionItem = withContext(Dispatchers.IO) {
         val actual = getNotificaciones(usuario)
-        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
         val fecha = sdf.format(Date())
         val nuevoId = System.currentTimeMillis()
         val nuevoItem = NotificacionItem(

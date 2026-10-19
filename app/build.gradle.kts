@@ -11,14 +11,29 @@ android {
         applicationId = "com.example.upaos"
         minSdk = 24
         targetSdk = 37
-        versionCode = 16
-        versionName = "1.7.0"
+        versionCode = 17
+        versionName = "1.7.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("distribution") {
+            val signingPath = System.getenv("UPAOS_KEYSTORE_PATH")
+            if (!signingPath.isNullOrBlank()) {
+                storeFile = file(signingPath)
+                storePassword = System.getenv("UPAOS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("UPAOS_KEY_ALIAS")
+                keyPassword = System.getenv("UPAOS_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
+            isDebuggable = false
+            if (!System.getenv("UPAOS_KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("distribution")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

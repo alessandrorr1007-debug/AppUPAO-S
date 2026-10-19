@@ -184,8 +184,10 @@ fun GradesContent(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Column(Modifier.padding(vertical = 6.dp)) {
-            com.example.upaos.ui.home.Freshness(shared.times[claveCache], !offline, isLoading || isRefreshing)
+        if (offline || isLoading || isRefreshing) {
+            Column(Modifier.padding(vertical = 4.dp)) {
+                com.example.upaos.ui.home.Freshness(shared.times[claveCache], !offline, isLoading || isRefreshing)
+            }
         }
 
         if (offline && cursos.isNotEmpty()) {

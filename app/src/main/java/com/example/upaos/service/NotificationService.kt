@@ -16,6 +16,8 @@ object NotificationService {
     const val CHANNEL_ASISTENCIA = "upaos_asistencia"
     const val CHANNEL_RECORDATORIO_CLASES = "upaos_recordatorio_clases"
 
+    private val notifIdCounter = java.util.concurrent.atomic.AtomicInteger((System.currentTimeMillis() % 100000).toInt())
+
     fun mostrarNotificacionRecordatorioClase(context: Context, id: Int, title: String, body: String) {
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -51,6 +53,8 @@ object NotificationService {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
+            .setWhen(System.currentTimeMillis())
+            .setShowWhen(true)
             .setContentIntent(pendingIntent)
             .build()
 
@@ -92,10 +96,12 @@ object NotificationService {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
+            .setWhen(System.currentTimeMillis())
+            .setShowWhen(true)
             .setContentIntent(pendingIntent)
             .build()
 
-        val id = (System.currentTimeMillis() % 100000).toInt() + 1000
+        val id = notifIdCounter.incrementAndGet() + 1000
         notificationManager.notify(id, notification)
     }
 
@@ -134,10 +140,12 @@ object NotificationService {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
+            .setWhen(System.currentTimeMillis())
+            .setShowWhen(true)
             .setContentIntent(pendingIntent)
             .build()
 
-        val id = (System.currentTimeMillis() % 100000).toInt()
+        val id = notifIdCounter.incrementAndGet()
         notificationManager.notify(id, notification)
     }
 }

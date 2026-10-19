@@ -230,6 +230,29 @@ class AsistenciaWorker(
         notificationPrefs.ultimoSnapshotAsistencia = gson.toJson(nuevoSnapshot)
     }
 
+    private fun limpiarNota(v: Any?): String? {
+        if (v == null) return null
+        val s = v.toString().trim()
+        if (s.isEmpty() || s == "null" || s == "None" || s == "-" || s == "s/n" || s == "SN") return null
+        val d = s.toDoubleOrNull()
+        return if (d != null) {
+            if (d % 1.0 == 0.0) d.toInt().toString() else "%.1f".format(java.util.Locale.US, d)
+        } else {
+            s
+        }
+    }
+
+    private fun simplificarNombreComponente(nombre: String?): String {
+        val t = nombre?.trim().orEmpty().uppercase(java.util.Locale.ROOT)
+        return when {
+            t.contains("EP1") || t.contains("PROCESO 1") || t.contains("PERMANENTE 1") || t.contains("EP 1") -> "EP1"
+            t.contains("EP2") || t.contains("PROCESO 2") || t.contains("PERMANENTE 2") || t.contains("EP 2") -> "EP2"
+            t.contains("PARCIAL") || t.contains("EVP") -> "Parcial"
+            t.contains("FINAL") || t.contains("EVF") -> "Final"
+            else -> com.example.upaos.ui.components.toTitleCase(nombre)
+        }
+    }
+
     private suspend fun compararYNotificarNotas(nuevosCursos: List<CourseGrade>, user: String) {
         val snapshotPrevioRaw = notificationPrefs.ultimoSnapshotNotas
         val type = object : TypeToken<Map<String, SnapshotNotasCurso>>() {}.type
@@ -244,28 +267,40 @@ class AsistenciaWorker(
             emptyMap()
         }
 
+        // Si el snapshot previo nunca guardó subcomponentes (migración desde versión anterior),
+        // evitamos disparar una ráfaga de notificaciones de notas pasadas para subcomponentes
+        val migrandoDesdeVersionSinSubcomponentes = snapshotPrevio.isNotEmpty() &&
+                snapshotPrevio.values.all { it.subcomponentesMap.isEmpty() }
+
         val nuevoSnapshot = mutableMapOf<String, SnapshotNotasCurso>()
 
         for (curso in nuevosCursos) {
             val key = curso.crn?.takeIf { it.isNotBlank() } ?: curso.displayNombre
-            val notaActualStr = curso.displayNotaActual?.toString()?.trim()
-            val ep1NotaStr = curso.displayEp1.nota?.toString()?.trim()
-            val ep2NotaStr = curso.displayEp2.nota?.toString()?.trim()
+            val cursoNombre = com.example.upaos.ui.components.toTitleCase(curso.displayNombre)
+            val notaActualStr = limpiarNota(curso.displayNotaActual)
+            val ep1NotaStr = limpiarNota(curso.displayEp1.nota)
+            val ep2NotaStr = limpiarNota(curso.displayEp2.nota)
 
             val compMap = mutableMapOf<String, String?>()
-            curso.displayEp1.detalles.forEach { d ->
-                val comp = d.componente?.trim()
-                val nota = d.nota?.toString()?.trim()
-                if (!comp.isNullOrBlank() && !nota.isNullOrBlank()) {
-                    compMap["EP1_$comp"] = nota
+            val subMap = mutableMapOf<String, String?>()
+
+            // 1. Mapear componentes y subcomponentes directamente desde curso.componentes
+            for (comp in curso.componentes) {
+                val compKey = comp.componentId?.toString() ?: comp.codigo ?: comp.displayNombre
+                val compNota = limpiarNota(comp.displayNota)
+                compMap[compKey] = compNota
+
+                for (sub in comp.subcomponentes) {
+                    val subKey = "${compKey}_${sub.codigo ?: sub.displayNombre}"
+                    val subNota = limpiarNota(sub.displayNota)
+                    subMap[subKey] = subNota
                 }
             }
-            curso.displayEp2.detalles.forEach { d ->
-                val comp = d.componente?.trim()
-                val nota = d.nota?.toString()?.trim()
-                if (!comp.isNullOrBlank() && !nota.isNullOrBlank()) {
-                    compMap["EP2_$comp"] = nota
-                }
+
+            // Compatibilidad de respaldo si curso.componentes viniera vacío pero displayEp1/Ep2 tuviera notas
+            if (compMap.isEmpty()) {
+                if (!ep1NotaStr.isNullOrBlank()) compMap["EP1"] = ep1NotaStr
+                if (!ep2NotaStr.isNullOrBlank()) compMap["EP2"] = ep2NotaStr
             }
 
             nuevoSnapshot[key] = SnapshotNotasCurso(
@@ -273,47 +308,90 @@ class AsistenciaWorker(
                 notaActual = notaActualStr,
                 ep1Nota = ep1NotaStr,
                 ep2Nota = ep2NotaStr,
-                componentes = compMap
+                componentes = compMap,
+                subcomponentes = subMap
             )
 
-            // Comparar solo si ya teníamos un snapshot previo
-            if (snapshotPrevio.isNotEmpty()) {
+            // Comparar solo si ya teníamos un snapshot previo y no es migración inicial sin subcomponentes
+            if (snapshotPrevio.isNotEmpty() && !migrandoDesdeVersionSinSubcomponentes) {
                 val previo = snapshotPrevio[key]
                 if (previo != null) {
-                    val cursoNombre = curso.displayNombre
+                    var algunSubNotificado = false
 
-                    // Caso 1: Se subió o modificó la nota de EP1
-                    if (!ep1NotaStr.isNullOrBlank() && ep1NotaStr != previo.ep1Nota) {
-                        val titulo = "🎓 Nueva nota en EP1"
-                        val mensaje = "$cursoNombre: Tu nota de EP1 es $ep1NotaStr."
-                        NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
-                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = "EP1")
-                    }
+                    // Caso 1: Revisar SUBCOMPONENTES (subprocesos como prácticas, trabajos, talleres, etc.)
+                    for (comp in curso.componentes) {
+                        val compKey = comp.componentId?.toString() ?: comp.codigo ?: comp.displayNombre
+                        val compNombreCorto = simplificarNombreComponente(comp.displayNombre)
 
-                    // Caso 2: Se subió o modificó la nota de EP2
-                    if (!ep2NotaStr.isNullOrBlank() && ep2NotaStr != previo.ep2Nota) {
-                        val titulo = "🎓 Nueva nota en EP2"
-                        val mensaje = "$cursoNombre: Tu nota de EP2 es $ep2NotaStr."
-                        NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
-                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = "EP2")
-                    }
+                        for (sub in comp.subcomponentes) {
+                            val subKey = "${compKey}_${sub.codigo ?: sub.displayNombre}"
+                            val notaActualSub = subMap[subKey]
+                            val notaPreviaSub = previo.subcomponentesMap[subKey]
 
-                    // Caso 3: Cambio en algún componente evaluativo específico
-                    for ((compName, compVal) in compMap) {
-                        val valPrevio = previo.componentes[compName]
-                        if (!compVal.isNullOrBlank() && compVal != valPrevio) {
-                            val etiquetaLimpia = compName.replace("EP1_", "EP1 - ").replace("EP2_", "EP2 - ")
-                            val titulo = "🎓 Nueva evaluación calificada"
-                            val mensaje = "$cursoNombre: Calificación en $etiquetaLimpia: $compVal."
-                            NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
-                            upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = etiquetaLimpia)
+                            if (!notaActualSub.isNullOrBlank() && notaActualSub != notaPreviaSub) {
+                                algunSubNotificado = true
+                                val subNombre = com.example.upaos.ui.components.toTitleCase(sub.displayNombre)
+                                val etiqueta = if (compNombreCorto.isNotBlank() && !subNombre.contains(compNombreCorto, ignoreCase = true)) {
+                                    "$compNombreCorto: $subNombre"
+                                } else {
+                                    subNombre
+                                }
+
+                                val titulo = if (notaPreviaSub.isNullOrBlank()) {
+                                    "🎓 Subproceso calificado"
+                                } else {
+                                    "🎓 Subproceso actualizado"
+                                }
+
+                                val detalleSub = if (compNombreCorto.isNotBlank() && !subNombre.contains(compNombreCorto, ignoreCase = true)) {
+                                    "$subNombre ($compNombreCorto)"
+                                } else {
+                                    subNombre
+                                }
+
+                                val mensaje = if (notaPreviaSub.isNullOrBlank()) {
+                                    "$cursoNombre: Calificación en $detalleSub: $notaActualSub."
+                                } else {
+                                    "$cursoNombre: Tu nota en $detalleSub cambió de $notaPreviaSub a $notaActualSub."
+                                }
+
+                                NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                                upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = etiqueta)
+                            }
                         }
                     }
 
-                    // Caso 4: Cambio en la nota actual o promedio final del curso
-                    if (!notaActualStr.isNullOrBlank() && notaActualStr != previo.notaActual &&
-                        ep1NotaStr == previo.ep1Nota && ep2NotaStr == previo.ep2Nota
-                    ) {
+                    // Caso 2: Revisar componentes principales (Examen Parcial, Examen Final, o EP1/EP2)
+                    var algunCompNotificado = false
+                    for (comp in curso.componentes) {
+                        val compKey = comp.componentId?.toString() ?: comp.codigo ?: comp.displayNombre
+                        val notaActualComp = compMap[compKey]
+                        val notaPreviaComp = previo.componentesMap[compKey]
+                        val tieneSubs = comp.hasSubComponents && comp.subcomponentes.isNotEmpty()
+
+                        if (!notaActualComp.isNullOrBlank() && notaActualComp != notaPreviaComp) {
+                            // Si tiene subcomponentes y ya se notificó un subcomponente, evitamos duplicar con el contenedor
+                            if (!tieneSubs || !algunSubNotificado) {
+                                algunCompNotificado = true
+                                val compNombre = com.example.upaos.ui.components.toTitleCase(comp.displayNombre)
+                                val titulo = if (notaPreviaComp.isNullOrBlank()) {
+                                    "🎓 Nueva nota en $compNombre"
+                                } else {
+                                    "🎓 Nota actualizada en $compNombre"
+                                }
+                                val mensaje = if (notaPreviaComp.isNullOrBlank()) {
+                                    "$cursoNombre: Calificación en $compNombre: $notaActualComp."
+                                } else {
+                                    "$cursoNombre: Tu nota en $compNombre cambió de $notaPreviaComp a $notaActualComp."
+                                }
+                                NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                                upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = compNombre)
+                            }
+                        }
+                    }
+
+                    // Caso 3: Cambio en el promedio actual del curso (si no se notificó ningún sub o comp individual)
+                    if (!notaActualStr.isNullOrBlank() && notaActualStr != previo.notaActual && !algunSubNotificado && !algunCompNotificado) {
                         val titulo = "🎓 Nota promedio actualizada"
                         val mensaje = "$cursoNombre: Tu promedio actual ahora es $notaActualStr."
                         NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
@@ -339,10 +417,16 @@ class AsistenciaWorker(
     private data class SnapshotNotasCurso(
         val nombre: String,
         val notaActual: String?,
-        val ep1Nota: String?,
-        val ep2Nota: String?,
-        val componentes: Map<String, String?> = emptyMap()
-    )
+        val ep1Nota: String? = null,
+        val ep2Nota: String? = null,
+        val componentes: Map<String, String?>? = emptyMap(),
+        val subcomponentes: Map<String, String?>? = emptyMap()
+    ) {
+        val componentesMap: Map<String, String?>
+            get() = componentes ?: emptyMap()
+        val subcomponentesMap: Map<String, String?>
+            get() = subcomponentes ?: emptyMap()
+    }
 
     companion object {
         private const val TAG = "UPAO_BackgroundSync"

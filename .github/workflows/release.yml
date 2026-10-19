@@ -37,27 +37,53 @@ jobs:
           packages: 'platform-tools platforms;android-37 build-tools;36.0.0'
           log-accepted-android-sdk-licenses: false
 
-      - name: Configure Firebase and APK signing
+      - name: Configure APK signing
         env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
           ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          UPAOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          UPAOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          UPAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          test -n "$GOOGLE_SERVICES_JSON" || { echo "Missing GOOGLE_SERVICES_JSON secret"; exit 1; }
-          test -n "$ANDROID_DEBUG_KEYSTORE_BASE64" || { echo "Missing APK signing secret"; exit 1; }
-          printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-          mkdir -p "$HOME/.android"
-          printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
+          umask 077
+          signing_file="$RUNNER_TEMP/upaos-signing.keystore"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            test -n "$UPAOS_KEYSTORE_PASSWORD" && test -n "$UPAOS_KEY_ALIAS" && test -n "$UPAOS_KEY_PASSWORD" || { echo "Missing release signing configuration"; exit 1; }
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$signing_file"
+          else
+            test -n "$ANDROID_DEBUG_KEYSTORE_BASE64" || { echo "Missing APK signing secret"; exit 1; }
+            printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$signing_file"
+            UPAOS_KEYSTORE_PASSWORD=android
+            UPAOS_KEY_ALIAS=androiddebugkey
+            UPAOS_KEY_PASSWORD=android
+          fi
+          printf 'UPAOS_KEYSTORE_PATH=%s\n' "$signing_file" >> "$GITHUB_ENV"
+          printf 'UPAOS_KEYSTORE_PASSWORD=%s\n' "$UPAOS_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          printf 'UPAOS_KEY_ALIAS=%s\n' "$UPAOS_KEY_ALIAS" >> "$GITHUB_ENV"
+          printf 'UPAOS_KEY_PASSWORD=%s\n' "$UPAOS_KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build and test Debug APK
-        run: ./gradlew assembleDebug testDebugUnitTest --no-daemon --console=plain
+      - name: Build and test production APK
+        run: ./gradlew assembleRelease testDebugUnitTest --no-daemon --console=plain
 
       - name: Rename APK for release
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk UPAO-S.apk
+          cp app/build/outputs/apk/release/app-release.apk UPAO-S.apk
+
+      - name: Verify signed production APK
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify UPAO-S.apk
+          badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging UPAO-S.apk)"
+          if [[ "$badging" == *application-debuggable* ]]; then
+            echo "Refusing to distribute a debuggable APK"
+            exit 1
+          fi
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upaos-signing.keystore"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

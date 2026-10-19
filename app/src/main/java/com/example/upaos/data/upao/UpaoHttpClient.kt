@@ -35,5 +35,14 @@ object UpaoHttpClient {
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .addInterceptor(defaultHeadersInterceptor)
+        .addNetworkInterceptor { chain ->
+            val request = chain.request()
+            val form = request.body as? okhttp3.FormBody
+            if (form != null && (0 until form.size).any { form.name(it) == "nip" } &&
+                !com.example.upaos.data.api.TrustedServers.isLogin(request.url)) {
+                throw java.io.IOException("Destino de autenticación no autorizado")
+            }
+            chain.proceed(request)
+        }
         .build()
 }

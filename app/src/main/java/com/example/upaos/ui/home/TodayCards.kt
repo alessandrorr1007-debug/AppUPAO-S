@@ -38,13 +38,27 @@ private fun campusFormat(time: Long, pattern: String) = SimpleDateFormat(pattern
     .apply { timeZone = campusTimeZone }.format(Date(time))
 
 @Composable
-fun TodayHero(now: Long, classes: Int?, tasks: Int?, news: Int?) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
-        .background(Brush.linearGradient(listOf(Color(0xFF123B91), Color(0xFF245DCA))))
-        .padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+fun TodayHero(
+    now: Long,
+    classes: Int?,
+    tasks: Int?,
+    news: Int?,
+    onSchedule: () -> Unit = {},
+    onCanvas: () -> Unit = {},
+    onNotifications: () -> Unit = {}
+) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF123B91), Color(0xFF245DCA))))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(campusFormat(now, "EEEE, d 'de' MMMM").replaceFirstChar { it.titlecase() },
-                style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = .85f))
+            Text(
+                campusFormat(now, "EEEE, d 'de' MMMM").replaceFirstChar { it.titlecase() },
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = .85f)
+            )
             Surface(color = Color.White.copy(alpha = .15f), shape = RoundedCornerShape(50)) {
                 Text("HOY", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
             }
@@ -54,16 +68,29 @@ fun TodayHero(now: Long, classes: Int?, tasks: Int?, news: Int?) {
             Text("Clases, pendientes y novedades de hoy", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = .85f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HeroMetric(classes, "Clases", Icons.Filled.Schedule, Modifier.weight(1f))
-            HeroMetric(tasks, "Pendientes", Icons.AutoMirrored.Filled.Assignment, Modifier.weight(1f))
-            HeroMetric(news, "Novedades", Icons.Filled.Notifications, Modifier.weight(1f))
+            HeroMetric(classes, "Clases", Icons.Filled.Schedule, Modifier.weight(1f), onClick = onSchedule)
+            HeroMetric(tasks, "Pendientes", Icons.AutoMirrored.Filled.Assignment, Modifier.weight(1f), onClick = onCanvas)
+            HeroMetric(news, "Novedades", Icons.Filled.Notifications, Modifier.weight(1f), onClick = onNotifications)
         }
     }
 }
 
 @Composable
-private fun HeroMetric(count: Int?, label: String, icon: ImageVector, modifier: Modifier) {
-    Column(modifier.clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = .12f)).padding(6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+private fun HeroMetric(
+    count: Int?,
+    label: String,
+    icon: ImageVector,
+    modifier: Modifier,
+    onClick: () -> Unit = {}
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = .12f))
+            .clickable(onClick = onClick)
+            .padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = .85f), modifier = Modifier.size(14.dp))
             Text(count?.toString() ?: "—", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
@@ -123,11 +150,14 @@ fun rememberTodayCardTheme(): TodayCardTheme {
 
 @Composable
 fun SourceStamp(updated: Long?, current: Boolean, color: Color? = null) {
-    Text(if (updated == null) "Sin información guardada" else
-        "${if (current) "Actualizado" else "Guardado · pendiente de actualizar"} · ${campusFormat(updated, "dd/MM HH:mm")}",
-        modifier = Modifier.padding(top = 5.dp, bottom = 8.dp),
-        style = MaterialTheme.typography.labelSmall,
-        color = color ?: MaterialTheme.colorScheme.onSurfaceVariant)
+    if (!current && updated != null) {
+        Text(
+            text = "Última actualización · ${campusFormat(updated, "dd/MM HH:mm")}",
+            modifier = Modifier.padding(top = 5.dp, bottom = 8.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = color ?: MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }
 
 @Composable
@@ -152,6 +182,7 @@ fun TodayEmptyState(title: String, description: String) {
 
 @Composable
 fun TodaySchedule(classes: List<NextClass>, available: Boolean, now: Long, updated: Long?, current: Boolean, onSchedule: () -> Unit) {
+    if (classes.isEmpty()) return
     val next = classes.firstOrNull { it.end > now }
     val theme = rememberTodayCardTheme()
 
@@ -200,7 +231,11 @@ fun TodaySchedule(classes: List<NextClass>, available: Boolean, now: Long, updat
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { SourceStamp(updated, current, color = theme.cardSubtextColor) }
+                if (!current && updated != null) {
+                    Column(Modifier.weight(1f)) { SourceStamp(updated, current, color = theme.cardSubtextColor) }
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
                 TextButton(onClick = onSchedule) { Text("Ver horario", color = theme.cardAccent, fontWeight = FontWeight.Bold) }
             }
         }
@@ -209,6 +244,7 @@ fun TodaySchedule(classes: List<NextClass>, available: Boolean, now: Long, updat
 
 @Composable
 fun TodayAssignments(items: List<AgendaItem>, now: Long, updated: Long?, current: Boolean, onCanvas: () -> Unit) {
+    if (items.isEmpty()) return
     val theme = rememberTodayCardTheme()
 
     Card(
@@ -237,8 +273,7 @@ fun TodayAssignments(items: List<AgendaItem>, now: Long, updated: Long?, current
             } else {
                 items.forEach { assignment -> androidx.compose.runtime.key(assignment.key) { TodayAssignment(assignment, now, true, theme) } }
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { SourceStamp(updated, current, color = theme.cardSubtextColor) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onCanvas) { Text("Ver Canvas", color = theme.cardAccent, fontWeight = FontWeight.Bold) }
             }
         }
@@ -292,6 +327,7 @@ fun TodayNewsCard(
     current: Boolean,
     onNotifications: () -> Unit
 ) {
+    if (items.isEmpty()) return
     val theme = rememberTodayCardTheme()
 
     Card(
@@ -389,10 +425,9 @@ fun TodayNewsCard(
 
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(Modifier.weight(1f)) { SourceStamp(updated, current, color = theme.cardSubtextColor) }
                 TextButton(onClick = onNotifications) {
                     Text("Ver notificaciones", color = theme.cardAccent, fontWeight = FontWeight.Bold)
                 }
