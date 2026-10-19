@@ -174,10 +174,20 @@ object CanvasApiClient {
     private const val BASE_URL = "https://upao.instructure.com/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BASIC
+        level = HttpLoggingInterceptor.Level.NONE
+    }
+
+    private val destinationGuard = okhttp3.Interceptor { chain ->
+        val request = chain.request()
+        if (request.header("Authorization") != null && !TrustedServers.isCanvas(request.url)) {
+            throw java.io.IOException("Destino de Canvas no autorizado")
+        }
+        chain.proceed(request)
     }
 
     val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(destinationGuard)
+        .addNetworkInterceptor(destinationGuard)
         .addInterceptor(loggingInterceptor)
         .connectTimeout(35, TimeUnit.SECONDS)
         .readTimeout(35, TimeUnit.SECONDS)

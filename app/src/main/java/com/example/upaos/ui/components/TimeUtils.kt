@@ -5,16 +5,43 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * El backend guarda los timestamps con datetime.now() sin zona horaria (naive).
- * En producción (Render) el reloj del servidor está en UTC, así que se interpretan
- * como UTC y se comparan con el reloj del dispositivo.
+ * Parsea un timestamp ISO-8601 a milisegundos desde Epoch.
+ * Si contiene zona horaria explícita ('Z' o offset ±HH:mm), se respeta la zona.
+ * Si es un timestamp ingenuo/local (sin indicador de zona), se interpreta en la zona
+ * horaria local del dispositivo para evitar desfases de 5 horas (ej. UTC-5 en Perú).
  */
-private fun parsearInstant(iso: String?): Long? = com.example.upaos.data.agenda.parseServerDate(iso)
+private fun parsearInstant(iso: String?): Long? {
+    if (iso.isNullOrBlank()) return null
+    val clean = iso.trim()
+
+    // Si tiene zona horaria explícita ('Z' o ±HH:mm / ±HHmm)
+    if (Regex("(Z|[+-]\\d{2}:?\\d{2})$").containsMatchIn(clean)) {
+        return com.example.upaos.data.agenda.parseServerDate(clean)
+    }
+
+    // Timestamps locales generados en el dispositivo sin zona horaria
+    for (pattern in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss")) {
+        try {
+            val format = SimpleDateFormat(pattern, Locale.US).apply {
+                isLenient = false
+                timeZone = TimeZone.getDefault()
+            }
+            val pos = java.text.ParsePosition(0)
+            val parsed = format.parse(clean, pos)
+            if (parsed != null && pos.index == clean.length) {
+                return parsed.time
+            }
+        } catch (_: Exception) {}
+    }
+
+    return com.example.upaos.data.agenda.parseServerDate(clean)
+}
 
 /** "hace 5 min", "hace un momento", "hace 3 h", "hace 2 días", o "" si no hay fecha. */
 fun tiempoRelativo(iso: String?): String {
     val epoch = parsearInstant(iso) ?: return ""
-    val minutos = (System.currentTimeMillis() - epoch) / 60000
+    val diffMillis = System.currentTimeMillis() - epoch
+    val minutos = diffMillis / 60000
     return when {
         minutos < 1 -> "hace un momento"
         minutos < 60 -> "hace $minutos min"

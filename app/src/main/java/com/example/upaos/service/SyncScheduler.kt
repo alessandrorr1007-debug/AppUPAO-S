@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import androidx.work.*
 import com.example.upaos.data.local.NotificationPreferences
+import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
 object SyncScheduler {
@@ -16,12 +17,10 @@ object SyncScheduler {
     private const val ALARM_REQUEST_CODE = 9988
     private const val PERIODIC_WORK_NAME = "upao_unified_periodic_sync"
     private const val ONE_TIME_WORK_NAME = "upao_unified_onetime_sync"
-    const val INTERVAL_MINUTES = 10L
 
     /**
-     * Inicia o actualiza la programación en segundo plano cada 5 minutos
-     * usando AlarmManager (preciso y compatible con Doze Mode)
-     * más un respaldo periódico en WorkManager.
+     * Inicia o actualiza la programación en segundo plano calculando el próximo
+     * intervalo adaptativo con SyncIntervalPolicy.
      */
     fun start(context: Context) {
         val prefs = NotificationPreferences(context)
@@ -31,19 +30,49 @@ object SyncScheduler {
             return
         }
 
-        scheduleNextAlarm(context, INTERVAL_MINUTES)
+        scheduleNext(context)
         scheduleWorkManagerBackup(context)
     }
 
     /**
-     * Programa la siguiente alarma exacta para dentro de [minutes] minutos.
+     * Programa el siguiente ciclo de sincronización usando la política adaptativa SyncIntervalPolicy.
+     *
+     * @param context contexto de la aplicación.
+     * @param fallosConsecutivos número de fallos consecutivos previos para backoff exponencial.
+     * @param esErrorFatal si es true, no reprograma (evita loops por sesión expirada o cambios de formato).
+     * @param minutosForzados si se especifica, fuerza una cantidad de minutos (para pruebas o compatibilidad).
      */
-    fun scheduleNext(context: Context, minutes: Long = INTERVAL_MINUTES) {
+    fun scheduleNext(
+        context: Context,
+        fallosConsecutivos: Int = NotificationPreferences(context).syncConsecutiveFailures,
+        esErrorFatal: Boolean = false,
+        minutosForzados: Long? = null
+    ) {
         val prefs = NotificationPreferences(context)
         if (!prefs.checkAsistenciaEnabled && !prefs.checkNotasEnabled) {
             cancel(context)
             return
         }
+
+        val minutes = if (minutosForzados != null) {
+            minutosForzados
+        } else {
+            val syncContext = SyncIntervalPolicy.SyncContext(
+                fallosConsecutivos = fallosConsecutivos,
+                esErrorFatal = esErrorFatal
+            )
+            val duracion = SyncIntervalPolicy.proximoIntervalo(
+                ahora = ZonedDateTime.now(SyncIntervalPolicy.ZONE_LIMA),
+                contexto = syncContext
+            )
+
+            if (duracion.isZero) {
+                Log.w(TAG, "Error fatal detectado o política indica no insistir. Deteniendo reprogramación en bucle.")
+                return
+            }
+            duracion.toMinutes()
+        }
+
         scheduleNextAlarm(context, minutes)
     }
 
@@ -62,39 +91,47 @@ object SyncScheduler {
         val triggerAtMillis = System.currentTimeMillis() + (minutes * 60 * 1000L)
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (alarmManager.canScheduleExactAlarms()) {
-                        alarmManager.setExactAndAllowWhileIdle(
-                            AlarmManager.RTC_WAKEUP,
-                            triggerAtMillis,
-                            pendingIntent
-                        )
-                    } else {
-                        alarmManager.setAndAllowWhileIdle(
-                            AlarmManager.RTC_WAKEUP,
-                            triggerAtMillis,
-                            pendingIntent
-                        )
-                    }
-                } else {
+            val canExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                alarmManager.canScheduleExactAlarms()
+            } else {
+                true
+            }
+
+            if (minutes < 15 && canExact) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         triggerAtMillis,
                         pendingIntent
                     )
+                } else {
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
                 }
+                Log.d(TAG, "Alarma exacta de sincronización programada para dentro de $minutes minutos (canExact=true).")
             } else {
-                alarmManager.set(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAtMillis,
-                    pendingIntent
-                )
+                // Si el intervalo es >= 15 min o no se tiene permiso de exactas, usar alarma inexacta y WorkManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAtMillis,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                }
+                scheduleWorkManagerOneTime(context, minutes)
+                Log.d(TAG, "Alarma inexacta + WorkManager programados para dentro de $minutes minutos (canExact=$canExact).")
             }
-            Log.d(TAG, "Alarma de sincronización programada para dentro de $minutes minutos (${triggerAtMillis}ms).")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Permiso de alarma exacta restringido por el sistema (${e.localizedMessage}). Usando alarma inexacta y WorkManager.")
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                }
+            } catch (_: Exception) {}
+            scheduleWorkManagerOneTime(context, minutes)
         } catch (e: Exception) {
             Log.e(TAG, "Error programando alarma con AlarmManager: ${e.localizedMessage}")
-            // Fallback a WorkManager OneTimeWork con initialDelay
             scheduleWorkManagerOneTime(context, minutes)
         }
     }

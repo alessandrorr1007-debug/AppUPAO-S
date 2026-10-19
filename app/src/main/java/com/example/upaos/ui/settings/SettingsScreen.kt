@@ -11,7 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.EmojiObjects
-import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,44 +23,44 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
+import com.example.upaos.data.local.BiometricHelper
 import com.example.upaos.data.local.NotificationPreferences
+import com.example.upaos.data.local.SecurityPreferences
+import com.example.upaos.data.local.TokenManager
 import com.example.upaos.service.AsistenciaWorker
 import com.example.upaos.service.NotificationService
 import com.example.upaos.service.SyncScheduler
-import com.example.upaos.data.api.RetrofitClient
-import com.example.upaos.data.model.AutoCheckRequest
-import com.example.upaos.data.model.IntervaloRequest
-import com.example.upaos.data.model.RankingOptinRequest
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.cursoColor
 import com.example.upaos.ui.components.toTitleCase
 import kotlinx.coroutines.launch
 
-private const val INTERVALO_FIJO_MINUTOS = 5
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     usuario: String?,
     onBack: () -> Unit,
-    onOpenSugerencias: () -> Unit,
     onAccountRemoved: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val notificationPrefs = remember { NotificationPreferences(context) }
+    val securityPrefs = remember { SecurityPreferences(context) }
+    val puedeUsarBiometria = remember { BiometricHelper.puedeAutenticar(context) }
+    var biometricLockEnabled by remember { mutableStateOf(securityPrefs.isBiometricLockEnabled) }
 
     var checkNotasEnabled by remember { mutableStateOf(notificationPrefs.checkNotasEnabled) }
     var checkAsistenciaEnabled by remember { mutableStateOf(notificationPrefs.checkAsistenciaEnabled) }
-    var tieneTokenFcm by remember { mutableStateOf(false) }
+    var recordatorioClasesEnabled by remember { mutableStateOf(notificationPrefs.recordatorioClasesEnabled) }
     var cargando by remember { mutableStateOf(true) }
     var guardando by remember { mutableStateOf(false) }
 
     var nombreEstudiante by remember { mutableStateOf<String?>(null) }
-    var rankingOptin by remember { mutableStateOf(false) }
 
     var buscandoActualizacion by remember { mutableStateOf(false) }
     var dialogActualizacionInfo by remember { mutableStateOf<com.example.upaos.util.UpdateInfo?>(null) }
@@ -72,56 +71,24 @@ fun SettingsScreen(
             cargando = false
             return@LaunchedEffect
         }
-        try {
-            val res = RetrofitClient.apiService.getSettings(usuario)
-            if (res.isSuccessful && res.body() != null) {
-                val body = res.body()!!
-                // Si el usuario ya lo activó localmente, se mantiene siempre activo
-                if (notificationPrefs.checkNotasEnabled) {
-                    checkNotasEnabled = true
-                    if (!body.autoCheckEnabled) {
-                        try {
-                            RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(true))
-                        } catch (_: Exception) {}
-                    }
-                } else {
-                    checkNotasEnabled = body.autoCheckEnabled
-                    notificationPrefs.checkNotasEnabled = body.autoCheckEnabled
-                }
-                tieneTokenFcm = body.tieneTokenFcm
-                // El servidor revisará siempre cada 5 minutos
-                if (body.intervaloMinutos != INTERVALO_FIJO_MINUTOS) {
-                    try {
-                        RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
-                    } catch (e: Exception) {
-                        // Silencioso
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Silencioso
-        }
+        val cuentaGuardada = TokenManager(context).getCuentas().firstOrNull { it.usuario == usuario }
+        nombreEstudiante = cuentaGuardada?.nombre
         checkAsistenciaEnabled = notificationPrefs.checkAsistenciaEnabled
         checkNotasEnabled = notificationPrefs.checkNotasEnabled
+        recordatorioClasesEnabled = notificationPrefs.recordatorioClasesEnabled
         if (checkAsistenciaEnabled || checkNotasEnabled) {
             SyncScheduler.start(context)
         }
-        try {
-            val resCuenta = RetrofitClient.apiService.getCuenta(usuario)
-            if (resCuenta.isSuccessful && resCuenta.body() != null) {
-                val cuenta = resCuenta.body()!!
-                nombreEstudiante = cuenta.nombre
-                rankingOptin = cuenta.rankingOptin
-            }
-        } catch (e: Exception) {
-            // El perfil es opcional
+        if (recordatorioClasesEnabled) {
+            com.example.upaos.service.ClassReminderScheduler.reprogramar(context)
         }
         cargando = false
     }
 
     fun guardar(
         cambiarNotas: Boolean? = null,
-        cambiarAsistencia: Boolean? = null
+        cambiarAsistencia: Boolean? = null,
+        cambiarRecordatorioClases: Boolean? = null
     ) {
         if (usuario == null) return
         guardando = true
@@ -130,17 +97,13 @@ fun SettingsScreen(
                 if (cambiarNotas != null) {
                     checkNotasEnabled = cambiarNotas
                     notificationPrefs.checkNotasEnabled = cambiarNotas
-                    try {
-                        RetrofitClient.apiService.updateAutoCheck(usuario, AutoCheckRequest(cambiarNotas))
-                        RetrofitClient.apiService.updateIntervalo(usuario, IntervaloRequest(INTERVALO_FIJO_MINUTOS))
-                    } catch (_: Exception) {}
 
                     if (cambiarNotas || checkAsistenciaEnabled) {
                         SyncScheduler.start(context)
                     } else {
                         SyncScheduler.cancel(context)
                     }
-                    val msg = if (cambiarNotas) "Notificaciones de notas activadas (cada 5 min)" else "Notificaciones de notas desactivadas"
+                    val msg = if (cambiarNotas) "Notificaciones de notas activadas" else "Notificaciones de notas desactivadas"
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
                 if (cambiarAsistencia != null) {
@@ -149,33 +112,27 @@ fun SettingsScreen(
                     if (cambiarAsistencia || checkNotasEnabled) {
                         SyncScheduler.start(context)
                         SyncScheduler.runNow(context)
-                        Toast.makeText(context, "Notificaciones de asistencias activadas (cada 5 min)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Notificaciones de asistencias activadas", Toast.LENGTH_SHORT).show()
                     } else {
                         SyncScheduler.cancel(context)
                         Toast.makeText(context, "Notificaciones de asistencia desactivadas", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                if (cambiarRecordatorioClases != null) {
+                    recordatorioClasesEnabled = cambiarRecordatorioClases
+                    notificationPrefs.recordatorioClasesEnabled = cambiarRecordatorioClases
+                    if (cambiarRecordatorioClases) {
+                        com.example.upaos.service.ClassReminderScheduler.reprogramar(context)
+                        Toast.makeText(context, "Recordatorios de clase activados", Toast.LENGTH_SHORT).show()
+                    } else {
+                        com.example.upaos.service.ClassReminderScheduler.cancelarTodos(context)
+                        Toast.makeText(context, "Recordatorios de clase desactivados", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error al guardar: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
             guardando = false
-        }
-    }
-
-    fun cambiarRankingOptin(nuevo: Boolean) {
-        if (usuario == null) return
-        rankingOptin = nuevo
-        scope.launch {
-            try {
-                val res = RetrofitClient.apiService.postRankingOptin(RankingOptinRequest(usuario, nuevo))
-                if (!res.isSuccessful) {
-                    rankingOptin = !nuevo
-                    Toast.makeText(context, "No se pudo actualizar el ranking (${res.code()})", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                rankingOptin = !nuevo
-                Toast.makeText(context, "Error de conexión: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-            }
         }
     }
 
@@ -284,39 +241,6 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            AppCard(
-                corner = 20.dp,
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    ListItem(
-                        headlineContent = { Text("Buzón de sugerencias") },
-                        supportingContent = { Text("Envíanos ideas y revisa su estado") },
-                        leadingContent = {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.EmojiObjects,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        },
-                        trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                        modifier = Modifier.clickable(onClick = onOpenSugerencias)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
             AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -343,9 +267,11 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Elige qué alertas deseas recibir en tu celular:",
+                                text = "Revisión automática cada ~10 min (más espaciada de noche y domingos)",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
@@ -444,6 +370,53 @@ fun SettingsScreen(
                         )
                     }
 
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Opción 3: Recordatorio de Clases
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Schedule,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Recordatorio de Clases",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Avisa 15 minutos antes con aula y pabellón",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = recordatorioClasesEnabled,
+                            onCheckedChange = { nuevo ->
+                                recordatorioClasesEnabled = nuevo
+                                guardar(cambiarRecordatorioClases = nuevo)
+                            },
+                            enabled = !guardando
+                        )
+                    }
+
                     if (checkNotasEnabled || checkAsistenciaEnabled) {
                         Spacer(modifier = Modifier.height(14.dp))
 
@@ -510,7 +483,7 @@ fun SettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Para que el teléfono no detenga la revisión cada 5 minutos cuando la pantalla está apagada (Xiaomi, Samsung, etc.), desactiva el ahorro de batería para UPAO S.",
+                                        text = "Para que el teléfono no detenga la revisión automática en segundo plano cuando la pantalla está apagada (Xiaomi, Samsung, etc.), desactiva el ahorro de batería para UPAO S.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onErrorContainer,
                                         fontSize = 11.sp
@@ -541,6 +514,78 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Sección Seguridad y Bloqueo de la App
+            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Bloqueo de la app",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (puedeUsarBiometria) {
+                                    "Solicitar huella, rostro o PIN al abrir o tras 1 min en segundo plano"
+                                } else {
+                                    "No disponible: configura un PIN, patrón o huella en tu teléfono para activar el bloqueo"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (puedeUsarBiometria) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = biometricLockEnabled,
+                            onCheckedChange = { nuevo ->
+                                if (nuevo && !puedeUsarBiometria) {
+                                    Toast.makeText(
+                                        context,
+                                        "Tu dispositivo no tiene biometría ni PIN/patrón configurado en los Ajustes del sistema.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } else {
+                                    biometricLockEnabled = nuevo
+                                    securityPrefs.isBiometricLockEnabled = nuevo
+                                    (context as? android.app.Activity)?.let { act ->
+                                        if (nuevo) {
+                                            act.window.setFlags(
+                                                android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                                                android.view.WindowManager.LayoutParams.FLAG_SECURE
+                                            )
+                                        } else {
+                                            act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = puedeUsarBiometria || biometricLockEnabled
+                        )
                     }
                 }
             }
@@ -615,19 +660,11 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (!tieneTokenFcm) {
-                Text(
-                    text = "Nota: este dispositivo aún no ha registrado su token push. Abre la app con conexión para sincronizarlo.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            } else {
-                Text(
-                    text = "Tu dispositivo está listo para recibir notificaciones de notas y asistencias.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            }
+            Text(
+                text = "Tu dispositivo está listo para recibir notificaciones de notas y asistencias en segundo plano.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
 
             dialogActualizacionInfo?.let { info ->
                 com.example.upaos.ui.components.UpdateDialog(

@@ -3,7 +3,6 @@ package com.example.upaos.service
 import android.content.Context
 import android.util.Log
 import androidx.work.*
-import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.local.NotificationPreferences
@@ -11,14 +10,14 @@ import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.AsistenciaCurso
 import com.example.upaos.data.model.CourseGrade
 import com.example.upaos.data.model.GradesResponse
-import com.example.upaos.data.model.LoginRequest
-import com.example.upaos.ui.grades.detectarPeriodoActual
+import com.example.upaos.data.upao.Calculators
+import com.example.upaos.data.upao.UpaoAuth
+import com.example.upaos.data.upao.UpaoRepository
 import com.example.upaos.widget.ResumenNotasWidget
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class AsistenciaWorker(
@@ -26,14 +25,11 @@ class AsistenciaWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
-    init {
-        RetrofitClient.init(context)
-    }
-
     private var notificationPrefs = NotificationPreferences(context)
     private val tokenManager = TokenManager(context)
     private val apiCache = ApiCache(context)
     private val gradesCache = GradesCache(context)
+    private val upaoRepository = UpaoRepository(context)
     private val gson = Gson()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -51,50 +47,45 @@ class AsistenciaWorker(
 
             val user = tokenManager.getSavedUser()
             val pass = tokenManager.getSavedPass()
-            var token = tokenManager.getToken()
 
-            if (user.isNullOrBlank()) {
-                Log.d(TAG, "Sin usuario guardado, omitiendo chequeo.")
+            if (user.isNullOrBlank() || pass.isNullOrBlank()) {
+                Log.d(TAG, "Sin credenciales guardadas, omitiendo chequeo.")
                 return@withContext Result.success()
             }
             notificationPrefs = NotificationPreferences(applicationContext, user)
 
             try {
-                // Si no hay token pero sí credenciales, intentamos autenticar
-                if (token.isNullOrBlank() && !pass.isNullOrBlank()) {
-                    val loginRes = RetrofitClient.apiService.login(LoginRequest(user, pass))
-                    val nuevoToken = loginRes.body()?.token
-                    if (loginRes.isSuccessful && !nuevoToken.isNullOrBlank()) {
-                        token = nuevoToken
-                        tokenManager.saveToken(nuevoToken)
-                    }
-                }
-
-                if (token.isNullOrBlank()) {
-                    Log.w(TAG, "No se pudo obtener token para sincronización en segundo plano.")
-                    SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
+                // Asegurar sesión directa en UPAO SSO
+                val loginRes = UpaoAuth.ensureSession(user, pass)
+                if (!loginRes.success) {
+                    Log.w(TAG, "No se pudo asegurar sesión directa con UPAO SSO.")
+                    val fallos = notificationPrefs.syncConsecutiveFailures + 1
+                    notificationPrefs.syncConsecutiveFailures = fallos
+                    SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
                     return@withContext Result.success()
                 }
 
                 // 1. Revisión de Asistencia
                 if (checkAsistencia) {
-                    revisarAsistencia(token, user)
+                    revisarAsistencia(user)
                 }
 
-                // 2. Revisión de Notas y Notificaciones del Servidor
+                // 2. Revisión de Notas
                 if (checkNotas) {
-                    revisarNotas(token, user)
-                    revisarNotificacionesServidor(user)
+                    revisarNotas(user)
                 }
 
-                // Reprograma la siguiente verificación en 10 minutos
-                SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
-                Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próxima en 10 min.")
+                // Reprograma la siguiente verificación periódica con éxito (resetea fallos a 0)
+                notificationPrefs.syncConsecutiveFailures = 0
+                SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = 0)
+                Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próximo ciclo adaptativo programado.")
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Log.e(TAG, "Error en AsistenciaWorker/BackgroundSync: ${e.localizedMessage}", e)
-                SyncScheduler.scheduleNext(applicationContext, SyncScheduler.INTERVAL_MINUTES)
+                val fallos = notificationPrefs.syncConsecutiveFailures + 1
+                notificationPrefs.syncConsecutiveFailures = fallos
+                SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
                 Result.retry()
             }
         } finally {
@@ -102,49 +93,21 @@ class AsistenciaWorker(
         }
     }
 
-    private suspend fun revisarNotificacionesServidor(user: String) {
+    private suspend fun revisarAsistencia(user: String) {
         try {
-            val res = RetrofitClient.apiService.getNotificaciones(user)
-            if (res.isSuccessful && res.body() != null) {
-                val body = res.body()!!
-                val ultimasLeidas = notificationPrefs.ultimoSnapshotNotificacionesBackend
-                val type = object : TypeToken<Set<Long>>() {}.type
-                val previosIds: Set<Long> = if (!ultimasLeidas.isNullOrBlank()) {
-                    try { gson.fromJson(ultimasLeidas, type) ?: emptySet() } catch (_: Exception) { emptySet() }
-                } else emptySet()
-
-                if (previosIds.isNotEmpty()) {
-                    val noLeidas = body.notificaciones.filter { !it.leida && it.id !in previosIds }
-                    for (notif in noLeidas) {
-                        val titulo = "🎓 " + (notif.componente?.takeIf { it.isNotBlank() } ?: notif.curso ?: "Nueva nota registrada")
-                        NotificationService.mostrarNotificacionNotas(applicationContext, titulo, notif.mensaje)
-                    }
-                }
-
-                val todosIds = body.notificaciones.map { it.id }.toSet()
-                notificationPrefs.ultimoSnapshotNotificacionesBackend = gson.toJson(todosIds)
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.e(TAG, "Error revisando notificaciones del servidor: ${e.localizedMessage}")
-        }
-    }
-
-    private suspend fun revisarAsistencia(token: String, user: String) {
-        try {
-            val res = RetrofitClient.apiService.getAsistencia("Bearer $token")
+            val res = upaoRepository.getAsistencia()
             if (tokenManager.getSavedUser() != user) return
 
-            if (res.isSuccessful && res.body() != null) {
-                val nuevaAsistencia = res.body()!!.asistencia
-                compararYNotificarAsistencia(nuevaAsistencia)
+            if (res.success && res.asistencia.isNotEmpty()) {
+                val nuevaAsistencia = res.asistencia
+                compararYNotificarAsistencia(nuevaAsistencia, user)
 
                 val cacheKey = "asistencia_$user"
-                apiCache.guardar(cacheKey, gson.toJson(res.body()!!))
+                apiCache.guardar(cacheKey, gson.toJson(res))
                 notificationPrefs.ultimaRevisionAsistencia = System.currentTimeMillis()
                 Log.d(TAG, "Revisión de asistencia completada.")
             } else {
-                Log.w(TAG, "Respuesta no exitosa al consultar asistencia: ${res.code()}")
+                Log.w(TAG, "Respuesta vacía o no exitosa al consultar asistencia directa")
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -152,14 +115,12 @@ class AsistenciaWorker(
         }
     }
 
-    private suspend fun revisarNotas(token: String, user: String) {
+    private suspend fun revisarNotas(user: String) {
         try {
-            // Determinamos periodo y carrera
             var periodo = "202610"
             var carrera = "UG"
 
-            // Intentamos recuperar del caché guardado por la app
-            val cachedJson = gradesCache.cargar(user)
+            val cachedJson = gradesCache.cargar("notas_$user")
             if (!cachedJson.isNullOrBlank()) {
                 try {
                     val cachedGrades = gson.fromJson(cachedJson, GradesResponse::class.java)
@@ -168,33 +129,27 @@ class AsistenciaWorker(
                 } catch (_: Exception) {}
             } else {
                 try {
-                    val periodosRes = RetrofitClient.apiService.getPeriodos("Bearer $token")
-                    if (periodosRes.isSuccessful && periodosRes.body() != null) {
-                        val body = periodosRes.body()!!
-                        periodo = detectarPeriodoActual(body.periodos, body.periodoActual)
-                    }
+                    val periodos = upaoRepository.getPeriodos()
+                    periodo = Calculators.detectarPeriodoActual(periodos.periodos, periodos.periodoActual)
+                    val carreras = upaoRepository.getCarreras(periodo)
+                    carrera = carreras.carreras.firstOrNull() ?: "UG"
                 } catch (_: Exception) {}
             }
 
-            val req = mapOf("periodo" to periodo, "carrera" to carrera)
-            val res = RetrofitClient.apiService.buscarNotas("Bearer $token", req)
+            val grades = upaoRepository.buscarNotas(periodo, carrera)
             if (tokenManager.getSavedUser() != user) return
 
-            if (res.isSuccessful && res.body() != null) {
-                val body = res.body()!!
-                compararYNotificarNotas(body.cursos)
+            if (grades.cursos.isNotEmpty()) {
+                compararYNotificarNotas(grades.cursos, user)
 
-                // Guardar en caché y actualizar widget de escritorio
-                gradesCache.guardar(user, gson.toJson(body))
+                gradesCache.guardar("notas_$user", gson.toJson(grades))
                 notificationPrefs.ultimaRevisionNotas = System.currentTimeMillis()
 
                 try {
                     ResumenNotasWidget.updateAll(applicationContext)
                 } catch (_: Exception) {}
 
-                Log.d(TAG, "Revisión de notas completada (${body.cursos.size} cursos analizados).")
-            } else {
-                Log.w(TAG, "Respuesta no exitosa al consultar notas: ${res.code()}")
+                Log.d(TAG, "Revisión de notas completada (${grades.cursos.size} cursos analizados).")
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -202,7 +157,7 @@ class AsistenciaWorker(
         }
     }
 
-    private fun compararYNotificarAsistencia(nuevosCursos: List<AsistenciaCurso>) {
+    private suspend fun compararYNotificarAsistencia(nuevosCursos: List<AsistenciaCurso>, user: String) {
         val snapshotPrevioRaw = notificationPrefs.ultimoSnapshotAsistencia
         val type = object : TypeToken<Map<String, SnapshotCurso>>() {}.type
         val snapshotPrevio: Map<String, SnapshotCurso> = if (!snapshotPrevioRaw.isNullOrBlank()) {
@@ -254,16 +209,19 @@ class AsistenciaWorker(
                         val titulo = "⚠️ Falta registrada"
                         val mensaje = "$nombreConTipo: Te registraron $plural (Total: $faltasActuales). Asistencia: ${formatearPct(pctActual)}%."
                         NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     } else if (asistenciasActuales != null && asistPrevias != null && asistenciasActuales > asistPrevias) {
                         val dif = asistenciasActuales - asistPrevias
                         val plural = if (dif == 1) "asistencia" else "$dif asistencias"
                         val titulo = "✅ Asistencia registrada"
                         val mensaje = "$nombreConTipo: ¡Se registró tu $plural! Llevas $asistenciasActuales asistencias."
                         NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     } else if (previo.porcentaje != null && pctActual > previo.porcentaje && faltasActuales == faltasPrevias) {
                         val titulo = "✅ Asistencia registrada"
                         val mensaje = "$nombreConTipo: ¡Se registró una nueva asistencia! (${formatearPct(pctActual)}%)."
                         NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     }
                 }
             }
@@ -272,7 +230,30 @@ class AsistenciaWorker(
         notificationPrefs.ultimoSnapshotAsistencia = gson.toJson(nuevoSnapshot)
     }
 
-    private fun compararYNotificarNotas(nuevosCursos: List<CourseGrade>) {
+    private fun limpiarNota(v: Any?): String? {
+        if (v == null) return null
+        val s = v.toString().trim()
+        if (s.isEmpty() || s == "null" || s == "None" || s == "-" || s == "s/n" || s == "SN") return null
+        val d = s.toDoubleOrNull()
+        return if (d != null) {
+            if (d % 1.0 == 0.0) d.toInt().toString() else "%.1f".format(java.util.Locale.US, d)
+        } else {
+            s
+        }
+    }
+
+    private fun simplificarNombreComponente(nombre: String?): String {
+        val t = nombre?.trim().orEmpty().uppercase(java.util.Locale.ROOT)
+        return when {
+            t.contains("EP1") || t.contains("PROCESO 1") || t.contains("PERMANENTE 1") || t.contains("EP 1") -> "EP1"
+            t.contains("EP2") || t.contains("PROCESO 2") || t.contains("PERMANENTE 2") || t.contains("EP 2") -> "EP2"
+            t.contains("PARCIAL") || t.contains("EVP") -> "Parcial"
+            t.contains("FINAL") || t.contains("EVF") -> "Final"
+            else -> com.example.upaos.ui.components.toTitleCase(nombre)
+        }
+    }
+
+    private suspend fun compararYNotificarNotas(nuevosCursos: List<CourseGrade>, user: String) {
         val snapshotPrevioRaw = notificationPrefs.ultimoSnapshotNotas
         val type = object : TypeToken<Map<String, SnapshotNotasCurso>>() {}.type
         val snapshotPrevio: Map<String, SnapshotNotasCurso> = if (!snapshotPrevioRaw.isNullOrBlank()) {
@@ -286,28 +267,40 @@ class AsistenciaWorker(
             emptyMap()
         }
 
+        // Si el snapshot previo nunca guardó subcomponentes (migración desde versión anterior),
+        // evitamos disparar una ráfaga de notificaciones de notas pasadas para subcomponentes
+        val migrandoDesdeVersionSinSubcomponentes = snapshotPrevio.isNotEmpty() &&
+                snapshotPrevio.values.all { it.subcomponentesMap.isEmpty() }
+
         val nuevoSnapshot = mutableMapOf<String, SnapshotNotasCurso>()
 
         for (curso in nuevosCursos) {
             val key = curso.crn?.takeIf { it.isNotBlank() } ?: curso.displayNombre
-            val notaActualStr = curso.displayNotaActual?.toString()?.trim()
-            val ep1NotaStr = curso.displayEp1.nota?.toString()?.trim()
-            val ep2NotaStr = curso.displayEp2.nota?.toString()?.trim()
+            val cursoNombre = com.example.upaos.ui.components.toTitleCase(curso.displayNombre)
+            val notaActualStr = limpiarNota(curso.displayNotaActual)
+            val ep1NotaStr = limpiarNota(curso.displayEp1.nota)
+            val ep2NotaStr = limpiarNota(curso.displayEp2.nota)
 
             val compMap = mutableMapOf<String, String?>()
-            curso.displayEp1.detalles.forEach { d ->
-                val comp = d.componente?.trim()
-                val nota = d.nota?.toString()?.trim()
-                if (!comp.isNullOrBlank() && !nota.isNullOrBlank()) {
-                    compMap["EP1_$comp"] = nota
+            val subMap = mutableMapOf<String, String?>()
+
+            // 1. Mapear componentes y subcomponentes directamente desde curso.componentes
+            for (comp in curso.componentes) {
+                val compKey = comp.componentId?.toString() ?: comp.codigo ?: comp.displayNombre
+                val compNota = limpiarNota(comp.displayNota)
+                compMap[compKey] = compNota
+
+                for (sub in comp.subcomponentes) {
+                    val subKey = "${compKey}_${sub.codigo ?: sub.displayNombre}"
+                    val subNota = limpiarNota(sub.displayNota)
+                    subMap[subKey] = subNota
                 }
             }
-            curso.displayEp2.detalles.forEach { d ->
-                val comp = d.componente?.trim()
-                val nota = d.nota?.toString()?.trim()
-                if (!comp.isNullOrBlank() && !nota.isNullOrBlank()) {
-                    compMap["EP2_$comp"] = nota
-                }
+
+            // Compatibilidad de respaldo si curso.componentes viniera vacío pero displayEp1/Ep2 tuviera notas
+            if (compMap.isEmpty()) {
+                if (!ep1NotaStr.isNullOrBlank()) compMap["EP1"] = ep1NotaStr
+                if (!ep2NotaStr.isNullOrBlank()) compMap["EP2"] = ep2NotaStr
             }
 
             nuevoSnapshot[key] = SnapshotNotasCurso(
@@ -315,47 +308,94 @@ class AsistenciaWorker(
                 notaActual = notaActualStr,
                 ep1Nota = ep1NotaStr,
                 ep2Nota = ep2NotaStr,
-                componentes = compMap
+                componentes = compMap,
+                subcomponentes = subMap
             )
 
-            // Comparar solo si ya teníamos un snapshot previo (evita inundar de alertas al primer inicio)
-            if (snapshotPrevio.isNotEmpty()) {
+            // Comparar solo si ya teníamos un snapshot previo y no es migración inicial sin subcomponentes
+            if (snapshotPrevio.isNotEmpty() && !migrandoDesdeVersionSinSubcomponentes) {
                 val previo = snapshotPrevio[key]
                 if (previo != null) {
-                    val cursoNombre = curso.displayNombre
+                    var algunSubNotificado = false
 
-                    // Caso 1: Se subió o modificó la nota de EP1
-                    if (!ep1NotaStr.isNullOrBlank() && ep1NotaStr != previo.ep1Nota) {
-                        val titulo = "🎓 Nueva nota en EP1"
-                        val mensaje = "$cursoNombre: Tu nota de EP1 es $ep1NotaStr."
-                        NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
-                    }
+                    // Caso 1: Revisar SUBCOMPONENTES (subprocesos como prácticas, trabajos, talleres, etc.)
+                    for (comp in curso.componentes) {
+                        val compKey = comp.componentId?.toString() ?: comp.codigo ?: comp.displayNombre
+                        val compNombreCorto = simplificarNombreComponente(comp.displayNombre)
 
-                    // Caso 2: Se subió o modificó la nota de EP2
-                    if (!ep2NotaStr.isNullOrBlank() && ep2NotaStr != previo.ep2Nota) {
-                        val titulo = "🎓 Nueva nota en EP2"
-                        val mensaje = "$cursoNombre: Tu nota de EP2 es $ep2NotaStr."
-                        NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
-                    }
+                        for (sub in comp.subcomponentes) {
+                            val subKey = "${compKey}_${sub.codigo ?: sub.displayNombre}"
+                            val notaActualSub = subMap[subKey]
+                            val notaPreviaSub = previo.subcomponentesMap[subKey]
 
-                    // Caso 3: Cambio en algún componente evaluativo específico (prácticas, parciales, etc.)
-                    for ((compName, compVal) in compMap) {
-                        val valPrevio = previo.componentes[compName]
-                        if (!compVal.isNullOrBlank() && compVal != valPrevio) {
-                            val etiquetaLimpia = compName.replace("EP1_", "EP1 - ").replace("EP2_", "EP2 - ")
-                            val titulo = "🎓 Nueva evaluación calificada"
-                            val mensaje = "$cursoNombre: Calificación en $etiquetaLimpia: $compVal."
-                            NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                            if (!notaActualSub.isNullOrBlank() && notaActualSub != notaPreviaSub) {
+                                algunSubNotificado = true
+                                val subNombre = com.example.upaos.ui.components.toTitleCase(sub.displayNombre)
+                                val etiqueta = if (compNombreCorto.isNotBlank() && !subNombre.contains(compNombreCorto, ignoreCase = true)) {
+                                    "$compNombreCorto: $subNombre"
+                                } else {
+                                    subNombre
+                                }
+
+                                val titulo = if (notaPreviaSub.isNullOrBlank()) {
+                                    "🎓 Subproceso calificado"
+                                } else {
+                                    "🎓 Subproceso actualizado"
+                                }
+
+                                val detalleSub = if (compNombreCorto.isNotBlank() && !subNombre.contains(compNombreCorto, ignoreCase = true)) {
+                                    "$subNombre ($compNombreCorto)"
+                                } else {
+                                    subNombre
+                                }
+
+                                val mensaje = if (notaPreviaSub.isNullOrBlank()) {
+                                    "$cursoNombre: Calificación en $detalleSub: $notaActualSub."
+                                } else {
+                                    "$cursoNombre: Tu nota en $detalleSub cambió de $notaPreviaSub a $notaActualSub."
+                                }
+
+                                NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                                upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = etiqueta)
+                            }
                         }
                     }
 
-                    // Caso 4: Cambio en la nota actual o promedio final del curso
-                    if (!notaActualStr.isNullOrBlank() && notaActualStr != previo.notaActual &&
-                        ep1NotaStr == previo.ep1Nota && ep2NotaStr == previo.ep2Nota
-                    ) {
+                    // Caso 2: Revisar componentes principales (Examen Parcial, Examen Final, o EP1/EP2)
+                    var algunCompNotificado = false
+                    for (comp in curso.componentes) {
+                        val compKey = comp.componentId?.toString() ?: comp.codigo ?: comp.displayNombre
+                        val notaActualComp = compMap[compKey]
+                        val notaPreviaComp = previo.componentesMap[compKey]
+                        val tieneSubs = comp.hasSubComponents && comp.subcomponentes.isNotEmpty()
+
+                        if (!notaActualComp.isNullOrBlank() && notaActualComp != notaPreviaComp) {
+                            // Si tiene subcomponentes y ya se notificó un subcomponente, evitamos duplicar con el contenedor
+                            if (!tieneSubs || !algunSubNotificado) {
+                                algunCompNotificado = true
+                                val compNombre = com.example.upaos.ui.components.toTitleCase(comp.displayNombre)
+                                val titulo = if (notaPreviaComp.isNullOrBlank()) {
+                                    "🎓 Nueva nota en $compNombre"
+                                } else {
+                                    "🎓 Nota actualizada en $compNombre"
+                                }
+                                val mensaje = if (notaPreviaComp.isNullOrBlank()) {
+                                    "$cursoNombre: Calificación en $compNombre: $notaActualComp."
+                                } else {
+                                    "$cursoNombre: Tu nota en $compNombre cambió de $notaPreviaComp a $notaActualComp."
+                                }
+                                NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                                upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = compNombre)
+                            }
+                        }
+                    }
+
+                    // Caso 3: Cambio en el promedio actual del curso (si no se notificó ningún sub o comp individual)
+                    if (!notaActualStr.isNullOrBlank() && notaActualStr != previo.notaActual && !algunSubNotificado && !algunCompNotificado) {
                         val titulo = "🎓 Nota promedio actualizada"
                         val mensaje = "$cursoNombre: Tu promedio actual ahora es $notaActualStr."
                         NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                        upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = "Promedio Actual")
                     }
                 }
             }
@@ -377,24 +417,27 @@ class AsistenciaWorker(
     private data class SnapshotNotasCurso(
         val nombre: String,
         val notaActual: String?,
-        val ep1Nota: String?,
-        val ep2Nota: String?,
-        val componentes: Map<String, String?> = emptyMap()
-    )
+        val ep1Nota: String? = null,
+        val ep2Nota: String? = null,
+        val componentes: Map<String, String?>? = emptyMap(),
+        val subcomponentes: Map<String, String?>? = emptyMap()
+    ) {
+        val componentesMap: Map<String, String?>
+            get() = componentes ?: emptyMap()
+        val subcomponentesMap: Map<String, String?>
+            get() = subcomponentes ?: emptyMap()
+    }
 
     companion object {
         private const val TAG = "UPAO_BackgroundSync"
         private val syncMutex = com.example.upaos.data.refresh.ForegroundRefreshGate.lock
 
-        /**
-         * Programa la sincronización periódica de 5 minutos utilizando SyncScheduler
-         */
-        fun schedule(context: Context, intervalMinutes: Long = 5) {
+        fun schedule(context: Context) {
             SyncScheduler.start(context)
         }
 
         fun scheduleFiveMinuteCheck(context: Context) {
-            SyncScheduler.scheduleNext(context, 5L)
+            SyncScheduler.scheduleNext(context)
         }
 
         fun cancel(context: Context) {

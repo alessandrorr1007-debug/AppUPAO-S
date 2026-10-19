@@ -21,18 +21,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
-import com.example.upaos.data.api.mensajeErrorLogin
-import kotlinx.coroutines.CancellationException
 import com.example.upaos.data.local.CuentaGuardada
 import com.example.upaos.data.local.TokenManager
-import com.example.upaos.data.model.LoginRequest
-import com.example.upaos.service.FcmTokenHelper
+import com.example.upaos.data.upao.UpaoAuth
+import com.example.upaos.data.upao.UpaoInvalidCredentialsException
+import com.example.upaos.data.upao.UpaoNetworkException
+import com.example.upaos.data.upao.UpaoServiceUnavailableException
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
 import com.example.upaos.ui.components.PrimaryButton
 import com.example.upaos.ui.components.ReusableDialog
 import com.example.upaos.ui.components.cursoColor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -54,29 +54,29 @@ fun EligeCuentaScreen(
         autenticando = cuenta.usuario
         scope.launch {
             try {
-                val res = RetrofitClient.apiService.login(LoginRequest(cuenta.usuario, cuenta.password))
-                val body = res.body()
-                if (res.isSuccessful && body?.success == true && body.token != null) {
-                    tokenManager.saveToken(body.token)
-                    tokenManager.setKeepLoggedIn(true)
-                    tokenManager.saveUserId(cuenta.usuario)
-                    tokenManager.saveCredentials(cuenta.usuario, cuenta.password)
-                    tokenManager.saveCuenta(cuenta.usuario, cuenta.password, cuenta.nombre)
-                    FcmTokenHelper.register(context)
+                val result = UpaoAuth.login(cuenta.usuario, cuenta.password)
+                if (result.success) {
+                    val nombreFinal = result.studentName ?: cuenta.nombre
+                    tokenManager.saveLogin(cuenta.usuario, cuenta.password, true, nombreFinal)
                     autenticando = null
-                    onLoginSuccess(body.token)
+                    onLoginSuccess(cuenta.usuario)
                 } else {
                     autenticando = null
-                    Toast.makeText(
-                        context,
-                        mensajeErrorLogin(res.code(), body, res.errorBody()?.string()),
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(context, result.errorMessage ?: "No se pudo iniciar sesión", Toast.LENGTH_LONG).show()
                 }
+            } catch (e: UpaoInvalidCredentialsException) {
+                autenticando = null
+                Toast.makeText(context, "ID o contraseña incorrectos. Revisa tus datos.", Toast.LENGTH_LONG).show()
+            } catch (e: UpaoServiceUnavailableException) {
+                autenticando = null
+                Toast.makeText(context, "El portal de la UPAO no está disponible, intenta más tarde.", Toast.LENGTH_LONG).show()
+            } catch (e: UpaoNetworkException) {
+                autenticando = null
+                Toast.makeText(context, "No se pudo conectar. Revisa tu conexión a internet.", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 autenticando = null
-                Toast.makeText(context, "No se pudo conectar. Revisa tu conexión a internet.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, e.localizedMessage ?: "No se pudo iniciar sesión.", Toast.LENGTH_LONG).show()
             }
         }
     }

@@ -3,19 +3,6 @@ package com.example.upaos.data.model
 import com.google.gson.annotations.SerializedName
 import java.text.Normalizer
 
-data class CuentaInfo(
-    @SerializedName("usuario") val usuario: String? = null,
-    @SerializedName("nombre") val nombre: String? = null,
-    @SerializedName("is_admin") val isAdmin: Boolean = false,
-    @SerializedName("rol") val rol: String? = null,
-    @SerializedName("ranking_optin") val rankingOptin: Boolean = false,
-    @SerializedName("auto_check_enabled") val autoCheckEnabled: Boolean = false,
-    @SerializedName("tiene_password_guardada") val tienePasswordGuardada: Boolean = false,
-    @SerializedName("fecha_primer_login") val fechaPrimerLogin: String? = null
-) {
-    val esAdmin: Boolean get() = isAdmin || rol == "admin"
-}
-
 data class SemanaInfo(
     @SerializedName("configurada") val configurada: Boolean = false,
     @SerializedName("semana") val semana: Int? = null,
@@ -24,44 +11,6 @@ data class SemanaInfo(
     @SerializedName("fuera_de_ciclo") val fueraDeCiclo: Boolean? = null,
     @SerializedName("fecha_inicio") val fechaInicio: String? = null,
     @SerializedName("dias_transcurridos") val diasTranscurridos: Int? = null
-)
-
-data class SugerenciaRequest(
-    @SerializedName("usuario") val usuario: String,
-    @SerializedName("texto") val texto: String
-)
-
-data class SugerenciaResponse(
-    @SerializedName("success") val success: Boolean = false,
-    @SerializedName("sugerencia_id") val sugerenciaId: Long? = null,
-    @SerializedName("estado") val estado: String? = null
-)
-
-data class SugerenciaItem(
-    @SerializedName("id") val id: Long,
-    @SerializedName("texto") val texto: String,
-    @SerializedName("estado") val estado: String = "pendiente",
-    @SerializedName("fecha_creacion") val fechaCreacion: String? = null
-)
-
-data class MisSugerenciasResponse(
-    @SerializedName("sugerencias") val sugerencias: List<SugerenciaItem> = emptyList()
-)
-
-data class RankingOptinRequest(
-    @SerializedName("usuario") val usuario: String,
-    @SerializedName("enabled") val enabled: Boolean
-)
-
-data class RankingResponse(
-    @SerializedName("disponible") val disponible: Boolean = false,
-    @SerializedName("motivo") val motivo: String? = null,
-    @SerializedName("course_id") val courseId: String? = null,
-    @SerializedName("ciclo") val ciclo: String? = null,
-    @SerializedName("min_usuarios") val minUsuarios: Int = 5,
-    @SerializedName("position") val position: Int? = null,
-    @SerializedName("total") val total: Int = 0,
-    @SerializedName("percentil") val percentil: Int? = null
 )
 
 // ---------- Modelos para Promedio Ponderado Semestral (PPS) ----------

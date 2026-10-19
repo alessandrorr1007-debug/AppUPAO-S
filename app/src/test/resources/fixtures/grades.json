@@ -1,0 +1,17 @@
+{
+  "totalCount": 2,
+  "data": [
+    {
+      "courseReferenceNumber": "1001",
+      "courseTitle": "INGENIERIA DE SOFTWARE",
+      "subjectDescription": "Ingeniería de Software",
+      "finalGrade": "16.0"
+    },
+    {
+      "courseReferenceNumber": "1002",
+      "courseTitle": "REDES Y COMUNICACIONES",
+      "subjectDescription": "Redes y Comunicaciones",
+      "finalGrade": "15.0"
+    }
+  ]
+}

@@ -20,9 +20,17 @@ class NotificationPreferences(context: Context, usuario: String? = null) {
         get() = prefs.getBoolean(KEY_CHECK_ASISTENCIA, true)
         set(value) = prefs.edit().putBoolean(KEY_CHECK_ASISTENCIA, value).apply()
 
+    var recordatorioClasesEnabled: Boolean
+        get() = prefs.getBoolean(KEY_RECORDATORIO_CLASES, true)
+        set(value) = prefs.edit().putBoolean(KEY_RECORDATORIO_CLASES, value).apply()
+
     var intervaloMinutos: Int
         get() = prefs.getInt(KEY_INTERVALO_MINUTOS, 10)
         set(value) = prefs.edit().putInt(KEY_INTERVALO_MINUTOS, value).apply()
+
+    var syncConsecutiveFailures: Int
+        get() = prefs.getInt(KEY_SYNC_CONSECUTIVE_FAILURES, 0)
+        set(value) = prefs.edit().putInt(KEY_SYNC_CONSECUTIVE_FAILURES, value).apply()
 
     var ultimaRevisionAsistencia: Long
         get() = snapshotPrefs.getLong(KEY_ULTIMA_REVISION, 0L)
@@ -47,7 +55,9 @@ class NotificationPreferences(context: Context, usuario: String? = null) {
     companion object {
         private const val KEY_CHECK_NOTAS = "check_notas_enabled"
         private const val KEY_CHECK_ASISTENCIA = "check_asistencia_enabled"
+        private const val KEY_RECORDATORIO_CLASES = "recordatorio_clases_enabled"
         private const val KEY_INTERVALO_MINUTOS = "intervalo_minutos"
+        private const val KEY_SYNC_CONSECUTIVE_FAILURES = "sync_consecutive_failures"
         private const val KEY_ULTIMA_REVISION = "ultima_revision_asistencia"
         private const val KEY_ULTIMO_SNAPSHOT = "ultimo_snapshot_asistencia"
         private const val KEY_ULTIMA_REVISION_NOTAS = "ultima_revision_notas"

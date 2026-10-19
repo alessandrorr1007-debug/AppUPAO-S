@@ -54,6 +54,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     token: String,
+    initialTab: String? = null,
+    onTabHandled: () -> Unit = {},
     openAgenda: Boolean = false,
     onAgendaOpened: () -> Unit = {},
     isDarkTheme: Boolean,
@@ -68,8 +70,26 @@ fun HomeScreen(
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
     val coroutineScope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 5 })
+    val initialPageIndex = remember {
+        when (initialTab) {
+            "notas" -> 1
+            "horario" -> 2
+            "asistencia" -> 3
+            else -> 0
+        }
+    }
+    val pagerState = rememberPagerState(initialPage = initialPageIndex, pageCount = { 5 })
     LaunchedEffect(openAgenda) { if (openAgenda) pagerState.scrollToPage(0) }
+    LaunchedEffect(initialTab) {
+        if (initialTab != null) {
+            when (initialTab) {
+                "notas" -> pagerState.scrollToPage(1)
+                "horario" -> pagerState.scrollToPage(2)
+                "asistencia" -> pagerState.scrollToPage(3)
+            }
+            onTabHandled()
+        }
+    }
 
     val usuario = tokenManager.getSavedUser()
 
@@ -268,6 +288,13 @@ fun HomeScreen(
                 )
             },
             bottomBar = {
+                val navBarColors = NavigationBarItemDefaults.colors(
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     tonalElevation = 2.dp
@@ -276,7 +303,8 @@ fun HomeScreen(
                         selected = pagerState.currentPage == 0,
                         onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
                         icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Hoy", fontSize = 12.sp) }
+                        label = { Text("Hoy", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 1,
@@ -284,7 +312,8 @@ fun HomeScreen(
                             coroutineScope.launch { pagerState.animateScrollToPage(1) }
                         },
                         icon = { Icon(Icons.Filled.School, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Cursos", fontSize = 12.sp) }
+                        label = { Text("Cursos", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 2,
@@ -292,7 +321,8 @@ fun HomeScreen(
                             coroutineScope.launch { pagerState.animateScrollToPage(2) }
                         },
                         icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Horario", fontSize = 12.sp) }
+                        label = { Text("Horario", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 3,
@@ -300,7 +330,8 @@ fun HomeScreen(
                             coroutineScope.launch { pagerState.animateScrollToPage(3) }
                         },
                         icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Asistencia", fontSize = 12.sp) }
+                        label = { Text("Asistencia", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                     NavigationBarItem(
                         selected = pagerState.currentPage == 4,
@@ -308,7 +339,8 @@ fun HomeScreen(
                             coroutineScope.launch { pagerState.animateScrollToPage(4) }
                         },
                         icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Canvas", fontSize = 12.sp) }
+                        label = { Text("Canvas", fontSize = 12.sp) },
+                        colors = navBarColors
                     )
                 }
             }
@@ -318,12 +350,12 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (semanaEtiqueta != null) {
+            if (semanaEtiqueta != null && pagerState.currentPage == 0) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     shape = RoundedCornerShape(50)
                 ) {
                     Row(
@@ -333,7 +365,7 @@ fun HomeScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.EventNote,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -341,13 +373,14 @@ fun HomeScreen(
                             text = semanaEtiqueta!!,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
             }
             HorizontalPager(
                 state = pagerState,
+                beyondViewportPageCount = 2,
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)

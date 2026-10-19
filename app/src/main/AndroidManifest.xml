@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -30,20 +30,13 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".service.NotificationService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
         <!-- Receptor de alarmas y reinicio del sistema para sincronización cada 5 min -->
         <receiver
             android:name=".service.BackgroundSyncReceiver"
-            android:exported="true"
+            android:exported="false"
             android:enabled="true">
             <intent-filter>
+                <action android:name="com.example.upaos.ACTION_SYNC_10MIN" />
                 <action android:name="com.example.upaos.ACTION_SYNC_5MIN" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
@@ -51,6 +44,11 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <!-- Receptor de recordatorio de clases 15 min antes -->
+        <receiver
+            android:name=".service.ClassReminderReceiver"
+            android:exported="false" />
 
 
         <!-- Widget: Resumen de Notas -->

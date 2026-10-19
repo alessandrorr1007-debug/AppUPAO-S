@@ -34,6 +34,7 @@ import com.example.upaos.data.model.AsistenciaCurso
 import com.example.upaos.data.model.AsistenciaResponse
 import com.example.upaos.data.model.HorarioCurso
 import com.example.upaos.data.model.HorarioResponse
+import com.example.upaos.data.upao.AcademicCalendar
 import com.example.upaos.ui.grades.detectarPeriodoActual
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.CircularGauge
@@ -119,17 +120,9 @@ private fun calcularClasesHastaHoy(
 }
 
 private fun obtenerSemanaCiclo(periodo: String, semanaApi: Int?): Int {
-    if (semanaApi != null && semanaApi in 1..16) return semanaApi
-    if (periodo != "202620") return 16
-    val inicio = java.util.Calendar.getInstance().apply {
-        set(2026, java.util.Calendar.AUGUST, 31, 0, 0, 0)
-        set(java.util.Calendar.MILLISECOND, 0)
-    }
-    val hoy = java.util.Calendar.getInstance()
-    val diff = hoy.timeInMillis - inicio.timeInMillis
-    if (diff < 0) return 1
-    val sem = (diff / (1000L * 60 * 60 * 24 * 7)).toInt() + 1
-    return sem.coerceIn(1, 16)
+    if (semanaApi != null && semanaApi in 1..AcademicCalendar.TOTAL_SEMANAS_REGULARES) return semanaApi
+    val info = AcademicCalendar.calcularSemana(periodo)
+    return info.semana ?: AcademicCalendar.TOTAL_SEMANAS_REGULARES
 }
 
 private fun formatPct(pct: Double): String =
@@ -425,8 +418,6 @@ fun AsistenciaContent(
     val shared by dashboard.state.collectAsState()
     val selectedPeriodo = shared.attendancePeriod
     val registros = shared.attendance?.asistencia ?: emptyList()
-    val periodos = (shared.periods + registros.mapNotNull { it.periodo }).distinct().sortedDescending().ifEmpty { listOf(selectedPeriodo) }
-    var periodosExpanded by remember { mutableStateOf(false) }
     val horarioCursos = shared.schedules[selectedPeriodo]?.listaCursos ?: emptyList()
     val isLoading = shared.busy
     val isRefreshing = shared.busy
@@ -446,61 +437,9 @@ fun AsistenciaContent(
             .fillMaxSize()
             .padding(12.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = "Resumen de inasistencias del periodo $selectedPeriodo",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Selector de Periodo (igual que en Notas y Horario)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ExposedDropdownMenuBox(
-                expanded = periodosExpanded,
-                onExpandedChange = { periodosExpanded = !periodosExpanded },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = selectedPeriodo,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Periodo", fontSize = 12.sp) },
-                    shape = RoundedCornerShape(12.dp),
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = periodosExpanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = periodosExpanded,
-                    onDismissRequest = { periodosExpanded = false }
-                ) {
-                    periodos.forEach { item ->
-                        DropdownMenuItem(
-                            text = { Text(item, fontSize = 13.sp) },
-                            onClick = {
-                                periodosExpanded = false
-                                dashboard.selectAttendance(item)
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Column(Modifier.padding(vertical = 6.dp)) {
+        if (offline || isLoading || isRefreshing) {
             com.example.upaos.ui.home.Freshness(shared.times[claveCache], !offline, isLoading || isRefreshing)
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         if (offline && (registros.isNotEmpty() || horarioCursos.isNotEmpty())) {
@@ -652,7 +591,7 @@ private fun ResumenAsistencia(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = "Semana $semanaCiclo de 16",
+                        text = "Semana $semanaCiclo de ${AcademicCalendar.TOTAL_SEMANAS_REGULARES}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -670,7 +609,7 @@ private fun ResumenAsistencia(
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
             ) {
                 Text(
-                    text = "Semana $semanaCiclo/16",
+                    text = "Semana $semanaCiclo/${AcademicCalendar.TOTAL_SEMANAS_REGULARES}",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,

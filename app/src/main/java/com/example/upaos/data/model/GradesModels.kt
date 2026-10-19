@@ -100,6 +100,7 @@ data class CourseGrade(
     @SerializedName("nota_actual") val notaActual: Any? = null,
     @SerializedName("crn") val crn: String? = null,
     @SerializedName("courseReferenceNumber") val courseReferenceNumber: String? = null,
+    @SerializedName("componentes") val componentes: List<ComponenteDetalle> = emptyList(),
     @SerializedName("raw_banner") val rawBanner: Map<String, Any?>? = null
 ) {
     val displayNombre: String

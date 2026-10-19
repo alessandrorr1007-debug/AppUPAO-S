@@ -23,10 +23,12 @@ import java.util.*
 
 @Composable
 fun Freshness(updated: Long?, current: Boolean, loading: Boolean = false) {
-    Text(if (loading) "Actualizando…" else if (current) "Consultado en esta sesión" else "Datos guardados · pendiente de actualizar",
-        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Text("Última actualización: " + (updated?.let { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(it)) } ?: "sin registro"),
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (loading) {
+        Text("Actualizando…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else if (!current && updated != null) {
+        Text("Última actualización: " + SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(updated)),
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 data class NextClass(val name: String, val room: String, val start: Long, val end: Long)
@@ -60,7 +62,13 @@ fun nextClass(courses: List<HorarioCurso>, now: Long): NextClass? {
 @OptIn(ExperimentalLayoutApi::class)
 fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?, onSchedule: () -> Unit, onCanvas: () -> Unit, onNotifications: () -> Unit,
                  openAgenda: Boolean = false, onAgendaOpened: () -> Unit = {}) {
-    if (usuario.isNullOrBlank()) return
+    if (usuario.isNullOrBlank()) {
+        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+            Text("No se pudo recuperar la sesión", style = MaterialTheme.typography.titleMedium)
+            Text("Vuelve a iniciar sesión desde el menú para cargar tu información.")
+        }
+        return
+    }
     val context = LocalContext.current
     val shared by dashboard.state.collectAsState()
     LaunchedEffect(openAgenda) { if (openAgenda) onAgendaOpened() }
@@ -91,10 +99,20 @@ fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?,
     val dayNotices = remember(notices, now) { notificationsToday(notices, now) }
     var showDetails by remember { mutableStateOf(false) }
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { TodayHero(now, if (timetable != null) dayClasses.size else null, if (agendaTime != null) dayTasks.size else null, if (noticesTime != null) dayNotices.size else null) }
+        item {
+            TodayHero(
+                now = now,
+                classes = if (timetable != null) dayClasses.size else null,
+                tasks = if (agendaTime != null) dayTasks.size else null,
+                news = if (noticesTime != null) dayNotices.size else null,
+                onSchedule = onSchedule,
+                onCanvas = onCanvas,
+                onNotifications = onNotifications
+            )
+        }
         error?.let { detail ->
             item {
-                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp)) {
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp)) {
                     Column(Modifier.fillMaxWidth().padding(12.dp)) {
                         Text("Actualización pendiente", style = MaterialTheme.typography.labelLarge)
                         Text("Algunos datos no se pudieron consultar. Mostramos lo último guardado.", style = MaterialTheme.typography.bodySmall)
@@ -104,10 +122,15 @@ fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?,
                 }
             }
         }
+        if (dayClasses.isNotEmpty()) {
             item { TodaySchedule(dayClasses, timetable != null, now, scheduleTime, scheduleFresh, onSchedule) }
+        }
+        if (dayTasks.isNotEmpty()) {
             item {
                 TodayAssignments(dayTasks, now, agendaTime, agendaFresh, onCanvas)
             }
+        }
+        if (dayNotices.isNotEmpty()) {
             item {
                 TodayNewsCard(
                     items = dayNotices,
@@ -117,5 +140,6 @@ fun TodayContent(token: String, dashboard: DashboardViewModel, usuario: String?,
                     onNotifications = onNotifications
                 )
             }
+        }
     }
 }

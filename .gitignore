@@ -1,6 +1,7 @@
 # Gradle / build
 /build
 /.gradle
+/.kotlin/
 .gradle
 /build-output
 *.apk
@@ -36,3 +37,6 @@ captures/
 # Otros generados
 *.keystore
 *.jks
+
+# Respuestas personales de Canvas
+/canvas_todo_real.json

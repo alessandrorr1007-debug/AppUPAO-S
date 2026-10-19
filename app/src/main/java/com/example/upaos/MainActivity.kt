@@ -6,9 +6,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -33,49 +34,124 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.upaos.data.api.RetrofitClient
+import com.example.upaos.data.local.BiometricHelper
+import com.example.upaos.data.local.SecurityLockPolicy
+import com.example.upaos.data.local.SecurityPreferences
 import com.example.upaos.data.local.ThemePreferences
 import com.example.upaos.data.local.TokenManager
-import com.example.upaos.service.FcmTokenHelper
 import com.example.upaos.ui.calculadora.CalculadoraScreen
+import com.example.upaos.ui.components.AppLockScreen
 import com.example.upaos.ui.grades.CourseDetailScreen
 import com.example.upaos.ui.home.HomeScreen
 import com.example.upaos.ui.login.EligeCuentaScreen
 import com.example.upaos.ui.login.LoginScreen
 import com.example.upaos.ui.notificaciones.NotificacionesScreen
 import com.example.upaos.ui.settings.SettingsScreen
-import com.example.upaos.ui.sugerencias.SugerenciasScreen
 import com.example.upaos.ui.theme.UPAOSTheme
 import com.example.upaos.widget.ProximoCursoWidget
 import com.example.upaos.widget.ResumenNotasWidget
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private var agendaRequest by mutableStateOf<String?>(null)
+    private var destinationTabRequest by mutableStateOf<String?>(null)
+    private val securityPrefs by lazy { SecurityPreferences(this) }
+    private var ultimaVezEnSegundoPlano: Long? = null
+    private var yaAutenticadoEnEstaSesion by mutableStateOf(false)
+    private var isAppLocked by mutableStateOf(false)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         agendaRequest = intent.getStringExtra("agenda_user")
+        destinationTabRequest = intent.getStringExtra("destination_tab")
     }
 
     private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) {
-                FcmTokenHelper.register(this)
-            }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* Permission granted */ }
+
+    override fun onStop() {
+        super.onStop()
+        ultimaVezEnSegundoPlano = System.currentTimeMillis()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        actualizarProteccionPantalla()
+        if (SecurityLockPolicy.debeBloquear(
+                ultimaVezEnSegundoPlano = ultimaVezEnSegundoPlano,
+                ahora = System.currentTimeMillis(),
+                opcionActiva = securityPrefs.isBiometricLockEnabled,
+                yaAutenticadoEnEstaSesion = yaAutenticadoEnEstaSesion
+            )
+        ) {
+            isAppLocked = true
+            lanzarBiometricPrompt()
         }
+    }
+
+    private fun actualizarProteccionPantalla() {
+        if (securityPrefs.isBiometricLockEnabled) {
+            window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    fun lanzarBiometricPrompt() {
+        if (!securityPrefs.isBiometricLockEnabled) {
+            isAppLocked = false
+            return
+        }
+        if (!BiometricHelper.puedeAutenticar(this)) {
+            // Si el dispositivo no tiene hardware/credenciales configuradas, no bloquear indefinidamente
+            isAppLocked = false
+            return
+        }
+        val executor = ContextCompat.getMainExecutor(this)
+        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                isAppLocked = false
+                yaAutenticadoEnEstaSesion = true
+                ultimaVezEnSegundoPlano = null
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                // En caso de cancelación o error, la pantalla AppLockScreen permanece visible
+            }
+        })
+        try {
+            prompt.authenticate(BiometricHelper.crearPromptInfo())
+        } catch (_: Exception) {
+            // Manejo de fallos imprevistos sin crashear
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         agendaRequest = intent.getStringExtra("agenda_user")
-        com.example.upaos.data.api.RetrofitClient.init(this)
+        destinationTabRequest = intent.getStringExtra("destination_tab")
+
+        actualizarProteccionPantalla()
+        if (SecurityLockPolicy.debeBloquear(
+                ultimaVezEnSegundoPlano = null,
+                ahora = System.currentTimeMillis(),
+                opcionActiva = securityPrefs.isBiometricLockEnabled,
+                yaAutenticadoEnEstaSesion = yaAutenticadoEnEstaSesion
+            )
+        ) {
+            isAppLocked = true
+            lanzarBiometricPrompt()
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
@@ -97,10 +173,12 @@ class MainActivity : ComponentActivity() {
             var isDownloadingUpdate by remember { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
-                FcmTokenHelper.register(context)
                 val notifPrefs = com.example.upaos.data.local.NotificationPreferences(context)
                 if (notifPrefs.checkAsistenciaEnabled || notifPrefs.checkNotasEnabled) {
                     com.example.upaos.service.SyncScheduler.start(context)
+                }
+                if (notifPrefs.recordatorioClasesEnabled) {
+                    com.example.upaos.service.ClassReminderScheduler.reprogramar(context)
                 }
 
                 // Comprobar si hay una nueva versión en GitHub
@@ -126,10 +204,13 @@ class MainActivity : ComponentActivity() {
             }
 
             UPAOSTheme(darkTheme = darkTheme) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
+                if (isAppLocked) {
+                    AppLockScreen(onUnlockClick = { lanzarBiometricPrompt() })
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
                     val savedToken = tokenManager.getToken()
                     val savedUser = tokenManager.getSavedUser()
                     val navController = rememberNavController()
@@ -211,6 +292,8 @@ class MainActivity : ComponentActivity() {
                             val token = backStackEntry.arguments?.getString("token") ?: ""
                             HomeScreen(
                                 token = token,
+                                initialTab = destinationTabRequest,
+                                onTabHandled = { destinationTabRequest = null },
                                 openAgenda = agendaRequest == tokenManager.getSavedUser() && agendaRequest != null,
                                 onAgendaOpened = { agendaRequest = null },
                                 isDarkTheme = darkTheme,
@@ -295,21 +378,7 @@ class MainActivity : ComponentActivity() {
                             SettingsScreen(
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() },
-                                onOpenSugerencias = { navController.navigate("sugerencias") },
                                 onAccountRemoved = { navController.navigate("elige-cuenta") { popUpTo(0) { inclusive = true } } }
-                            )
-                        }
-
-                        composable(
-                            "sugerencias",
-                            enterTransition = { slideInHorizontally(tween(280)) { it } },
-                            exitTransition = { fadeOut(tween(180)) },
-                            popEnterTransition = { fadeIn(tween(220)) },
-                            popExitTransition = { slideOutHorizontally(tween(280)) { it } }
-                        ) {
-                            SugerenciasScreen(
-                                usuario = tokenManager.getSavedUser(),
-                                onBack = { navController.popBackStack() }
                             )
                         }
 
@@ -364,6 +433,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
 }
 
 @Composable

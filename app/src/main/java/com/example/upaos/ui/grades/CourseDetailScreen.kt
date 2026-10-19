@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
@@ -40,27 +39,24 @@ fun CourseDetailScreen(
     var notaProyectada by remember { mutableStateOf<Any?>(null) }
     var pesosPendientes by remember { mutableStateOf<List<String>>(emptyList()) }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val upaoRepository = remember { com.example.upaos.data.upao.UpaoRepository(context) }
+
     fun load() {
         isLoading = true
         errorMessage = null
         scope.launch {
             try {
-                val req = mapOf(
-                    "periodo" to periodo,
-                    "carrera" to carrera,
-                    "crn" to crn
-                )
-                val res = RetrofitClient.apiService.getDetalleCurso("Bearer $token", req)
+                val body = upaoRepository.getDetalleCurso(periodo, carrera, crn)
                 isLoading = false
-                if (res.isSuccessful && res.body() != null) {
-                    val body = res.body()!!
-                    if (body.success) {
-                        componentes = body.detalles
-                        notaProyectada = body.notaProyectada
-                        pesosPendientes = body.pesosPendientes
-                    } else {
-                        errorMessage = "Sin desglose disponible"
-                    }
+                if (body.success && body.detalles.isNotEmpty()) {
+                    componentes = body.detalles
+                    notaProyectada = body.notaProyectada
+                    pesosPendientes = body.pesosPendientes
+                } else if (body.success) {
+                    componentes = body.detalles
+                    notaProyectada = body.notaProyectada
+                    pesosPendientes = body.pesosPendientes
                 } else {
                     errorMessage = "Sin desglose disponible"
                 }

@@ -28,8 +28,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.RetrofitClient
+import androidx.compose.ui.platform.LocalContext
 import com.example.upaos.data.model.NotificacionItem
+import com.example.upaos.data.upao.UpaoRepository
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
 import com.example.upaos.ui.components.ErrorView
@@ -52,6 +53,8 @@ fun NotificacionesScreen(
     usuario: String?,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val upaoRepository = remember { UpaoRepository(context) }
     val scope = rememberCoroutineScope()
     var notificaciones by remember { mutableStateOf<List<NotificacionItem>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
@@ -61,15 +64,13 @@ fun NotificacionesScreen(
     suspend fun cargar() {
         if (usuario == null) return
         try {
-            val res = RetrofitClient.apiService.getNotificaciones(usuario)
-            if (res.isSuccessful && res.body() != null) {
-                notificaciones = res.body()!!.notificaciones
-                errorMessage = null
-            } else {
-                errorMessage = "No se pudieron cargar las notificaciones"
-            }
+            val res = upaoRepository.getNotificaciones(usuario)
+            notificaciones = res.notificaciones
+            errorMessage = null
         } catch (e: Exception) {
-            errorMessage = "Error de conexión: ${e.localizedMessage}"
+            errorMessage = "Error al cargar notificaciones: ${e.localizedMessage}"
+        } finally {
+            cargando = false
         }
     }
 
@@ -79,10 +80,8 @@ fun NotificacionesScreen(
             notificaciones = notificaciones.map {
                 if (it.id == notif.id) it.copy(leida = true) else it
             }
-            try {
-                RetrofitClient.apiService.marcarNotificacionLeida(notif.id, usuario ?: return@launch)
-            } catch (_: Exception) {
-                // Silencioso
+            if (usuario != null) {
+                upaoRepository.marcarNotificacionLeida(notif.id, usuario)
             }
         }
     }
@@ -92,13 +91,7 @@ fun NotificacionesScreen(
         if (noLeidas.isEmpty() || usuario == null) return
         scope.launch {
             notificaciones = notificaciones.map { it.copy(leida = true) }
-            noLeidas.forEach { notif ->
-                try {
-                    RetrofitClient.apiService.marcarNotificacionLeida(notif.id, usuario)
-                } catch (_: Exception) {
-                    // Silencioso
-                }
-            }
+            upaoRepository.marcarTodasNotificacionesLeidas(usuario)
         }
     }
 

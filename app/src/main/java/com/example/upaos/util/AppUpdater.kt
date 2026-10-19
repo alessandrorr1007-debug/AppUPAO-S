@@ -1,4 +1,4 @@
-﻿package com.example.upaos.util
+package com.example.upaos.util
 
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import com.google.gson.Gson
 import java.io.File
 
@@ -43,7 +44,7 @@ data class UpdateInfo(
 
 object AppUpdater {
     private const val TAG = "AppUpdater"
-    private const val GITHUB_REPO = "alessandrorr1007-debug/AppUPAO-S"
+    private const val GITHUB_REPO = "alessandrorr1007-debug/UPAOS-APK"
     private val client = OkHttpClient()
     private val gson = Gson()
 
@@ -117,6 +118,10 @@ object AppUpdater {
      * Descarga el APK usando DownloadManager de Android e inicia la instalación al terminar.
      */
     fun downloadAndInstall(context: Context, downloadUrl: String, versionName: String) {
+        val source = downloadUrl.toHttpUrlOrNull()
+        require(source != null && source.isHttps && source.port == 443 &&
+            source.username.isEmpty() && source.password.isEmpty() && source.host == "github.com" &&
+            source.encodedPath.startsWith("/$GITHUB_REPO/releases/")) { "Origen de actualización no autorizado" }
         val fileName = "UPAO-S-${versionName.replace('/', '_')}.apk"
         val destinationFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
         if (destinationFile.exists()) {
@@ -138,6 +143,9 @@ object AppUpdater {
                 val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (id == downloadId) {
                     try {
+                        manager.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
+                            if (!cursor.moveToFirst() || cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) != DownloadManager.STATUS_SUCCESSFUL) return
+                        }
                         installApk(context, destinationFile)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error iniciando instalador", e)
@@ -161,6 +169,7 @@ object AppUpdater {
      * Lanza el Intent nativo de Android para instalar el APK descargado mediante FileProvider.
      */
     fun installApk(context: Context, file: File) {
+        verifyUpdate(context, file)
         val apkUri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.provider",
@@ -173,6 +182,27 @@ object AppUpdater {
         }
 
         context.startActivity(intent)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun verifyUpdate(context: Context, file: File) {
+        val manager = context.packageManager
+        val flags = if (Build.VERSION.SDK_INT >= 28) android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+            else android.content.pm.PackageManager.GET_SIGNATURES
+        val candidate = requireNotNull(manager.getPackageArchiveInfo(file.absolutePath, flags)) {
+            "El archivo descargado no es un APK válido"
+        }
+        val installed = manager.getPackageInfo(context.packageName, flags)
+        require(candidate.packageName == context.packageName) { "El APK no corresponde a UPAO S" }
+        val newVersion = if (Build.VERSION.SDK_INT >= 28) candidate.longVersionCode else candidate.versionCode.toLong()
+        val oldVersion = if (Build.VERSION.SDK_INT >= 28) installed.longVersionCode else installed.versionCode.toLong()
+        require(newVersion > oldVersion) { "La actualización debe ser una versión posterior" }
+        fun signatures(info: android.content.pm.PackageInfo): Set<String> {
+            val values = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures
+            return values.orEmpty().map { it.toCharsString() }.toSet()
+        }
+        val expected = signatures(installed)
+        require(expected.isNotEmpty() && signatures(candidate) == expected) { "Firma de actualización no válida" }
     }
 
     fun getCurrentVersionName(context: Context): String {

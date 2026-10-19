@@ -16,12 +16,13 @@ class BackgroundSyncReceiver : BroadcastReceiver() {
         val shouldRun = prefs.checkAsistenciaEnabled || prefs.checkNotasEnabled
 
         when (action) {
-            SyncScheduler.ACTION_SYNC -> {
+            SyncScheduler.ACTION_SYNC,
+            "com.example.upaos.ACTION_SYNC_5MIN" -> {
                 if (shouldRun) {
                     // Ejecuta la sincronización en segundo plano
                     AsistenciaWorker.runOnce(context)
-                    // Reprograma la siguiente alarma para dentro de 5 minutos
-                    SyncScheduler.scheduleNext(context, SyncScheduler.INTERVAL_MINUTES)
+                    // Reprograma la siguiente alarma con el intervalo adaptativo calculado
+                    SyncScheduler.scheduleNext(context)
                 } else {
                     SyncScheduler.cancel(context)
                 }
@@ -30,10 +31,13 @@ class BackgroundSyncReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED,
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON" -> {
-                Log.d(TAG, "Dispositivo iniciado o app actualizada. Reiniciando sincronizador...")
+                Log.d(TAG, "Dispositivo iniciado o app actualizada. Reiniciando sincronizador y recordatorios...")
                 if (shouldRun) {
                     SyncScheduler.start(context)
                     AsistenciaWorker.runOnce(context)
+                }
+                if (prefs.recordatorioClasesEnabled) {
+                    ClassReminderScheduler.reprogramar(context)
                 }
             }
         }

@@ -2262,7 +2262,7 @@ fun CanvasFileViewerSheet(
                     if (!directUrl.isNullOrBlank()) {
                         val isPdf = item.title?.endsWith(".pdf", ignoreCase = true) == true
                         val viewerUrl = if (isPdf) {
-                            "https://docs.google.com/gview?embedded=true&url=" + java.net.URLEncoder.encode(directUrl, "UTF-8")
+                            "private-pdf:" + directUrl
                         } else {
                             directUrl
                         }
@@ -2337,6 +2337,9 @@ fun InAppWebViewModal(
                 var isLoading by remember { mutableStateOf(true) }
 
                 Box(modifier = Modifier.fillMaxSize()) {
+                    if (url.startsWith("private-pdf:")) {
+                        PrivatePdfViewer(url.removePrefix("private-pdf:"))
+                    } else {
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
@@ -2346,6 +2349,9 @@ fun InAppWebViewModal(
                                 settings.useWideViewPort = true
                                 settings.builtInZoomControls = true
                                 settings.displayZoomControls = false
+                                settings.allowFileAccess = false
+                                settings.allowContentAccess = false
+                                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                 webViewClient = object : WebViewClient() {
                                     override fun onPageFinished(view: WebView?, url: String?) {
                                         isLoading = false
@@ -2364,6 +2370,7 @@ fun InAppWebViewModal(
                         ) {
                             CircularProgressIndicator()
                         }
+                    }
                     }
                 }
             }

@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.gms.google-services")
 }
 
 android {
@@ -12,14 +11,29 @@ android {
         applicationId = "com.example.upaos"
         minSdk = 24
         targetSdk = 37
-        versionCode = 15
-        versionName = "1.6.4"
+        versionCode = 17
+        versionName = "1.7.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("distribution") {
+            val signingPath = System.getenv("UPAOS_KEYSTORE_PATH")
+            if (!signingPath.isNullOrBlank()) {
+                storeFile = file(signingPath)
+                storePassword = System.getenv("UPAOS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("UPAOS_KEY_ALIAS")
+                keyPassword = System.getenv("UPAOS_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
+            isDebuggable = false
+            if (!System.getenv("UPAOS_KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("distribution")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -33,6 +47,9 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 }
 
@@ -60,13 +77,13 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-urlconnection:4.12.0")
+    implementation("org.jsoup:jsoup:1.17.2")
     implementation("com.google.code.gson:gson:2.11.0")
+    // Read old encrypted preferences only, for upgrades from versions before SecureStore.
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-
-    // Firebase Cloud Messaging
-    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
-    implementation("com.google.firebase:firebase-messaging")
+    implementation("androidx.biometric:biometric:1.1.0")
 
     // Glance (Widgets modernos con Compose)
     implementation("androidx.glance:glance-appwidget:1.1.1")
