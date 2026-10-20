@@ -35,8 +35,7 @@ class UpaoRepository(private val context: Context) {
     private val tokenManager = TokenManager(context)
     private val gson = Gson()
 
-    private val currentUser: String
-        get() = tokenManager.getSavedUser().orEmpty()
+    private val currentUser: String = tokenManager.getSavedUser().orEmpty()
 
     suspend fun getPeriodos(): PeriodosResponse = withContext(Dispatchers.IO) {
         val periodos = bannerApi.getPeriodos()
@@ -91,7 +90,7 @@ class UpaoRepository(private val context: Context) {
                                 ep1 = gradeSectionEp1,
                                 ep2 = gradeSectionEp2
                             )
-                        } catch (_: Exception) {
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
                             curso
                         }
                     }

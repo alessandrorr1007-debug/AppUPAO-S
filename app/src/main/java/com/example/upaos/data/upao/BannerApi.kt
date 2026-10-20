@@ -32,8 +32,10 @@ import kotlin.math.roundToInt
 
 class BannerApi(private val context: Context) {
 
-    private val client = UpaoHttpClient.okHttpClient
     private val tokenManager = TokenManager(context)
+    private val accountUser = tokenManager.getSavedUser().orEmpty()
+    private val accountSession by lazy { UpaoHttpClient.forAccount(accountUser) }
+    private val client get() = accountSession.also { it.requireValid() }.client
     private val gson = Gson()
     private val semaphore = Semaphore(4)
 
@@ -57,7 +59,7 @@ class BannerApi(private val context: Context) {
 
             if (isSessionExpired(response)) {
                 response.close()
-                val user = tokenManager.getSavedUser()
+                val user = accountUser
                 val pass = tokenManager.getSavedPass()
 
                 if (!user.isNullOrBlank() && !pass.isNullOrBlank()) {
@@ -65,7 +67,7 @@ class BannerApi(private val context: Context) {
                     if (loginRes.success) {
                         val nextReq = requestBuilder()
                         if (nextReq.url.host.contains("inscripcion.upao.edu.pe")) {
-                            UpaoAuth.ensureInscriptionSession()
+                            UpaoAuth.ensureInscriptionSession(accountUser)
                         }
                         response = client.newCall(nextReq).execute()
                     } else {
@@ -138,7 +140,7 @@ class BannerApi(private val context: Context) {
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
         periodos
     }
@@ -179,7 +181,7 @@ class BannerApi(private val context: Context) {
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
         if (niveles.isEmpty()) listOf("UG") else niveles
     }
@@ -210,7 +212,7 @@ class BannerApi(private val context: Context) {
         val jsonStr = response.body?.string().orEmpty()
         val parsed = try {
             JsonParser.parseString(jsonStr)
-        } catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
             throw UpaoUnexpectedFormatException("Error de sintaxis en JSON de cursos", cause = e)
         }
 
@@ -290,7 +292,7 @@ class BannerApi(private val context: Context) {
                     componentes.add(compWithSubs)
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
         val (proyectada, pendientes) = Calculators.calcularNotaProyectada(componentes)
 
@@ -331,7 +333,7 @@ class BannerApi(private val context: Context) {
                     subcomponentes.add(parseSubComponente(elem.asJsonObject))
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
         subcomponentes
     }
@@ -475,7 +477,7 @@ class BannerApi(private val context: Context) {
      */
     suspend fun getHorario(term: String): HorarioResponse = withContext(Dispatchers.IO) {
         try {
-            UpaoAuth.ensureInscriptionSession()
+            UpaoAuth.ensureInscriptionSession(accountUser)
 
             // 1. Visitar registrationHistory para inicializar estado en StudentRegistrationSsb
             val reqHistory = Request.Builder()
@@ -487,7 +489,7 @@ class BannerApi(private val context: Context) {
                 .build()
             try {
                 client.newCall(reqHistory).execute().close()
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
             // 2. GET registrationHistory/reset?term={term}
             val resetUrl = "$resetRegistrationsUrl?term=$term"
@@ -533,7 +535,7 @@ class BannerApi(private val context: Context) {
                             if (elem.isJsonObject) eventos.add(elem.asJsonObject)
                         }
                     }
-                } catch (_: Exception) {}
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
                 val finalMeetingMap = if (meetingInfoMap.isEmpty()) {
                     val eventCrns = eventos.mapNotNull { it.get("crn")?.asStringOrNull() }
@@ -554,7 +556,7 @@ class BannerApi(private val context: Context) {
             )
         } catch (e: UpaoException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
             HorarioResponse(
                 success = false,
                 periodo = term,
@@ -599,7 +601,7 @@ class BannerApi(private val context: Context) {
                     meetingMap[c] = item
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
         val faltantes = crns.filter { it !in meetingMap }
         if (faltantes.isNotEmpty()) {
@@ -629,7 +631,7 @@ class BannerApi(private val context: Context) {
                                     meetingMap[crn] = item
                                 }
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
                     }
                 }.awaitAll()
             }
@@ -983,7 +985,7 @@ class BannerApi(private val context: Context) {
             )
         } catch (e: UpaoException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
             AsistenciaResponse(
                 success = false,
                 totalCount = 0,

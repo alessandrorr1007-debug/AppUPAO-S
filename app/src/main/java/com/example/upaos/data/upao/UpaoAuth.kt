@@ -24,8 +24,6 @@ object UpaoAuth {
     private const val SESSION_PING_URL = "https://ssb.upao.edu.pe/StudentSelfService/ssb/studentGrades/term?filter=&page=1&max=5"
     private const val INSCRIPCION_LOGIN_URL = "https://inscripcion.upao.edu.pe/StudentRegistrationSsb/login"
 
-    private val loginMutex = Mutex()
-    private val client = UpaoHttpClient.okHttpClient
 
     /**
      * Extrae el nombre del estudiante a partir del HTML de studentGrades.
@@ -62,7 +60,12 @@ object UpaoAuth {
      * 3. POST formulario con id_usuario, nip, btn_valida.
      * 4. Valida redirección final a ssb.upao.edu.pe.
      */
-    suspend fun login(usuario: String, pass: String): UpaoLoginResult = withContext(Dispatchers.IO) {
+    suspend fun login(usuario: String, pass: String): UpaoLoginResult {
+        val session = UpaoHttpClient.selectAccount(usuario)
+        return session.loginMutex.withLock { loginInSession(usuario, pass, session) }
+    }
+
+    private suspend fun loginInSession(usuario: String, pass: String, session: UpaoHttpClient.AccountSession): UpaoLoginResult = withContext(Dispatchers.IO) {
         val user = usuario.trim()
         val password = pass.trim()
 
@@ -70,8 +73,10 @@ object UpaoAuth {
             throw UpaoInvalidCredentialsException("El ID debe tener 9 dígitos y la contraseña no puede estar vacía.")
         }
 
-        UpaoHttpClient.cookieJar.switchAccount(user)
-        UpaoHttpClient.cookieJar.clearActiveAccount()
+        session.requireValid()
+        session.authenticatedUser = null
+        session.cookieJar.clear()
+        val client = session.client
 
         try {
             // Paso 1: GET inicial a studentGrades
@@ -160,6 +165,8 @@ object UpaoAuth {
 
             // Verificación de éxito: aterrizó en Banner SSB
             if (postFinalHttpUrl.host == "ssb.upao.edu.pe" && postFinalHttpUrl.encodedPath.startsWith("/StudentSelfService/ssb/")) {
+                session.requireValid()
+                session.authenticatedUser = user
                 val studentName = extractStudentName(postHtml)
                 return@withContext UpaoLoginResult(
                     success = true,
@@ -178,6 +185,8 @@ object UpaoAuth {
             throw e
         } catch (e: IOException) {
             throw UpaoNetworkException("Error de red al conectar con la UPAO: ${e.localizedMessage ?: "timeout"}", e)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw UpaoServiceUnavailableException("Error inesperado durante la autenticación: ${e.localizedMessage}")
         }
@@ -186,7 +195,10 @@ object UpaoAuth {
     /**
      * Verifica si la sesión actual en Banner SSB está viva con una petición ligera.
      */
-    suspend fun checkSessionAlive(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun checkSessionAlive(usuario: String): Boolean = withContext(Dispatchers.IO) {
+        val session = UpaoHttpClient.forAccount(usuario)
+        if (session.authenticatedUser != usuario.trim()) return@withContext false
+        val client = session.client
         try {
             val req = Request.Builder()
                 .url(SESSION_PING_URL)
@@ -201,10 +213,13 @@ object UpaoAuth {
                 val contentType = res.header("Content-Type").orEmpty().lowercase()
                 val finalUrl = res.request.url.toString()
                 if (contentType.contains("json") && !finalUrl.contains("upaosso")) {
+                    session.requireValid()
                     return@withContext true
                 }
             }
             false
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             false
         }
@@ -214,15 +229,16 @@ object UpaoAuth {
      * Garantiza que haya una sesión activa. Si la sesión expiró, realiza re-login protegido con Mutex.
      */
     suspend fun ensureSession(usuario: String, pass: String): UpaoLoginResult {
-        if (checkSessionAlive()) {
+        val session = UpaoHttpClient.forAccount(usuario)
+        if (checkSessionAlive(usuario)) {
             return UpaoLoginResult(success = true)
         }
 
-        return loginMutex.withLock {
-            if (checkSessionAlive()) {
+        return session.loginMutex.withLock {
+            if (checkSessionAlive(usuario)) {
                 return@withLock UpaoLoginResult(success = true)
             }
-            login(usuario, pass)
+            loginInSession(usuario, pass, session)
         }
     }
 
@@ -230,8 +246,10 @@ object UpaoAuth {
      * Prepara la sesión en inscripcion.upao.edu.pe para consultas de horario y aulas.
      * Si no tiene cookie de inscripción, realiza 1 GET previo al endpoint de login.
      */
-    suspend fun ensureInscriptionSession() = withContext(Dispatchers.IO) {
-        if (!UpaoHttpClient.cookieJar.hasCookieForDomain("inscripcion.upao.edu.pe")) {
+    suspend fun ensureInscriptionSession(usuario: String) = withContext(Dispatchers.IO) {
+        val session = UpaoHttpClient.forAccount(usuario)
+        val client = session.client
+        if (!session.cookieJar.hasCookieForDomain("inscripcion.upao.edu.pe")) {
             try {
                 val req = Request.Builder()
                     .url(INSCRIPCION_LOGIN_URL)
@@ -239,7 +257,8 @@ object UpaoAuth {
                     .get()
                     .build()
                 client.newCall(req).execute()
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: IOException) { throw UpaoNetworkException(cause = e) }
         }
     }
 }

@@ -34,7 +34,7 @@ object AccountPrivacy {
         if (current) { tokens.clearSession(); SyncScheduler.cancel(context) }
         clearCache(context, user)
         context.getSharedPreferences("local_notificaciones_$user", Context.MODE_PRIVATE).edit().clear().commit()
-        com.example.upaos.data.upao.UpaoHttpClient.cookieJar.clearAccount(user)
+        com.example.upaos.data.upao.UpaoHttpClient.clearAccount(user)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.activeNotifications.filter { it.tag == "agenda_$user" }.forEach { manager.cancel(it.tag, it.id) }
     }
