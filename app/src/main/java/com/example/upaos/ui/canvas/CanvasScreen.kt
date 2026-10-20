@@ -1433,11 +1433,10 @@ private suspend fun submitFileToCanvas(
             .post(multipartBuilder.build())
             .build()
 
-        val uploadResponse = CanvasApiClient.okHttpClient.newCall(uploadRequest).execute()
-        if (!uploadResponse.isSuccessful) {
-            return@withContext false
+        val uploadResponseBody = CanvasApiClient.okHttpClient.newCall(uploadRequest).execute().use { response ->
+            if (!response.isSuccessful) return@withContext false
+            response.body?.string() ?: return@withContext false
         }
-        val uploadResponseBody = uploadResponse.body?.string() ?: return@withContext false
 
         // Parsear el ID del archivo devuelto por Canvas
         val jsonElement = JsonParser.parseString(uploadResponseBody)
@@ -1455,7 +1454,9 @@ private suspend fun submitFileToCanvas(
         )
 
         submitResp.isSuccessful
-    } catch (_: Exception) {
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e
+    } catch (e: Exception) {
+        android.util.Log.w("CanvasSubmission", "No se pudo completar la entrega")
         false
     }
 }

@@ -94,9 +94,8 @@ object UpaoAuth {
                 .get()
                 .build()
 
-            val initResponse = client.newCall(initRequest).execute()
+            val (initResponse, initHtml) = consumeHttpResponse(client, initRequest) { it to it.body?.string().orEmpty() }
             val initFinalUrl = initResponse.request.url.toString()
-            val initHtml = initResponse.body?.string().orEmpty()
 
             if (!initResponse.isSuccessful && initResponse.code != 302) {
                 throw UpaoServiceUnavailableException("El portal de la UPAO no está disponible (HTTP ${initResponse.code}).")
@@ -124,14 +123,13 @@ object UpaoAuth {
                 .post(formBody)
                 .build()
 
-            val postResponse = client.newCall(postRequest).execute()
+            val (postResponse, postHtml) = consumeHttpResponse(client, postRequest) { it to it.body?.string().orEmpty() }
             if (postResponse.code == 401) {
                 throw UpaoInvalidCredentialsException()
             }
 
             val postFinalHttpUrl = postResponse.request.url
             val postFinalUrl = postFinalHttpUrl.toString()
-            val postHtml = postResponse.body?.string().orEmpty()
 
             // Paso 4: Evaluar respuesta y URL final
             val isErrorParam = postFinalHttpUrl.queryParameter("is_error")
@@ -203,19 +201,16 @@ object UpaoAuth {
                 .get()
                 .build()
 
-            val res = client.newCall(req).execute()
-            if (res.isSuccessful) {
+            consumeHttpResponse(client, req) { res ->
                 val contentType = res.header("Content-Type").orEmpty().lowercase()
-                val finalUrl = res.request.url.toString()
-                if (contentType.contains("json") && !finalUrl.contains("upaosso")) {
-                    session.requireValid()
-                    return@withContext true
-                }
+                val alive = res.isSuccessful && contentType.contains("json") && res.request.url.host == "ssb.upao.edu.pe"
+                session.requireValid()
+                alive
             }
-            false
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: IOException) {
+            android.util.Log.w("UpaoAuth", "No se pudo comprobar la sesión")
             false
         }
     }
@@ -251,7 +246,9 @@ object UpaoAuth {
                     .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                     .get()
                     .build()
-                client.newCall(req).execute()
+                consumeHttpResponse(client, req) { response ->
+                    if (!response.isSuccessful) throw UpaoServiceUnavailableException("No se pudo preparar la sesión de inscripción")
+                }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: IOException) { throw UpaoNetworkException(cause = e) }
         }

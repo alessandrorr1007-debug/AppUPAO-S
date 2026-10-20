@@ -115,7 +115,7 @@ class BannerApi(private val context: Context) {
                 .build()
         }
 
-        val jsonStr = response.body?.string().orEmpty()
+        val jsonStr = response.use { it.body?.string().orEmpty() }
         val periodos = mutableListOf<String>()
 
         try {
@@ -157,7 +157,7 @@ class BannerApi(private val context: Context) {
                 .build()
         }
 
-        val jsonStr = response.body?.string().orEmpty()
+        val jsonStr = response.use { it.body?.string().orEmpty() }
         val niveles = mutableListOf<String>()
 
         try {
@@ -209,7 +209,7 @@ class BannerApi(private val context: Context) {
                 .build()
         }
 
-        val jsonStr = response.body?.string().orEmpty()
+        val jsonStr = response.use { it.body?.string().orEmpty() }
         val parsed = try {
             JsonParser.parseString(jsonStr)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
@@ -269,7 +269,7 @@ class BannerApi(private val context: Context) {
                 .build()
         }
 
-        val jsonStr = response.body?.string().orEmpty()
+        val jsonStr = response.use { it.body?.string().orEmpty() }
         val componentes = mutableListOf<ComponenteDetalle>()
 
         try {
@@ -317,7 +317,7 @@ class BannerApi(private val context: Context) {
                 .build()
         }
 
-        val jsonStr = response.body?.string().orEmpty()
+        val jsonStr = response.use { it.body?.string().orEmpty() }
         val subcomponentes = mutableListOf<SubComponente>()
 
         try {
@@ -488,7 +488,7 @@ class BannerApi(private val context: Context) {
                 .get()
                 .build()
             try {
-                client.newCall(reqHistory).execute().close()
+                consumeHttpResponse(client, reqHistory) { }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
             // 2. GET registrationHistory/reset?term={term}
@@ -503,7 +503,7 @@ class BannerApi(private val context: Context) {
                     .build()
             }
 
-            val jsonStr = response.body?.string().orEmpty()
+            val jsonStr = response.use { it.body?.string().orEmpty() }
             val registros = BannerParsers.parseHorarioJson(jsonStr).toMutableList()
 
             val crns = registros.mapNotNull {
@@ -526,7 +526,7 @@ class BannerApi(private val context: Context) {
                         .get()
                         .build()
                 }
-                val eventsJson = eventsResponse.body?.string().orEmpty()
+                val eventsJson = eventsResponse.use { it.body?.string().orEmpty() }
                 val eventos = mutableListOf<JsonObject>()
                 try {
                     val parsedEvents = JsonParser.parseString(eventsJson)
@@ -582,7 +582,7 @@ class BannerApi(private val context: Context) {
                     .get()
                     .build()
             }
-            val json = response.body?.string().orEmpty()
+            val json = response.use { it.body?.string().orEmpty() }
             val parsed = JsonParser.parseString(json)
             val items: List<JsonObject> = when {
                 parsed.isJsonArray -> parsed.asJsonArray.mapNotNull { if (it.isJsonObject) it.asJsonObject else null }
@@ -619,7 +619,7 @@ class BannerApi(private val context: Context) {
                                     .get()
                                     .build()
                             }
-                            val j = res.body?.string().orEmpty()
+                            val j = res.use { it.body?.string().orEmpty() }
                             val p = JsonParser.parseString(j)
                             val item = when {
                                 p.isJsonArray && p.asJsonArray.size() > 0 && p.asJsonArray[0].isJsonObject -> p.asJsonArray[0].asJsonObject
@@ -963,7 +963,7 @@ class BannerApi(private val context: Context) {
                         .build()
                 }
 
-                val jsonStr = response.body?.string().orEmpty()
+                val jsonStr = response.use { it.body?.string().orEmpty() }
                 val (rawTotal, pageItems) = BannerParsers.parseAsistenciaJson(jsonStr)
                 if (rawTotal != null) totalCount = rawTotal
                 allItems.addAll(pageItems)
