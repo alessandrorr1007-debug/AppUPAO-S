@@ -8,7 +8,8 @@ class SharedRefreshLoop(
     private val scope: CoroutineScope,
     private val refresh: suspend () -> Unit,
     private val intervalMillis: Long = FIVE_MINUTES,
-    private val clock: () -> Long = { System.nanoTime() / 1_000_000L }
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val nextIntervalMillis: () -> Long = { intervalMillis }
 ) {
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private var timer: Job? = null
@@ -36,7 +37,7 @@ class SharedRefreshLoop(
         attempted = true
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try { refresh() } finally {
-                nextAt = clock() + intervalMillis
+                nextAt = clock() + nextIntervalMillis().coerceAtLeast(1L)
                 wake.trySend(Unit)
             }
         }

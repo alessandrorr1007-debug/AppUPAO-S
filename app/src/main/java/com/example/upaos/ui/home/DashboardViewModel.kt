@@ -60,7 +60,14 @@ class DashboardViewModel(app: Application, private val token: String, private va
     private val averages = mutableMapOf<Pair<String, String>, PromedioPeriodoResponse>()
     private val projections = mutableMapOf<Pair<String, String>, Map<String, Any?>>()
     private var selectionVersion = 0
-    private val loop = SharedRefreshLoop(viewModelScope, { refreshRound() })
+    private var consecutiveFailures = 0
+    private val loop = SharedRefreshLoop(viewModelScope, { refreshRound() }, nextIntervalMillis = {
+        com.example.upaos.service.SyncIntervalPolicy.proximoIntervalo(
+            java.time.ZonedDateTime.now(com.example.upaos.service.SyncIntervalPolicy.ZONE_LIMA),
+            com.example.upaos.service.SyncIntervalPolicy.SyncContext(
+                fallosConsecutivos = consecutiveFailures, periodoAcademico = state.value.currentPeriod)
+        ).toMillis()
+    })
     val gradeCacheKey get() = "notas_$user"
     val attendanceCacheKey get() = "asistencia_$user"
     fun scheduleCacheKey(term: String) = "horario_${user}_$term"
@@ -292,6 +299,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
                 projected = if (sameGrades) result.projected else projections[gradePeriod to career] ?: emptyMap(),
                 schedulePeriod = if (scheduleChosen) chosen.schedulePeriod else result.schedulePeriod,
                 attendancePeriod = if (attendanceChosen) chosen.attendancePeriod else result.attendancePeriod)
+            consecutiveFailures = if (errors.isEmpty()) 0 else (consecutiveFailures + 1).coerceAtMost(3)
             completedSelectionVersion = version
             try { com.example.upaos.widget.ResumenNotasWidget.updateAll(getApplication()) } catch (_: Exception) { }
             try { com.example.upaos.widget.ProximoCursoWidget.updateAll(getApplication()) } catch (_: Exception) { }

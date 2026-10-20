@@ -47,8 +47,14 @@ class AsistenciaWorker(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        if (com.example.upaos.data.refresh.ForegroundRefreshGate.active) return@withContext Result.success()
-        if (!syncMutex.tryLock()) return@withContext Result.success()
+        if (com.example.upaos.data.refresh.ForegroundRefreshGate.active) {
+            SyncScheduler.scheduleNext(applicationContext)
+            return@withContext Result.success()
+        }
+        if (!syncMutex.tryLock()) {
+            SyncScheduler.scheduleNext(applicationContext)
+            return@withContext Result.success()
+        }
         try {
             if (!tokenManager.shouldKeepLoggedIn()) return@withContext Result.success()
             val checkAsistencia = notificationPrefs.checkAsistenciaEnabled
@@ -77,9 +83,11 @@ class AsistenciaWorker(
                 if (!loginRes.success) {
                     Log.w(TAG, "No se pudo asegurar sesión directa con UPAO SSO.")
                     val fallos = notificationPrefs.syncConsecutiveFailures + 1
-                    notificationPrefs.syncConsecutiveFailures = fallos
-                    SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
-                    return@withContext Result.retry()
+                    publishForCurrentSession {
+                        notificationPrefs.syncConsecutiveFailures = fallos
+                        SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
+                    }
+                    return@withContext Result.success()
                 }
 
                 val checks = mutableListOf<suspend () -> RefreshResult<Unit>>()
@@ -101,9 +109,11 @@ class AsistenciaWorker(
                 publishForCurrentSession {
                     val fallos = notificationPrefs.syncConsecutiveFailures + 1
                     notificationPrefs.syncConsecutiveFailures = fallos
-                    SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
+                    SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos,
+                        esErrorFatal = isFatalSyncFailure(e))
                 }
-                Result.retry()
+                // The adaptive successor owns retries; never add WorkManager's second retry clock.
+                Result.success()
             }
         } finally {
             syncMutex.unlock()

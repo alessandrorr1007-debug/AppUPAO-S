@@ -19,10 +19,8 @@ class BackgroundSyncReceiver : BroadcastReceiver() {
             SyncScheduler.ACTION_SYNC,
             "com.example.upaos.ACTION_SYNC_5MIN" -> {
                 if (shouldRun) {
-                    // Ejecuta la sincronización en segundo plano
-                    AsistenciaWorker.runOnce(context)
-                    // Reprograma la siguiente alarma con el intervalo adaptativo calculado
-                    SyncScheduler.scheduleNext(context)
+                    // Legacy broadcasts only migrate the schedule; they never bypass backoff.
+                    SyncScheduler.start(context)
                 } else {
                     SyncScheduler.cancel(context)
                 }
@@ -34,7 +32,6 @@ class BackgroundSyncReceiver : BroadcastReceiver() {
                 Log.d(TAG, "Dispositivo iniciado o app actualizada. Reiniciando sincronizador y recordatorios...")
                 if (shouldRun) {
                     SyncScheduler.start(context)
-                    AsistenciaWorker.runOnce(context)
                 }
                 if (prefs.recordatorioClasesEnabled) {
                     ClassReminderScheduler.reprogramar(context)
