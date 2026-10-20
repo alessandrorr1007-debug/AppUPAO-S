@@ -24,12 +24,12 @@ import kotlinx.coroutines.sync.withLock
 
 data class DashboardState(
     val periods: List<String> = emptyList(),
-    val currentPeriod: String = "202610",
-    val gradePeriod: String = "202610",
+    val currentPeriod: String = "",
+    val gradePeriod: String = currentPeriod,
     val career: String = "UG",
     val careers: List<String> = listOf("UG"),
-    val schedulePeriod: String = "202610",
-    val attendancePeriod: String = "202610",
+    val schedulePeriod: String = currentPeriod,
+    val attendancePeriod: String = currentPeriod,
     val grades: GradesResponse? = null,
     val average: PromedioPeriodoResponse? = null,
     val projected: Map<String, Any?> = emptyMap(),
@@ -135,7 +135,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
         val savedGrades = try { gradesCache.cargar(gradeCacheKey)?.let { gson.fromJson(it, GradesResponse::class.java) } }
             catch (e: CancellationException) { throw e } catch (_: Exception) { null }
         val periods = cached<PeriodosResponse>("dashboard_periodos_$user")
-        val current = detectarPeriodoActual(periods?.periodos ?: emptyList(), periods?.periodoActual)
+        val current = detectarPeriodoActual(periods?.periodos ?: emptyList(), periods?.periodoActual ?: savedGrades?.periodo)
         val schedules = cache.listarPorPrefijo("horario_${user}_").mapNotNull { (key, json) ->
             val term = key.removePrefix("horario_${user}_")
             if (term.toIntOrNull() == null) null else try { term to gson.fromJson(json, HorarioResponse::class.java) }
@@ -208,6 +208,10 @@ class DashboardViewModel(app: Application, private val token: String, private va
                     attendancePeriod = if (attendanceChosen) result.attendancePeriod else current)
                 save("dashboard_periodos_$user", periods)
                 cache.guardar("periodos_$user", gson.toJson(periods.periodos))
+            }
+            if (result.currentPeriod.isBlank()) {
+                mutable.value = result.copy(busy = false, errors = errors)
+                return@withLock
             }
             attempt("carreras") {
                 val careers = upaoRepository.getCarreras(result.gradePeriod).carreras

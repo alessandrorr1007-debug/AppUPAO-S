@@ -140,26 +140,9 @@ object Calculators {
      * Valida si un código de periodo corresponde a un ciclo regular (termina en 10 o 20).
      * Los códigos terminados en 90 son idiomas / extraordinarios.
      */
-    fun esPeriodoRegular(code: String?): Boolean {
-        val s = code.orEmpty().trim()
-        return s.endsWith("10") || s.endsWith("20")
-    }
+    fun esPeriodoRegular(code: String?): Boolean =
+        com.example.upaos.domain.academic.AcademicRules.isRegular(code)
 
-    /**
-     * Detecta el periodo actual: el periodo regular con el código numérico más alto.
-     */
-    fun detectarPeriodoActual(periodos: List<String>, fallback: String? = null): String {
-        val regulares = periodos.filter { esPeriodoRegular(it) }
-            .mapNotNull { it.trim().toIntOrNull() }
-
-        if (regulares.isNotEmpty()) {
-            return regulares.maxOrNull().toString()
-        }
-
-        if (!fallback.isNullOrBlank() && esPeriodoRegular(fallback)) {
-            return fallback
-        }
-
-        return periodos.firstOrNull { esPeriodoRegular(it) } ?: fallback ?: "202610"
-    }
+    fun detectarPeriodoActual(periodos: List<String>, fallback: String? = null): String =
+        com.example.upaos.domain.academic.AcademicRules.latestAvailable(periodos, fallback)
 }

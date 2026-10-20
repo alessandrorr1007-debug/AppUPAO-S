@@ -90,6 +90,8 @@ class AsistenciaWorker(
                     return@withContext Result.success()
                 }
 
+                // Resolve active metadata even when only attendance checks are enabled.
+                upaoRepository.getPeriodos()
                 val checks = mutableListOf<suspend () -> RefreshResult<Unit>>()
                 if (checkAsistencia) checks += { revisarAsistencia(user) }
                 if (checkNotas) checks += { revisarNotas(user) }
@@ -136,11 +138,9 @@ class AsistenciaWorker(
             gson.fromJson(cachedJson, GradesResponse::class.java)
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { Log.w(TAG, "Metadatos de notas en caché inválidos; se consultará el periodo"); null }
-        val periodo = cached?.periodo?.takeIf { it.isNotBlank() } ?: run {
-            val periods = upaoRepository.getPeriodos()
-            Calculators.detectarPeriodoActual(periods.periodos, periods.periodoActual)
-        }
-        val carrera = cached?.carrera?.takeIf { it.isNotBlank() }
+        val periodo = notificationPrefs.syncAcademicPeriod
+            ?: throw com.example.upaos.data.upao.UpaoUnexpectedFormatException("No hay periodo activo")
+        val carrera = cached?.takeIf { it.periodo == periodo }?.carrera?.takeIf { it.isNotBlank() }
             ?: upaoRepository.getCarreras(periodo).carreras.firstOrNull() ?: "UG"
         publishComplete(upaoRepository.buscarNotasResult(periodo, carrera)) { grades ->
             requireCurrentSession()

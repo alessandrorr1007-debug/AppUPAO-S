@@ -33,7 +33,7 @@ object ClassReminderCalculator {
     fun calcularRecordatorios(
         cursos: List<HorarioCurso>,
         fecha: LocalDate,
-        term: String = "202610",
+        term: String = "",
         esSemanaActivaOverride: Boolean? = null
     ): List<RecordatorioClase> {
         // 1. En domingo no hay clases ni recordatorios

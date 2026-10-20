@@ -104,7 +104,7 @@ fun HomeScreen(
     )
     val shared by dashboard.state.collectAsState()
     val unreadCount = shared.notices?.noLeidas ?: 0
-    val semanaEtiqueta = shared.week?.takeIf { it.configurada && it.fueraDeCiclo != true }?.etiqueta
+    val semanaEtiqueta = shared.week?.takeIf { it.configurada && it.fueraDeCiclo != true }?.let { it.etiqueta + if (it.fechaEstimada) " · estimada" else "" }
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(dashboard, lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->

@@ -10,7 +10,8 @@ data class SemanaInfo(
     @SerializedName("etiqueta") val etiqueta: String? = null,
     @SerializedName("fuera_de_ciclo") val fueraDeCiclo: Boolean? = null,
     @SerializedName("fecha_inicio") val fechaInicio: String? = null,
-    @SerializedName("dias_transcurridos") val diasTranscurridos: Int? = null
+    @SerializedName("dias_transcurridos") val diasTranscurridos: Int? = null,
+    @SerializedName("fecha_estimada") val fechaEstimada: Boolean = true
 )
 
 // ---------- Modelos para Promedio Ponderado Semestral (PPS) ----------

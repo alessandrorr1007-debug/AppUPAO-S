@@ -117,7 +117,7 @@ data class CourseGrade(
 }
 
 data class GradesResponse(
-    @SerializedName("periodo") val periodo: String? = "202610",
+    @SerializedName("periodo") val periodo: String? = null,
     @SerializedName("carrera") val carrera: String? = "UG",
     @SerializedName("ultima_actualizacion") val ultimaActualizacion: String? = null,
     @SerializedName("cursos") val cursos: List<CourseGrade> = emptyList(),
@@ -126,7 +126,7 @@ data class GradesResponse(
 )
 
 data class PeriodosResponse(
-    @SerializedName("periodo_actual") val periodoActual: String? = "202610",
+    @SerializedName("periodo_actual") val periodoActual: String? = null,
     @SerializedName("periodos") val periodos: List<String> = emptyList()
 )
 

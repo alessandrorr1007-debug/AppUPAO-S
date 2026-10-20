@@ -394,7 +394,7 @@ class MainActivity : FragmentActivity() {
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
                         ) { backStackEntry ->
                             val args = backStackEntry.arguments
-                            val periodo = args?.getString("periodo") ?: "202610"
+                            val periodo = args?.getString("periodo").orEmpty()
                             val carrera = args?.getString("carrera") ?: "UG"
                             val crn = args?.getString("crn") ?: ""
                             val nombre = args?.getString("nombre") ?: ""

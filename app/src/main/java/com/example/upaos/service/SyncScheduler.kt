@@ -45,7 +45,8 @@ object SyncScheduler {
         }
         val delay = SyncIntervalPolicy.proximoIntervalo(
             ZonedDateTime.now(SyncIntervalPolicy.ZONE_LIMA),
-            SyncIntervalPolicy.SyncContext(fallosConsecutivos = failures, esErrorFatal = fatal)
+            SyncIntervalPolicy.SyncContext(fallosConsecutivos = failures, esErrorFatal = fatal,
+                periodoAcademico = prefs.syncAcademicPeriod)
         )
         if (delay.isZero) return
         val request = OneTimeWorkRequestBuilder<AsistenciaWorker>()

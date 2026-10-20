@@ -95,35 +95,8 @@ private fun estadoAsistencia(
     }
 }
 
-private fun diaHoy(): Int = (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
-
-private fun calcularClasesHastaHoy(
-    diasHorario: String?,
-    semanaActual: Int,
-    periodoSeleccionado: String
-): Int {
-    if (periodoSeleccionado != "202620") {
-        val count = maxOf(1, contarDiasHorario(diasHorario))
-        return 16 * count
-    }
-    val activos = diasActivos(diasHorario)
-    val diasCount = maxOf(1, if (activos.isNotEmpty()) activos.size else contarDiasHorario(diasHorario))
-    val semanasPrevias = (semanaActual - 1).coerceAtLeast(0)
-    val hoyDia = diaHoy() // 0 = LUN, 1 = MAR, 2 = MIE, 3 = JUE, 4 = VIE, 5 = SAB
-    val diasPasadosEstaSemana = if (activos.isNotEmpty()) {
-        activos.count { it <= hoyDia }
-    } else {
-        1
-    }
-    val clases = (semanasPrevias * diasCount) + diasPasadosEstaSemana
-    return maxOf(1, clases)
-}
-
-private fun obtenerSemanaCiclo(periodo: String, semanaApi: Int?): Int {
-    if (semanaApi != null && semanaApi in 1..AcademicCalendar.TOTAL_SEMANAS_REGULARES) return semanaApi
-    val info = AcademicCalendar.calcularSemana(periodo)
-    return info.semana ?: AcademicCalendar.TOTAL_SEMANAS_REGULARES
-}
+private fun obtenerSemanaCiclo(periodo: String, semanaApi: Int?): Int =
+    AcademicCalendar.calcularSemana(periodo).semana ?: 0
 
 private fun formatPct(pct: Double): String =
     com.example.upaos.ui.components.attendancePercentText(pct)
@@ -282,7 +255,9 @@ private fun procesarCursosAsistencia(
             } else {
                 comp.horarioDias?.takeIf { it.isNotBlank() }
             }
-            val clasesEstimadas = calcularClasesHastaHoy(dias, semanaActualCalculada, periodoSeleccionado)
+            val clasesEstimadas = com.example.upaos.domain.academic.AcademicRules.scheduledMeetings(
+                periodoSeleccionado, diasActivos(dias),
+                java.time.LocalDate.now(com.example.upaos.domain.academic.AcademicRules.LIMA))
 
             val tieneRegistro = comp.tieneRegistroAsistencia
             val faltasComp = comp.faltas ?: 0
@@ -295,7 +270,7 @@ private fun procesarCursosAsistencia(
                         val p = comp.porcentaje ?: 100.0
                         if (p <= 0.0) 0
                         else if (faltasComp > 0 && p < 100.0) kotlin.math.round((p * faltasComp) / (100.0 - p)).toInt().coerceAtLeast(0)
-                        else (clasesEstimadas - faltasComp).coerceAtLeast(1)
+                        else clasesEstimadas?.let { (it - faltasComp).coerceAtLeast(0) }
                     }
             } else {
                 null
@@ -568,7 +543,7 @@ fun AsistenciaContent(
 @Composable
 private fun ResumenAsistencia(
     semanaCiclo: Int = 2,
-    periodo: String = "202620"
+    periodo: String
 ) {
     AppCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -591,13 +566,14 @@ private fun ResumenAsistencia(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = "Semana $semanaCiclo de ${AcademicCalendar.TOTAL_SEMANAS_REGULARES}",
+                        text = if (semanaCiclo > 0) "Semana $semanaCiclo de ${AcademicCalendar.TOTAL_SEMANAS_REGULARES}" else "Calendario académico",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (periodo == "202620") "Periodo $periodo · En curso" else "Periodo $periodo · Culminado",
+                        text = "Periodo $periodo · " + (AcademicCalendar.calcularSemana(periodo).etiqueta ?: "Sin calendario") +
+                            if (AcademicCalendar.calcularSemana(periodo).fechaEstimada) " · estimado" else "",
                         style = MaterialTheme.typography.bodySmall,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -609,7 +585,7 @@ private fun ResumenAsistencia(
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
             ) {
                 Text(
-                    text = "Semana $semanaCiclo/${AcademicCalendar.TOTAL_SEMANAS_REGULARES}",
+                    text = if (semanaCiclo > 0) "Semana $semanaCiclo/${AcademicCalendar.TOTAL_SEMANAS_REGULARES}" else "Sin semana activa",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,

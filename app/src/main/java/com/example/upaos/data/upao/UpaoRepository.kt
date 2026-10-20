@@ -41,7 +41,9 @@ class UpaoRepository(private val context: Context) {
     suspend fun getPeriodos(): PeriodosResponse = withContext(Dispatchers.IO) {
         val periodos = bannerApi.getPeriodos()
         val current = Calculators.detectarPeriodoActual(periodos)
-        PeriodosResponse(periodoActual = current, periodos = periodos)
+        if (current.isBlank()) throw UpaoUnexpectedFormatException("No hay periodos regulares disponibles")
+        com.example.upaos.data.local.NotificationPreferences(context, currentUser).syncAcademicPeriod = current
+        PeriodosResponse(periodoActual = current, periodos = periodos.filter(Calculators::esPeriodoRegular))
     }
 
     suspend fun getCarreras(term: String): CarrerasResponse = withContext(Dispatchers.IO) {
@@ -139,14 +141,7 @@ class UpaoRepository(private val context: Context) {
             val crn = curso.crn ?: curso.courseReferenceNumber ?: continue
             val nota = Calculators.toDouble(curso.notaActual)
 
-            // Extraer créditos desde rawBanner o metadata del curso
-            val raw = curso.rawBanner
-            val credVal = raw?.get("creditHours")
-                ?: raw?.get("creditHourLow")
-                ?: raw?.get("credits")
-                ?: raw?.get("hoursAttempted")
-
-            val creditos = Calculators.toDouble(credVal)?.roundToInt() ?: 0
+            val creditos = com.example.upaos.domain.academic.AcademicRules.credits(curso.rawBanner) ?: 0
 
             if (creditos > 0) {
                 sumaCreditos += creditos

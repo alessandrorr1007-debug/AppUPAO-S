@@ -25,7 +25,7 @@ object SyncIntervalPolicy {
     data class SyncContext(
         val fallosConsecutivos: Int = 0,
         val esErrorFatal: Boolean = false,
-        val periodoAcademico: String = "202610",
+        val periodoAcademico: String? = null,
         val esSemanaActivaOverride: Boolean? = null
     )
 
@@ -50,35 +50,33 @@ object SyncIntervalPolicy {
         val hora = fechaLima.hour
         val diaSemana = fechaLima.dayOfWeek
 
-        // 2. Si hay fallos consecutivos (red, timeout, 5xx): backoff exponencial (máx 60 min)
-        if (contexto.fallosConsecutivos > 0) {
-            val factor = 1L shl min(contexto.fallosConsecutivos, 3)
-            val minutosBackoff = min(INTERVALO_MAX_ERROR_MINUTOS, INTERVALO_CLASE_MINUTOS * factor)
-            return Duration.ofMinutes(minutosBackoff)
-        }
+        // Backoff is applied on top of the calendar/night baseline, never more frequently.
+        val factor = if (contexto.fallosConsecutivos > 0) 1L shl min(contexto.fallosConsecutivos, 3) else 1L
+        val backoff = min(INTERVALO_MAX_ERROR_MINUTOS, INTERVALO_CLASE_MINUTOS * factor)
+        fun interval(baseline: Long) = Duration.ofMinutes(maxOf(baseline, backoff))
 
         // 3. Noche (22:00 a 07:00)
         if (hora >= 22 || hora < 7) {
-            return Duration.ofMinutes(INTERVALO_NOCHE_MINUTOS)
+            return interval(INTERVALO_NOCHE_MINUTOS)
         }
 
         // 4. Domingo
         if (diaSemana == DayOfWeek.SUNDAY) {
-            return Duration.ofMinutes(INTERVALO_DOMINGO_MINUTOS)
+            return interval(INTERVALO_DOMINGO_MINUTOS)
         }
 
         // 5. Fuera de las 16 semanas académicas regulares según AcademicCalendar
         val esSemanaActiva = contexto.esSemanaActivaOverride ?: run {
             val fechaRef = Date.from(fechaLima.toInstant())
-            val infoSemana = AcademicCalendar.calcularSemana(contexto.periodoAcademico, fechaRef)
+            val infoSemana = AcademicCalendar.calcularSemana(contexto.periodoAcademico.orEmpty(), fechaRef)
             infoSemana.configurada && infoSemana.fueraDeCiclo == false && infoSemana.semana != null && infoSemana.semana in 1..AcademicCalendar.TOTAL_SEMANAS_REGULARES
         }
 
         if (!esSemanaActiva) {
-            return Duration.ofMinutes(INTERVALO_FUERA_CICLO_MINUTOS)
+            return interval(INTERVALO_FUERA_CICLO_MINUTOS)
         }
 
         // 6. Horario diurno regular de clases (07:00 a 22:00, Lunes a Sábado en semana académica activa)
-        return Duration.ofMinutes(INTERVALO_CLASE_MINUTOS)
+        return interval(INTERVALO_CLASE_MINUTOS)
     }
 }
