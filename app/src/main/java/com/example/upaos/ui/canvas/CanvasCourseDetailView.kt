@@ -57,7 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.CanvasApiClient
+import com.example.upaos.data.canvas.*
 import com.example.upaos.data.model.CanvasAssignment
 import com.example.upaos.data.model.CanvasCourse
 import com.example.upaos.data.model.CanvasDiscussionTopic
@@ -98,7 +98,6 @@ fun CanvasCourseDetailView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val courseAccentColor = remember(course.name) { cursoColor(course.name) }
 
     // Interceptar botón atrás físico para volver a la lista de cursos
@@ -612,32 +611,13 @@ private fun CourseModulesSection(
     token: String,
     onItemClick: (CanvasModuleItem, String) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var modules by remember { mutableStateOf<List<CanvasModule>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    val resource = canvasResourceViewModel("modules:${courseId}", token, emptyList<CanvasModule>()) { modules(courseId) }
+    val resourceState by resource.state.collectAsState()
+    val modules = resourceState.data
+    val isLoading = resourceState.loading
+    val isRefreshing = resourceState.refreshing
+    fun loadModules(isManual: Boolean = false) = resource.refresh(isManual)
 
-    fun loadModules(isManual: Boolean = false) {
-        scope.launch {
-            if (isManual) isRefreshing = true else isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseModules("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    modules = resp.body()!!
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-            finally {
-                isLoading = false
-                isRefreshing = false
-            }
-        }
-    }
-
-    LaunchedEffect(courseId) {
-        loadModules()
-    }
 
     RefreshableContent(
         isRefreshing = isRefreshing,
@@ -692,32 +672,13 @@ private fun CourseGradesSection(
     token: String,
     onOpenAssignment: (CanvasTodoItem) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var assignments by remember { mutableStateOf<List<CanvasAssignment>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    val resource = canvasResourceViewModel("assignments:${course.id}", token, emptyList<CanvasAssignment>()) { assignments(course.id) }
+    val resourceState by resource.state.collectAsState()
+    val assignments = resourceState.data
+    val isLoading = resourceState.loading
+    val isRefreshing = resourceState.refreshing
+    fun loadGrades(isManual: Boolean = false) = resource.refresh(isManual)
 
-    fun loadGrades(isManual: Boolean = false) {
-        scope.launch {
-            if (isManual) isRefreshing = true else isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseAssignments("Bearer $token", course.id)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    assignments = resp.body()!!
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-            finally {
-                isLoading = false
-                isRefreshing = false
-            }
-        }
-    }
-
-    LaunchedEffect(course.id) {
-        loadGrades()
-    }
 
     RefreshableContent(
         isRefreshing = isRefreshing,
@@ -960,26 +921,12 @@ private fun CoursePeopleSection(
     token: String,
     onNavigateToGroups: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var users by remember { mutableStateOf<List<CanvasUser>>(emptyList()) }
-    var isLoadingUsers by remember { mutableStateOf(true) }
+    val resource = canvasResourceViewModel("users:${courseId}", token, emptyList<CanvasUser>()) { people(courseId) }
+    val resourceState by resource.state.collectAsState()
+    val users = resourceState.data
+    val isLoadingUsers = resourceState.loading
     var searchQuery by remember { mutableStateOf("") }
 
-    LaunchedEffect(courseId) {
-        scope.launch {
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseUsers("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    users = resp.body()!!
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-            finally {
-                isLoadingUsers = false
-            }
-        }
-    }
 
     val filteredUsers = remember(users, searchQuery) {
         if (searchQuery.isBlank()) users
@@ -1112,25 +1059,11 @@ private fun CourseGroupsSection(
     token: String,
     onOpenGroup: (CanvasGroup) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var groups by remember { mutableStateOf<List<CanvasGroup>>(emptyList()) }
-    var isLoadingGroups by remember { mutableStateOf(true) }
+    val resource = canvasResourceViewModel("groups:${courseId}", token, emptyList<CanvasGroup>()) { courseGroups(courseId) }
+    val resourceState by resource.state.collectAsState()
+    val groups = resourceState.data
+    val isLoadingGroups = resourceState.loading
 
-    LaunchedEffect(courseId) {
-        scope.launch {
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseGroups("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    groups = resp.body()!!
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-            finally {
-                isLoadingGroups = false
-            }
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -1253,32 +1186,13 @@ private fun CourseDiscussionsSection(
     token: String,
     onOpenTopic: (CanvasDiscussionTopic) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var topics by remember { mutableStateOf<List<CanvasDiscussionTopic>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    val resource = canvasResourceViewModel("topics:${courseId}", token, emptyList<CanvasDiscussionTopic>()) { discussions(courseId) }
+    val resourceState by resource.state.collectAsState()
+    val topics = resourceState.data
+    val isLoading = resourceState.loading
+    val isRefreshing = resourceState.refreshing
+    fun loadDiscussions(isManual: Boolean = false) = resource.refresh(isManual)
 
-    fun loadDiscussions(isManual: Boolean = false) {
-        scope.launch {
-            if (isManual) isRefreshing = true else isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseDiscussions("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    topics = resp.body()!!
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-            finally {
-                isLoading = false
-                isRefreshing = false
-            }
-        }
-    }
-
-    LaunchedEffect(courseId) {
-        loadDiscussions()
-    }
 
     RefreshableContent(
         isRefreshing = isRefreshing,
@@ -1384,33 +1298,14 @@ private fun CourseFilesSection(
     token: String,
     onOpenFile: (CanvasFileDetail) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var files by remember { mutableStateOf<List<CanvasFileDetail>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    val resource = canvasResourceViewModel("files:${courseId}", token, emptyList<CanvasFileDetail>()) { files(courseId) }
+    val resourceState by resource.state.collectAsState()
+    val files = resourceState.data
+    val isLoading = resourceState.loading
+    val isRefreshing = resourceState.refreshing
     var searchQuery by remember { mutableStateOf("") }
+    fun loadFiles(isManual: Boolean = false) = resource.refresh(isManual)
 
-    fun loadFiles(isManual: Boolean = false) {
-        scope.launch {
-            if (isManual) isRefreshing = true else isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseFiles("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    files = resp.body()!!
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-            finally {
-                isLoading = false
-                isRefreshing = false
-            }
-        }
-    }
-
-    LaunchedEffect(courseId) {
-        loadFiles()
-    }
 
     RefreshableContent(
         isRefreshing = isRefreshing,
@@ -1531,23 +1426,11 @@ private fun CourseSyllabusSection(
     token: String,
     onOpenAssignment: (CanvasTodoItem) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var courseDetail by remember { mutableStateOf<CanvasCourse?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    val resource = canvasResourceViewModel("courseDetail:${course.id}", token, null as CanvasCourse?) { syllabus(course.id) }
+    val resourceState by resource.state.collectAsState()
+    val courseDetail = resourceState.data
+    val isLoading = resourceState.loading
 
-    LaunchedEffect(course.id) {
-        try {
-            val resp = withContext(Dispatchers.IO) {
-                CanvasApiClient.apiService.getCourseDetail("Bearer $token", course.id)
-            }
-            if (resp.isSuccessful && resp.body() != null) {
-                courseDetail = resp.body()!!
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-        finally {
-            isLoading = false
-        }
-    }
 
     LazyColumn(
         modifier = Modifier
@@ -1754,98 +1637,6 @@ private fun downloadCanvasFileInDetail(context: Context, url: String, fileName: 
 // 8. SECCIÓN DE ZOOM PARA EL CURSO
 // -------------------------------------------------------------
 
-object CourseZoomPreferences {
-    private const val PREFS_NAME = "course_zoom_preferences"
-
-    fun getCustomZoomMeeting(context: Context, courseId: Long): CourseZoomMeeting? {
-        val prefs = context.getSharedPreferences("${PREFS_NAME}_${com.example.upaos.data.local.TokenManager(context).getSavedUser() ?: "anonymous"}", Context.MODE_PRIVATE)
-        // Migrate the old course preference on first use, preserving saved meeting links.
-        if (!prefs.contains("zoom_url_$courseId")) {
-            val legacy = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            if (legacy.contains("zoom_url_$courseId")) {
-                val editor = prefs.edit()
-                val oldEditor = legacy.edit()
-                listOf("zoom_url", "zoom_title", "zoom_id", "zoom_pwd").forEach { prefix ->
-                    val key = "${prefix}_$courseId"
-                    legacy.getString(key, null)?.let { editor.putString(key, it) }
-                    oldEditor.remove(key)
-                }
-                if (editor.commit()) oldEditor.commit()
-            }
-        }
-        val url = prefs.getString("zoom_url_$courseId", null) ?: return null
-        val title = prefs.getString("zoom_title_$courseId", "Clase Virtual Zoom") ?: "Clase Virtual Zoom"
-        val meetingId = prefs.getString("zoom_id_$courseId", null)
-        val passcode = prefs.getString("zoom_pwd_$courseId", null)
-        return CourseZoomMeeting(
-            courseId = courseId,
-            title = title,
-            joinUrl = url,
-            meetingId = meetingId,
-            passcode = passcode,
-            origin = "CUSTOM"
-        )
-    }
-
-    fun saveCustomZoomMeeting(context: Context, meeting: CourseZoomMeeting) {
-        val prefs = context.getSharedPreferences("${PREFS_NAME}_${com.example.upaos.data.local.TokenManager(context).getSavedUser() ?: "anonymous"}", Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString("zoom_url_${meeting.courseId}", meeting.joinUrl)
-            .putString("zoom_title_${meeting.courseId}", meeting.title)
-            .putString("zoom_id_${meeting.courseId}", meeting.meetingId)
-            .putString("zoom_pwd_${meeting.courseId}", meeting.passcode)
-            .apply()
-    }
-
-    fun deleteCustomZoomMeeting(context: Context, courseId: Long) {
-        val prefs = context.getSharedPreferences("${PREFS_NAME}_${com.example.upaos.data.local.TokenManager(context).getSavedUser() ?: "anonymous"}", Context.MODE_PRIVATE)
-        prefs.edit()
-            .remove("zoom_url_$courseId")
-            .remove("zoom_title_$courseId")
-            .remove("zoom_id_$courseId")
-            .remove("zoom_pwd_$courseId")
-            .apply()
-    }
-}
-
-object ZoomUrlExtractor {
-    private val ZOOM_URL_REGEX = """https?://[a-zA-Z0-9.\-_]*zoom\.us/[jsw]/[0-9]+[^\s<>"']*""".toRegex(RegexOption.IGNORE_CASE)
-    private val MEETING_ID_REGEX = """(?:ID(?:\s*de\s*reuni[oó]n)?|Meeting\s*ID)\s*[:：]?\s*([0-9\s]{9,14})""".toRegex(RegexOption.IGNORE_CASE)
-    private val PASSCODE_REGEX = """(?:C[oó]digo(?:\s*de\s*acceso)?|Contrase[ñn]a|Clave|Passcode|Password)\s*[:：]?\s*([A-Za-z0-9@#*_\-]+)""".toRegex(RegexOption.IGNORE_CASE)
-
-    fun extractZoomMeetingsFromText(
-        text: String,
-        courseId: Long,
-        defaultTitle: String,
-        origin: String
-    ): List<CourseZoomMeeting> {
-        val matches = ZOOM_URL_REGEX.findAll(text).map { it.value.trim() }.distinct().toList()
-        if (matches.isEmpty()) return emptyList()
-
-        val foundMeetingId = MEETING_ID_REGEX.find(text)?.groupValues?.getOrNull(1)?.replace(" ", "")?.trim()
-        val foundPasscode = PASSCODE_REGEX.find(text)?.groupValues?.getOrNull(1)?.trim()
-
-        return matches.map { url ->
-            val idFromUrl = if (foundMeetingId.isNullOrBlank()) {
-                """zoom\.us/[jsw]/([0-9]+)""".toRegex().find(url)?.groupValues?.getOrNull(1)
-            } else foundMeetingId
-
-            val pwdFromUrl = if (foundPasscode.isNullOrBlank()) {
-                """[?&]pwd=([^&#]+)""".toRegex().find(url)?.groupValues?.getOrNull(1)
-            } else foundPasscode
-
-            CourseZoomMeeting(
-                courseId = courseId,
-                title = defaultTitle,
-                joinUrl = url,
-                meetingId = idFromUrl,
-                passcode = pwdFromUrl,
-                origin = origin
-            )
-        }
-    }
-}
-
 private fun launchZoomMeetingIntent(context: Context, url: String) {
     try {
         val cleanUrl = if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("zoomus://")) {
@@ -1876,123 +1667,20 @@ fun CourseZoomSection(
     onOpenUrl: (String, String) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    var zoomMeetings by remember { mutableStateOf<List<CourseZoomMeeting>>(emptyList()) }
-    var canvasLtiTabUrl by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    val repository = rememberCanvasRepository(token)
+    val zoomRepository = remember(repository, course.id) {
+        DefaultCanvasZoomRepository(context.applicationContext, repository, course, repository::requireSession)
+    }
+    val tokens = remember(context) { com.example.upaos.data.local.TokenManager(context.applicationContext) }
+    val zoomVm: CanvasZoomViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        key = canvasViewModelKey("zoom:" + course.id, tokens.getSavedUser().orEmpty(), tokens.getSessionId(), token),
+        factory = canvasViewModelFactory { CanvasZoomViewModel(zoomRepository) })
+    val zoomState by zoomVm.state.collectAsState()
+    val zoomMeetings = zoomState.data.meetings
+    val canvasLtiTabUrl = zoomState.data.ltiUrl
+    val isLoading = zoomState.loading
     var showDialog by remember { mutableStateOf(false) }
-
-    fun refreshMeetings() {
-        isLoading = true
-        scope.launch {
-            val foundMeetings = mutableListOf<CourseZoomMeeting>()
-            val custom = CourseZoomPreferences.getCustomZoomMeeting(context, course.id)
-            if (custom != null) {
-                foundMeetings.add(custom)
-            }
-
-            try {
-                // 1. Consultar pestañas de Canvas
-                val tabsResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseTabs("Bearer $token", course.id)
-                }
-                if (tabsResp.isSuccessful && tabsResp.body() != null) {
-                    val zoomTab = tabsResp.body()!!.firstOrNull {
-                        it.label?.contains("zoom", ignoreCase = true) == true ||
-                        it.id.contains("zoom", ignoreCase = true)
-                    }
-                    if (zoomTab != null) {
-                        val full = zoomTab.fullUrl ?: if (!zoomTab.htmlUrl.isNullOrBlank()) {
-                            if (zoomTab.htmlUrl.startsWith("http")) zoomTab.htmlUrl
-                            else "https://upao.instructure.com${zoomTab.htmlUrl}"
-                        } else null
-                        canvasLtiTabUrl = full
-                    }
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-
-            try {
-                // 2. Escanear módulos de Canvas
-                val modResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseModules("Bearer $token", course.id)
-                }
-                if (modResp.isSuccessful && modResp.body() != null) {
-                    modResp.body()!!.forEach { mod ->
-                        mod.items?.forEach { item ->
-                            val titleMatches = item.title?.contains("zoom", ignoreCase = true) == true
-                            val urlMatches = item.url?.contains("zoom.us", ignoreCase = true) == true ||
-                                            item.htmlUrl?.contains("zoom.us", ignoreCase = true) == true
-                            val targetUrl = item.url ?: item.htmlUrl
-                            if ((titleMatches || urlMatches) && !targetUrl.isNullOrBlank()) {
-                                val extracted = ZoomUrlExtractor.extractZoomMeetingsFromText(
-                                    targetUrl, course.id, item.title ?: "Enlace Zoom en ${mod.name}", "MODULE"
-                                )
-                                if (extracted.isNotEmpty()) {
-                                    foundMeetings.addAll(extracted)
-                                } else if (targetUrl.contains("zoom", ignoreCase = true)) {
-                                    foundMeetings.add(
-                                        CourseZoomMeeting(
-                                            courseId = course.id,
-                                            title = item.title ?: "Enlace Zoom (${mod.name})",
-                                            joinUrl = targetUrl,
-                                            origin = "MODULE"
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-
-            try {
-                // 3. Escanear discusiones y anuncios
-                val discResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.pagedApiService.getCourseDiscussions("Bearer $token", course.id)
-                }
-                if (discResp.isSuccessful && discResp.body() != null) {
-                    discResp.body()!!.forEach { topic ->
-                        val textToScan = "${topic.title.orEmpty()} \n ${topic.message.orEmpty()}"
-                        if (textToScan.contains("zoom", ignoreCase = true)) {
-                            val extracted = ZoomUrlExtractor.extractZoomMeetingsFromText(
-                                textToScan, course.id, topic.title ?: "Aviso con Zoom", "ANNOUNCEMENT"
-                            )
-                            foundMeetings.addAll(extracted)
-                        }
-                    }
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-
-            try {
-                // 4. Escanear syllabus si tiene enlace de Zoom
-                if (!course.syllabusBody.isNullOrBlank() && course.syllabusBody.contains("zoom", ignoreCase = true)) {
-                    val extracted = ZoomUrlExtractor.extractZoomMeetingsFromText(
-                        course.syllabusBody, course.id, "Zoom en Sílabo", "SYLLABUS"
-                    )
-                    foundMeetings.addAll(extracted)
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
-
-            // Deduplicar por URL
-            val uniqueMeetings = mutableListOf<CourseZoomMeeting>()
-            val seenUrls = mutableSetOf<String>()
-            foundMeetings.forEach { meeting ->
-                val normUrl = meeting.joinUrl.trim().lowercase()
-                if (normUrl !in seenUrls) {
-                    seenUrls.add(normUrl)
-                    uniqueMeetings.add(meeting)
-                }
-            }
-
-            zoomMeetings = uniqueMeetings
-            isLoading = false
-        }
-    }
-
-    LaunchedEffect(course.id) {
-        refreshMeetings()
-    }
+    fun refreshMeetings() = zoomVm.refresh()
 
     val zoomPrimaryColor = Color(0xFF2D8CFF)
 
@@ -2215,7 +1903,7 @@ fun CourseZoomSection(
     }
 
     if (showDialog) {
-        val currentMeeting = CourseZoomPreferences.getCustomZoomMeeting(context, course.id)
+        val currentMeeting = zoomState.data.custom
             ?: zoomMeetings.firstOrNull()
 
         ZoomConfigDialog(
@@ -2223,13 +1911,13 @@ fun CourseZoomSection(
             initialMeeting = currentMeeting,
             onDismiss = { showDialog = false },
             onSave = { meeting ->
-                CourseZoomPreferences.saveCustomZoomMeeting(context, meeting)
+                zoomVm.save(meeting)
                 showDialog = false
                 refreshMeetings()
                 Toast.makeText(context, "Enlace de Zoom guardado", Toast.LENGTH_SHORT).show()
             },
             onDelete = {
-                CourseZoomPreferences.deleteCustomZoomMeeting(context, course.id)
+                zoomVm.delete()
                 showDialog = false
                 refreshMeetings()
                 Toast.makeText(context, "Enlace personalizado eliminado", Toast.LENGTH_SHORT).show()
