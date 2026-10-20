@@ -8,6 +8,26 @@ import androidx.biometric.BiometricPrompt
 
 object BiometricHelper {
 
+    enum class Availability(val message: String) {
+        AVAILABLE("Usa biometría o la credencial del dispositivo."),
+        NOT_CONFIGURED("No hay una credencial de desbloqueo configurada."),
+        TEMPORARILY_UNAVAILABLE("La autenticación no está disponible temporalmente. Reintenta o usa tu credencial."),
+        LOCKED_OUT("La biometría está bloqueada temporalmente. Usa la credencial del dispositivo o reautentícate en UPAO."),
+        UNAVAILABLE("La autenticación no está disponible. Puedes reautenticarte manualmente en UPAO.")
+    }
+
+    fun availability(context: Context): Availability {
+        val authenticators = if (Build.VERSION.SDK_INT >= 30)
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        else BiometricManager.Authenticators.BIOMETRIC_WEAK
+        return when (BiometricManager.from(context).canAuthenticate(authenticators)) {
+            BiometricManager.BIOMETRIC_SUCCESS -> Availability.AVAILABLE
+            BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> Availability.NOT_CONFIGURED
+            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> Availability.TEMPORARILY_UNAVAILABLE
+            else -> Availability.UNAVAILABLE
+        }
+    }
+
     /**
      * Verifica si el dispositivo cuenta con hardware y credenciales configuradas
      * (biometría fuerte o PIN/patrón/contraseña de pantalla).

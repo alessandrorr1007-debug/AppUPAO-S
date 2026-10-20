@@ -66,6 +66,36 @@ class MainActivity : FragmentActivity() {
     private var ultimaVezEnSegundoPlano: Long? = null
     private var yaAutenticadoEnEstaSesion by mutableStateOf(false)
     private var isAppLocked by mutableStateOf(false)
+    private var lockMessage by mutableStateOf(BiometricHelper.Availability.AVAILABLE.message)
+    private var showUpaoRecovery by mutableStateOf(false)
+    private var promptInProgress = false
+    private val credentialLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        promptInProgress = false
+        applyUnlockEvent(if (result.resultCode == android.app.Activity.RESULT_OK)
+            com.example.upaos.data.local.UnlockEvent.DeviceAuthenticated else com.example.upaos.data.local.UnlockEvent.Failed)
+    }
+
+    private fun applyUnlockEvent(event: com.example.upaos.data.local.UnlockEvent) {
+        isAppLocked = com.example.upaos.data.local.remainsLocked(event)
+        if (!isAppLocked) {
+            yaAutenticadoEnEstaSesion = true
+            ultimaVezEnSegundoPlano = null
+            showUpaoRecovery = false
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun unlockWithDeviceCredential() {
+        val keyguard = getSystemService(android.app.KeyguardManager::class.java)
+        val intent = keyguard?.createConfirmDeviceCredentialIntent("Desbloquear UPAO S", "Confirma la credencial del dispositivo")
+        if (intent == null) {
+            applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.Unavailable)
+            lockMessage = BiometricHelper.Availability.NOT_CONFIGURED.message
+            return
+        }
+        promptInProgress = true
+        credentialLauncher.launch(intent)
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -110,29 +140,38 @@ class MainActivity : FragmentActivity() {
             isAppLocked = false
             return
         }
-        if (!BiometricHelper.puedeAutenticar(this)) {
-            // Si el dispositivo no tiene hardware/credenciales configuradas, no bloquear indefinidamente
-            isAppLocked = false
+        if (promptInProgress || showUpaoRecovery) return
+        val availability = BiometricHelper.availability(this)
+        if (availability != BiometricHelper.Availability.AVAILABLE) {
+            applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.Unavailable)
+            lockMessage = availability.message
             return
         }
         val executor = ContextCompat.getMainExecutor(this)
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
-                isAppLocked = false
-                yaAutenticadoEnEstaSesion = true
-                ultimaVezEnSegundoPlano = null
+                promptInProgress = false
+                applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.DeviceAuthenticated)
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 super.onAuthenticationError(errorCode, errString)
-                // En caso de cancelación o error, la pantalla AppLockScreen permanece visible
+                promptInProgress = false
+                applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.Failed)
+                lockMessage = if (errorCode == BiometricPrompt.ERROR_LOCKOUT || errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT)
+                    BiometricHelper.Availability.LOCKED_OUT.message else BiometricHelper.Availability.UNAVAILABLE.message
             }
         })
         try {
+            promptInProgress = true
             prompt.authenticate(BiometricHelper.crearPromptInfo())
-        } catch (_: Exception) {
-            // Manejo de fallos imprevistos sin crashear
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) {
+            promptInProgress = false
+            applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.Failed)
+            lockMessage = BiometricHelper.Availability.UNAVAILABLE.message
+            android.util.Log.w("AppLock", "No se pudo iniciar la autenticación local")
         }
     }
 
@@ -205,7 +244,17 @@ class MainActivity : FragmentActivity() {
 
             UPAOSTheme(darkTheme = darkTheme) {
                 if (isAppLocked) {
-                    AppLockScreen(onUnlockClick = { lanzarBiometricPrompt() })
+                    val recoveryUser = tokenManager.getSavedUser()
+                    if (showUpaoRecovery) {
+                        androidx.activity.compose.BackHandler { showUpaoRecovery = false }
+                        LoginScreen(recoveryUser = recoveryUser, useSavedPassword = false, onLoginSuccess = { authenticatedUser ->
+                            applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.UpaoAuthenticated(tokenManager.getSavedUser(), authenticatedUser))
+                        })
+                    } else {
+                        AppLockScreen(onUnlockClick = { lanzarBiometricPrompt() }, message = lockMessage,
+                            onDeviceCredential = { unlockWithDeviceCredential() },
+                            onUpaoRecovery = { showUpaoRecovery = true })
+                    }
                 } else {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
