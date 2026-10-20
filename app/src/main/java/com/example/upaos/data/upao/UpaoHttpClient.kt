@@ -61,9 +61,14 @@ object UpaoHttpClient {
         return sessions.getOrPut(normalized) { AccountSession(normalized) }
     }
 
+    /** Restore only from a persisted login; old repositories cannot resurrect a logged-out account. */
+    @Synchronized fun restoreAccount(user: String) {
+        if (selectedUser == null) selectAccount(user)
+    }
+
     @Synchronized fun forAccount(user: String): AccountSession {
         val normalized = user.trim()
-        if (selectedUser == null) return selectAccount(normalized)
+        if (selectedUser == null) throw kotlinx.coroutines.CancellationException("No hay sesión activa")
         if (selectedUser != normalized) throw kotlinx.coroutines.CancellationException("La cuenta cambió")
         return sessions.getOrPut(normalized) { AccountSession(normalized) }
     }

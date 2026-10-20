@@ -31,6 +31,19 @@ class AsistenciaWorker(
     private val gradesCache = GradesCache(context)
     private val upaoRepository = UpaoRepository(context)
     private val gson = Gson()
+    private var owner: ReminderOwner? = null
+
+    private fun requireCurrentSession() {
+        if (owner?.matches(tokenManager.getSavedUser(), tokenManager.getSessionId()) != true)
+            throw CancellationException("La sesión del trabajo cambió")
+    }
+
+    private fun publishForCurrentSession(publish: () -> Unit) {
+        val expected = owner ?: throw CancellationException("No hay sesión del trabajo")
+        if (!com.example.upaos.data.local.SessionCleanup.publishIfCurrent(expected,
+                { tokenManager.getSavedUser() to tokenManager.getSessionId() }, publish))
+            throw CancellationException("La sesión del trabajo cambió")
+    }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         if (com.example.upaos.data.refresh.ForegroundRefreshGate.active) return@withContext Result.success()
@@ -52,6 +65,9 @@ class AsistenciaWorker(
                 Log.d(TAG, "Sin credenciales guardadas, omitiendo chequeo.")
                 return@withContext Result.success()
             }
+            val sessionId = tokenManager.getSessionId() ?: return@withContext Result.success()
+            owner = ReminderOwner(user, sessionId)
+            requireCurrentSession()
             notificationPrefs = NotificationPreferences(applicationContext, user)
 
             try {
@@ -76,16 +92,21 @@ class AsistenciaWorker(
                 }
 
                 // Reprograma la siguiente verificación periódica con éxito (resetea fallos a 0)
-                notificationPrefs.syncConsecutiveFailures = 0
-                SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = 0)
+                publishForCurrentSession {
+                    notificationPrefs.syncConsecutiveFailures = 0
+                    SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = 0)
+                }
                 Log.d(TAG, "Sincronización en segundo plano completada con éxito. Próximo ciclo adaptativo programado.")
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Log.e(TAG, "Error en AsistenciaWorker/BackgroundSync: ${e.localizedMessage}", e)
-                val fallos = notificationPrefs.syncConsecutiveFailures + 1
-                notificationPrefs.syncConsecutiveFailures = fallos
-                SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
+                requireCurrentSession()
+                Log.e(TAG, "No se pudo completar la sincronización")
+                publishForCurrentSession {
+                    val fallos = notificationPrefs.syncConsecutiveFailures + 1
+                    notificationPrefs.syncConsecutiveFailures = fallos
+                    SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
+                }
                 Result.retry()
             }
         } finally {
@@ -96,7 +117,7 @@ class AsistenciaWorker(
     private suspend fun revisarAsistencia(user: String) {
         try {
             val res = upaoRepository.getAsistencia()
-            if (tokenManager.getSavedUser() != user) return
+            requireCurrentSession()
 
             if (res.success && res.asistencia.isNotEmpty()) {
                 val nuevaAsistencia = res.asistencia
@@ -111,7 +132,7 @@ class AsistenciaWorker(
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e(TAG, "Error revisando asistencia: ${e.localizedMessage}")
+            Log.e(TAG, "No se pudo revisar la asistencia")
         }
     }
 
@@ -137,7 +158,7 @@ class AsistenciaWorker(
             }
 
             val grades = upaoRepository.buscarNotas(periodo, carrera)
-            if (tokenManager.getSavedUser() != user) return
+            requireCurrentSession()
 
             if (grades.cursos.isNotEmpty()) {
                 compararYNotificarNotas(grades.cursos, user)
@@ -149,11 +170,11 @@ class AsistenciaWorker(
                     ResumenNotasWidget.updateAll(applicationContext)
                 } catch (_: Exception) {}
 
-                Log.d(TAG, "Revisión de notas completada (${grades.cursos.size} cursos analizados).")
+                Log.d(TAG, "Revisión de notas completada")
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e(TAG, "Error revisando notas en segundo plano: ${e.localizedMessage}")
+            Log.e(TAG, "No se pudieron revisar las notas")
         }
     }
 
@@ -208,19 +229,19 @@ class AsistenciaWorker(
                         val plural = if (dif == 1) "una nueva falta" else "$dif faltas nuevas"
                         val titulo = "⚠️ Falta registrada"
                         val mensaje = "$nombreConTipo: Te registraron $plural (Total: $faltasActuales). Asistencia: ${formatearPct(pctActual)}%."
-                        NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        publishForCurrentSession { NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje) }
                         upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     } else if (asistenciasActuales != null && asistPrevias != null && asistenciasActuales > asistPrevias) {
                         val dif = asistenciasActuales - asistPrevias
                         val plural = if (dif == 1) "asistencia" else "$dif asistencias"
                         val titulo = "✅ Asistencia registrada"
                         val mensaje = "$nombreConTipo: ¡Se registró tu $plural! Llevas $asistenciasActuales asistencias."
-                        NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        publishForCurrentSession { NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje) }
                         upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     } else if (previo.porcentaje != null && pctActual > previo.porcentaje && faltasActuales == faltasPrevias) {
                         val titulo = "✅ Asistencia registrada"
                         val mensaje = "$nombreConTipo: ¡Se registró una nueva asistencia! (${formatearPct(pctActual)}%)."
-                        NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje)
+                        publishForCurrentSession { NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje) }
                         upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     }
                 }
@@ -355,7 +376,7 @@ class AsistenciaWorker(
                                     "$cursoNombre: Tu nota en $detalleSub cambió de $notaPreviaSub a $notaActualSub."
                                 }
 
-                                NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                                publishForCurrentSession { NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje) }
                                 upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = etiqueta)
                             }
                         }
@@ -384,7 +405,7 @@ class AsistenciaWorker(
                                 } else {
                                     "$cursoNombre: Tu nota en $compNombre cambió de $notaPreviaComp a $notaActualComp."
                                 }
-                                NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                                publishForCurrentSession { NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje) }
                                 upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = compNombre)
                             }
                         }
@@ -394,7 +415,7 @@ class AsistenciaWorker(
                     if (!notaActualStr.isNullOrBlank() && notaActualStr != previo.notaActual && !algunSubNotificado && !algunCompNotificado) {
                         val titulo = "🎓 Nota promedio actualizada"
                         val mensaje = "$cursoNombre: Tu promedio actual ahora es $notaActualStr."
-                        NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje)
+                        publishForCurrentSession { NotificationService.mostrarNotificacionNotas(applicationContext, titulo, mensaje) }
                         upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = "Promedio Actual")
                     }
                 }

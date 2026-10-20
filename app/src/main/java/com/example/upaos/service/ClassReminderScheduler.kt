@@ -87,6 +87,8 @@ object ClassReminderScheduler {
 
         val idsGuardados = mutableSetOf<String>()
 
+        synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+        if (!owner.matches(tokens.getSavedUser(), tokens.getSessionId())) return@withLock
         for (rec in todos) {
             if (!owner.matches(tokens.getSavedUser(), tokens.getSessionId())) break
             val triggerMillis = rec.triggerInstant.toInstant().toEpochMilli()
@@ -129,21 +131,36 @@ object ClassReminderScheduler {
                     }
                 }
                 idsGuardados.add(owner.identity(rec.idAlarma))
-                Log.d(TAG, "Recordatorio programado: ${rec.mensaje} para ${rec.triggerInstant} (ID=${rec.idAlarma})")
+                Log.d(TAG, "Recordatorio programado")
             } catch (e: Exception) {
-                Log.e(TAG, "Error programando recordatorio ${rec.idAlarma}: ${e.message}")
+                if (e is CancellationException) throw e
+                Log.e(TAG, "No se pudo programar un recordatorio")
             }
         }
 
         guardarIds(context, idsGuardados)
+        }
     }
 
     /**
      * Cancela todas las alarmas de recordatorio de clases pendientes en el sistema.
      */
-    fun cancelarTodos(context: Context) {
+    fun cancelAccount(context: Context, user: String) = synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+        val owned = obtenerIds(context).filter { value ->
+            // Legacy alarms had no owner and may only belong to the formerly active account.
+            !value.startsWith("upaos://class/") || android.net.Uri.parse(value).pathSegments.firstOrNull() == user
+        }.toSet()
+        cancelIds(context, owned)
+        guardarIds(context, obtenerIds(context) - owned)
+    }
+
+    fun cancelarTodos(context: Context) = synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+        cancelIds(context, obtenerIds(context))
+        guardarIds(context, emptySet())
+    }
+
+    private fun cancelIds(context: Context, ids: Set<String>) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val ids = obtenerIds(context)
         for (idStr in ids) {
             val uri = if (idStr.startsWith("upaos://class/")) android.net.Uri.parse(idStr) else null
             val id = (uri?.lastPathSegment ?: idStr).toIntOrNull() ?: continue
@@ -159,7 +176,6 @@ object ClassReminderScheduler {
                 pendingIntent.cancel()
             }
         }
-        guardarIds(context, emptySet())
         Log.d(TAG, "Se cancelaron todas las alarmas de recordatorio de clases.")
     }
 

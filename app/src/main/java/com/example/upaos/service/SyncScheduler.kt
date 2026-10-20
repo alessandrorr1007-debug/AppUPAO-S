@@ -23,6 +23,12 @@ object SyncScheduler {
      * intervalo adaptativo con SyncIntervalPolicy.
      */
     fun start(context: Context) {
+        synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+            if (!com.example.upaos.data.local.TokenManager(context).shouldKeepLoggedIn()) {
+                cancel(context)
+                return
+            }
+
         val prefs = NotificationPreferences(context)
         if (!prefs.checkAsistenciaEnabled && !prefs.checkNotasEnabled) {
             Log.d(TAG, "Notificaciones de notas y asistencia desactivadas. No se programa alarma.")
@@ -32,6 +38,8 @@ object SyncScheduler {
 
         scheduleNext(context)
         scheduleWorkManagerBackup(context)
+    
+        }
     }
 
     /**
@@ -48,6 +56,12 @@ object SyncScheduler {
         esErrorFatal: Boolean = false,
         minutosForzados: Long? = null
     ) {
+        synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+            if (!com.example.upaos.data.local.TokenManager(context).shouldKeepLoggedIn()) {
+                cancel(context)
+                return
+            }
+
         val prefs = NotificationPreferences(context)
         if (!prefs.checkAsistenciaEnabled && !prefs.checkNotasEnabled) {
             cancel(context)
@@ -74,6 +88,8 @@ object SyncScheduler {
         }
 
         scheduleNextAlarm(context, minutes)
+    
+        }
     }
 
     private fun scheduleNextAlarm(context: Context, minutes: Long) {
@@ -199,6 +215,12 @@ object SyncScheduler {
     }
 
     fun runNow(context: Context) {
+        synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+            if (!com.example.upaos.data.local.TokenManager(context).shouldKeepLoggedIn()) {
+                cancel(context)
+                return
+            }
+
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -209,5 +231,7 @@ object SyncScheduler {
 
         WorkManager.getInstance(context).enqueueUniqueWork("upao_immediate_sync", ExistingWorkPolicy.KEEP, request)
         Log.d(TAG, "Sincronización inmediata solicitada.")
+    
+        }
     }
 }

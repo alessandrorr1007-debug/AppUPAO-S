@@ -270,6 +270,10 @@ class MainActivity : FragmentActivity() {
                         if (nPrefs.checkAsistenciaEnabled || nPrefs.checkNotasEnabled) {
                             com.example.upaos.service.SyncScheduler.start(context)
                         }
+                        tokenManager.getSavedUser()?.let { user ->
+                            val hours = com.example.upaos.service.AgendaReminderWorker.preferences(context, user).getInt("hours", 0)
+                            if (hours > 0) com.example.upaos.service.AgendaReminderWorker.configure(context, user, hours)
+                        }
                         navController.navigate("home/$activeToken") {
                             popUpTo(0) { inclusive = true }
                         }

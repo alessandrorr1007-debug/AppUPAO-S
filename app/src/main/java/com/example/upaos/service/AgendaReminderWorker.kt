@@ -22,11 +22,13 @@ class AgendaReminderWorker(context: Context, parameters: WorkerParameters) : Cor
     override suspend fun doWork(): Result {
         val user = inputData.getString("user") ?: return Result.success()
         val tokens = TokenManager(applicationContext)
+        val sessionId = tokens.getSessionId()
+        if (tokens.getSavedUser() != user || sessionId == null) return Result.success()
         val prefs = preferences(applicationContext, user)
         val hours = prefs.getInt("hours", 0)
         if (hours == 0 || tokens.getCanvasToken(user).isNullOrBlank()) return Result.success()
         val repository = AgendaRepository(applicationContext)
-        try { if (!com.example.upaos.data.refresh.ForegroundRefreshGate.active) repository.refresh(user) } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        try { if (!com.example.upaos.data.refresh.ForegroundRefreshGate.active) repository.refresh(user) } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("AgendaReminder", "No se pudo actualizar la agenda") }
         val (items, updated) = repository.cached(user)
         // Avoid false alerts from submissions that could not be checked recently.
         val now = System.currentTimeMillis()
@@ -41,6 +43,7 @@ class AgendaReminderWorker(context: Context, parameters: WorkerParameters) : Cor
             val due = item.dueMillis ?: continue
             val key = "sent_${item.key}_$due"
             if (item.submitted || item.graded || due <= now || due - now > TimeUnit.HOURS.toMillis(hours.toLong()) || prefs.getBoolean(key, false)) continue
+            if (tokens.getSavedUser() != user || tokens.getSessionId() != sessionId) break
             if (tokens.getCanvasToken(user).isNullOrBlank() || prefs.getInt("hours", 0) == 0) break
             val id = ("$user:${item.key}".hashCode() and Int.MAX_VALUE)
             val intent = Intent(applicationContext, MainActivity::class.java).putExtra("agenda_user", user)
@@ -48,11 +51,14 @@ class AgendaReminderWorker(context: Context, parameters: WorkerParameters) : Cor
             val pending = PendingIntent.getActivity(applicationContext, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val format = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault())
             val text = "${item.course} · vence ${format.format(java.util.Date(due))}. Última actualización: ${format.format(java.util.Date(updated))}."
+            synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+            if (tokens.getSavedUser() != user || tokens.getSessionId() != sessionId) return Result.success()
             manager.notify("agenda_$user", id, NotificationCompat.Builder(applicationContext, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(item.title)
                 .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(pending).setAutoCancel(true).build())
             prefs.edit().putBoolean(key, true).apply()
+            }
         }
         return Result.success()
     }

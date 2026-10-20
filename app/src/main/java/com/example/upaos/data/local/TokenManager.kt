@@ -36,6 +36,10 @@ class TokenManager(
                 } else null
                 encryptedLegacy?.let { migrarDesdeLegacySiAplica(it) }
                 migrarDesdeLegacySiAplica(fallbackPrefs)
+                val restoredUser = store.get("user_id")
+                if (!restoredUser.isNullOrBlank() && !store.get("auth_token").isNullOrBlank()) {
+                    com.example.upaos.data.upao.UpaoHttpClient.restoreAccount(restoredUser)
+                }
             } catch (_: Exception) {
                 Log.w(TAG, "No se pudo migrar la sesión; se conserva el almacén anterior")
             }
@@ -221,10 +225,8 @@ class TokenManager(
 
     /** Cierra la sesión actual sin borrar las cuentas guardadas del dispositivo. */
     fun clearSession() {
-        store.remove("auth_token")
-        store.remove("user_id")
-        store.remove("user_pass")
-        store.putBoolean("keep_logged_in", false)
+        store.putAll(mapOf("keep_logged_in" to "false"),
+            setOf("auth_token", "user_id", "user_pass", "session_id"))
     }
 
     fun clearAll() {

@@ -94,7 +94,7 @@ fun HomeScreen(
     val usuario = tokenManager.getSavedUser()
 
     fun cerrarSesion() {
-        tokenManager.clearSession()
+        com.example.upaos.data.local.AccountPrivacy.logout(context)
         onLogout()
     }
 

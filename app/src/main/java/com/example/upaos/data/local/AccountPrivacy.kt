@@ -25,13 +25,31 @@ object AccountPrivacy {
         ResumenNotasWidget.updateAll(context)
     }
 
+    fun logout(context: Context) {
+        val tokens = TokenManager(context)
+        val user = tokens.getSavedUser() ?: return
+        SessionCleanup.logout(
+            invalidateSession = { tokens.clearSession() },
+            cancelCookies = { com.example.upaos.data.upao.UpaoHttpClient.clearAccount(user) },
+            cancelReminders = { com.example.upaos.service.ClassReminderScheduler.cancelAccount(context, user) },
+            cancelSync = { SyncScheduler.cancel(context) },
+            cancelAgenda = { AgendaReminderWorker.cancel(context, user) }
+        )
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.activeNotifications.filter { it.tag == "agenda_$user" || (android.os.Build.VERSION.SDK_INT >= 26 && it.notification.channelId in setOf(
+            com.example.upaos.service.NotificationService.CHANNEL_NOTAS,
+            com.example.upaos.service.NotificationService.CHANNEL_ASISTENCIA,
+            com.example.upaos.service.NotificationService.CHANNEL_RECORDATORIO_CLASES
+        )) }.forEach { manager.cancel(it.tag, it.id) }
+    }
+
     suspend fun removeLocal(context: Context, user: String) {
         val tokens = TokenManager(context)
         val current = tokens.getSavedUser() == user
         AgendaReminderWorker.configure(context, user, 0)
         tokens.removeCanvasToken(user)
         tokens.removeCuenta(user)
-        if (current) { tokens.clearSession(); SyncScheduler.cancel(context) }
+        if (current) logout(context)
         clearCache(context, user)
         context.getSharedPreferences("local_notificaciones_$user", Context.MODE_PRIVATE).edit().clear().commit()
         com.example.upaos.data.upao.UpaoHttpClient.clearAccount(user)
