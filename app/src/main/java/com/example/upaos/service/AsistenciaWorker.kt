@@ -1,6 +1,7 @@
 package com.example.upaos.service
 
 import android.content.Context
+import com.example.upaos.data.refresh.*
 import android.util.Log
 import androidx.work.*
 import com.example.upaos.data.local.ApiCache
@@ -78,18 +79,13 @@ class AsistenciaWorker(
                     val fallos = notificationPrefs.syncConsecutiveFailures + 1
                     notificationPrefs.syncConsecutiveFailures = fallos
                     SyncScheduler.scheduleNext(applicationContext, fallosConsecutivos = fallos)
-                    return@withContext Result.success()
+                    return@withContext Result.retry()
                 }
 
-                // 1. Revisión de Asistencia
-                if (checkAsistencia) {
-                    revisarAsistencia(user)
-                }
-
-                // 2. Revisión de Notas
-                if (checkNotas) {
-                    revisarNotas(user)
-                }
+                val checks = mutableListOf<suspend () -> RefreshResult<Unit>>()
+                if (checkAsistencia) checks += { revisarAsistencia(user) }
+                if (checkNotas) checks += { revisarNotas(user) }
+                runSyncChecks(checks).requireComplete()
 
                 // Reprograma la siguiente verificación periódica con éxito (resetea fallos a 0)
                 publishForCurrentSession {
@@ -114,68 +110,38 @@ class AsistenciaWorker(
         }
     }
 
-    private suspend fun revisarAsistencia(user: String) {
-        try {
-            val res = upaoRepository.getAsistencia()
+    private suspend fun revisarAsistencia(user: String): RefreshResult<Unit> = captureRefresh("Asistencia") {
+        publishComplete(upaoRepository.getAsistenciaResult()) { response ->
             requireCurrentSession()
-
-            if (res.success && res.asistencia.isNotEmpty()) {
-                val nuevaAsistencia = res.asistencia
-                compararYNotificarAsistencia(nuevaAsistencia, user)
-
-                val cacheKey = "asistencia_$user"
-                apiCache.guardar(cacheKey, gson.toJson(res))
-                notificationPrefs.ultimaRevisionAsistencia = System.currentTimeMillis()
-                Log.d(TAG, "Revisión de asistencia completada.")
-            } else {
-                Log.w(TAG, "Respuesta vacía o no exitosa al consultar asistencia directa")
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.e(TAG, "No se pudo revisar la asistencia")
+            compararYNotificarAsistencia(response.asistencia, user)
+            apiCache.guardar("asistencia_$user", gson.toJson(response))
+            notificationPrefs.ultimaRevisionAsistencia = System.currentTimeMillis()
         }
+        Unit
     }
 
-    private suspend fun revisarNotas(user: String) {
-        try {
-            var periodo = "202610"
-            var carrera = "UG"
-
-            val cachedJson = gradesCache.cargar("notas_$user")
-            if (!cachedJson.isNullOrBlank()) {
-                try {
-                    val cachedGrades = gson.fromJson(cachedJson, GradesResponse::class.java)
-                    if (!cachedGrades?.periodo.isNullOrBlank()) periodo = cachedGrades.periodo!!
-                    if (!cachedGrades?.carrera.isNullOrBlank()) carrera = cachedGrades.carrera!!
-                } catch (_: Exception) {}
-            } else {
-                try {
-                    val periodos = upaoRepository.getPeriodos()
-                    periodo = Calculators.detectarPeriodoActual(periodos.periodos, periodos.periodoActual)
-                    val carreras = upaoRepository.getCarreras(periodo)
-                    carrera = carreras.carreras.firstOrNull() ?: "UG"
-                } catch (_: Exception) {}
-            }
-
-            val grades = upaoRepository.buscarNotas(periodo, carrera)
-            requireCurrentSession()
-
-            if (grades.cursos.isNotEmpty()) {
-                compararYNotificarNotas(grades.cursos, user)
-
-                gradesCache.guardar("notas_$user", gson.toJson(grades))
-                notificationPrefs.ultimaRevisionNotas = System.currentTimeMillis()
-
-                try {
-                    ResumenNotasWidget.updateAll(applicationContext)
-                } catch (_: Exception) {}
-
-                Log.d(TAG, "Revisión de notas completada")
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.e(TAG, "No se pudieron revisar las notas")
+    private suspend fun revisarNotas(user: String): RefreshResult<Unit> = captureRefresh("Notas") {
+        val cachedJson = gradesCache.cargar("notas_$user")
+        val cached = if (cachedJson.isNullOrBlank()) null else try {
+            gson.fromJson(cachedJson, GradesResponse::class.java)
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { Log.w(TAG, "Metadatos de notas en caché inválidos; se consultará el periodo"); null }
+        val periodo = cached?.periodo?.takeIf { it.isNotBlank() } ?: run {
+            val periods = upaoRepository.getPeriodos()
+            Calculators.detectarPeriodoActual(periods.periodos, periods.periodoActual)
         }
+        val carrera = cached?.carrera?.takeIf { it.isNotBlank() }
+            ?: upaoRepository.getCarreras(periodo).carreras.firstOrNull() ?: "UG"
+        publishComplete(upaoRepository.buscarNotasResult(periodo, carrera)) { grades ->
+            requireCurrentSession()
+            compararYNotificarNotas(grades.cursos, user)
+            gradesCache.guardar("notas_$user", gson.toJson(grades))
+            notificationPrefs.ultimaRevisionNotas = System.currentTimeMillis()
+        }
+        try { ResumenNotasWidget.updateAll(applicationContext) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { Log.w(TAG, "No se pudo actualizar el widget de notas") }
+        Unit
     }
 
     private suspend fun compararYNotificarAsistencia(nuevosCursos: List<AsistenciaCurso>, user: String) {

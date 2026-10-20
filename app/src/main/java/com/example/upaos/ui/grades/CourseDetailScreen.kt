@@ -60,6 +60,7 @@ fun CourseDetailScreen(
                 } else {
                     errorMessage = "Sin desglose disponible"
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) {
                 isLoading = false
                 errorMessage = "En espera de desgloses"

@@ -182,13 +182,9 @@ object BannerParsers {
         }
 
         val totalCount = rootObj.get("totalCount")?.asIntOrNull()
+        if (rootObj.get("data")?.isJsonArray != true) throw UpaoUnexpectedFormatException("Falta el arreglo de asistencia")
         val dataArr = rootObj.getAsJsonArray("data")
-        val items = mutableListOf<JsonObject>()
-        if (dataArr != null) {
-            for (elem in dataArr) {
-                if (elem.isJsonObject) items.add(elem.asJsonObject)
-            }
-        }
+        val items = dataArr.map { if (it.isJsonObject) it.asJsonObject else throw UpaoUnexpectedFormatException("Registro de asistencia inválido") }
 
         return totalCount to items
     }

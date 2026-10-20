@@ -1,6 +1,7 @@
 package com.example.upaos.data.upao
 
 import android.content.Context
+import com.example.upaos.data.refresh.*
 import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.local.TokenManager
@@ -53,8 +54,16 @@ class UpaoRepository(private val context: Context) {
         detail
     }
 
-    suspend fun buscarNotas(term: String, carrera: String): GradesResponse = withContext(Dispatchers.IO) {
+    suspend fun buscarNotas(term: String, carrera: String): GradesResponse = buscarNotasResult(term, carrera).requireComplete()
+
+    suspend fun buscarNotasResult(term: String, carrera: String): RefreshResult<GradesResponse> = captureRefresh("Notas de Banner") {
+        buscarNotasCompletas(term, carrera)
+    }
+
+    private suspend fun buscarNotasCompletas(term: String, carrera: String): GradesResponse = withContext(Dispatchers.IO) {
         val courses = bannerApi.getCourses(term, carrera)
+
+        val projections = java.util.concurrent.ConcurrentHashMap<String, String>()
 
         // Enriquecer cada curso con su detalle y nota actual progresiva en paralelo (limitado por Semaphore en BannerApi)
         val cursosEnriquecidos = coroutineScope {
@@ -62,16 +71,12 @@ class UpaoRepository(private val context: Context) {
                 async {
                     val crn = curso.crn ?: curso.courseReferenceNumber
                     if (crn.isNullOrBlank()) {
-                        curso
+                        throw UpaoUnexpectedFormatException("Falta el identificador de un curso")
                     } else {
                         try {
                             val detail = bannerApi.getCourseGradeDetail(term, crn)
                             val notaActual = Calculators.calcularNotaActual(detail.detalles)
-
-                            // Guardar proyección en GradesCache para compatibilidad
-                            if (detail.notaProyectada != null && currentUser.isNotBlank()) {
-                                gradesCache.guardar("proyectada_${currentUser}_$crn", detail.notaProyectada.toString())
-                            }
+                            detail.notaProyectada?.let { projections[crn] = it.toString() }
 
                             val compEp1 = detail.detalles.firstOrNull { c ->
                                 val t = listOfNotNull(c.nombre, c.description, c.codigo).joinToString(" ").uppercase(Locale.ROOT)
@@ -90,14 +95,17 @@ class UpaoRepository(private val context: Context) {
                                 ep1 = gradeSectionEp1,
                                 ep2 = gradeSectionEp2
                             )
-                        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
-                            curso
-                        }
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: Exception) { throw IncompleteRefreshException(listOf(RefreshIssue("Desglose de ${curso.displayNombre}", e))) }
                     }
                 }
             }.awaitAll()
         }
 
+        // Keep the legacy projection cache, but only after every course detail completed.
+        for ((crn, value) in projections) {
+            if (currentUser.isNotBlank()) gradesCache.guardar("proyectada_${currentUser}_$crn", value)
+        }
         val notasValidas = cursosEnriquecidos.mapNotNull { Calculators.toDouble(it.notaActual) }
         val promedioGeneral: Double? = if (notasValidas.isNotEmpty()) {
             val prom = notasValidas.average()
@@ -175,7 +183,11 @@ class UpaoRepository(private val context: Context) {
     }
 
     suspend fun getAsistencia(): AsistenciaResponse = withContext(Dispatchers.IO) {
-        bannerApi.getAsistencia()
+        getAsistenciaResult().requireComplete()
+    }
+
+    suspend fun getAsistenciaResult(): RefreshResult<AsistenciaResponse> = captureRefresh("Asistencia de Banner") {
+        bannerApi.getAsistencia().also { if (!it.success) throw UpaoUnexpectedFormatException("Consulta de asistencia no exitosa") }
     }
 
     suspend fun getNotificaciones(usuario: String): NotificacionesResponse = withContext(Dispatchers.IO) {

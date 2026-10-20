@@ -1,6 +1,7 @@
 package com.example.upaos.data.upao
 
 import android.content.Context
+import com.example.upaos.data.refresh.*
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.AsistenciaComponente
 import com.example.upaos.data.model.AsistenciaCurso
@@ -210,26 +211,7 @@ class BannerApi(private val context: Context) {
         }
 
         val jsonStr = response.use { it.body?.string().orEmpty() }
-        val parsed = try {
-            JsonParser.parseString(jsonStr)
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
-            throw UpaoUnexpectedFormatException("Error de sintaxis en JSON de cursos", cause = e)
-        }
-
-        val dataArray = when {
-            parsed.isJsonArray -> parsed.asJsonArray
-            parsed.isJsonObject && parsed.asJsonObject.has("data") && parsed.asJsonObject.get("data").isJsonArray ->
-                parsed.asJsonObject.getAsJsonArray("data")
-            parsed.isJsonObject && parsed.asJsonObject.has("items") && parsed.asJsonObject.get("items").isJsonArray ->
-                parsed.asJsonObject.getAsJsonArray("items")
-            else -> throw UpaoUnexpectedFormatException("El JSON de cursos no contiene el arreglo esperado ('data' o raíz)")
-        }
-
-        val result = mutableListOf<JsonObject>()
-        dataArray.forEach { elem ->
-            if (elem.isJsonObject) result.add(elem.asJsonObject)
-        }
-        return result
+        return parseBannerObjects(jsonStr)
     }
 
     private fun parseCourseGrade(obj: JsonObject): CourseGrade {
@@ -257,85 +239,31 @@ class BannerApi(private val context: Context) {
         )
     }
 
-    suspend fun getCourseGradeDetail(term: String, crn: String): DetalleCursoResponse = withContext(Dispatchers.IO) {
-        val url = "$componentBaseUrl/componentDetails?selectedTerm=$term&selectedCrn=$crn&filterText=&pageOffset=0&pageMaxSize=20&sortColumn=name&sortDirection=asc"
-        val response = executeWithAuth {
-            Request.Builder()
-                .url(url)
-                .header("Accept", "application/json, text/javascript, */*; q=0.01")
-                .header("X-Requested-With", "XMLHttpRequest")
-                .header("Referer", "$componentBaseUrl/componentDetails")
-                .get()
-                .build()
-        }
+    suspend fun getCourseGradeDetail(term: String, crn: String): DetalleCursoResponse =
+        getCourseGradeDetailResult(term, crn).requireComplete()
 
-        val jsonStr = response.use { it.body?.string().orEmpty() }
-        val componentes = mutableListOf<ComponenteDetalle>()
-
-        try {
-            val parsed = JsonParser.parseString(jsonStr)
-            val items = when {
-                parsed.isJsonArray -> parsed.asJsonArray
-                parsed.isJsonObject && parsed.asJsonObject.has("data") -> parsed.asJsonObject.getAsJsonArray("data")
-                else -> null
-            }
-
-            items?.forEach { elem ->
-                if (elem.isJsonObject) {
-                    val comp = parseComponente(elem.asJsonObject)
-                    val compWithSubs = if (comp.hasSubComponents && comp.componentId != null) {
-                        val subs = getSubcomponentDetails(term, crn, comp.componentId)
-                        comp.copy(subcomponentes = subs)
-                    } else {
-                        comp
-                    }
-                    componentes.add(compWithSubs)
+    suspend fun getCourseGradeDetailResult(term: String, crn: String): RefreshResult<DetalleCursoResponse> = withContext(Dispatchers.IO) {
+        loadBannerGradeDetail(
+            loadComponents = {
+                val url = "$componentBaseUrl/componentDetails?selectedTerm=$term&selectedCrn=$crn&filterText=&pageOffset=0&pageMaxSize=20&sortColumn=name&sortDirection=asc"
+                val response = executeWithAuth {
+                    Request.Builder().url(url).header("Accept", "application/json")
+                        .header("X-Requested-With", "XMLHttpRequest").header("Referer", "$componentBaseUrl/componentDetails").build()
                 }
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
-
-        val (proyectada, pendientes) = Calculators.calcularNotaProyectada(componentes)
-
-        DetalleCursoResponse(
-            success = true,
-            totalCount = componentes.size,
-            detalles = componentes,
-            notaProyectada = proyectada,
-            pesosPendientes = pendientes
+                parseBannerObjects(response.use { it.body?.string().orEmpty() })
+            },
+            parseComponent = ::parseComponente,
+            loadSubcomponents = { getSubcomponentDetails(term, crn, it) }
         )
     }
 
     suspend fun getSubcomponentDetails(term: String, crn: String, componentId: Long): List<SubComponente> = withContext(Dispatchers.IO) {
         val url = "$componentBaseUrl/subComponentDetails?selectedTerm=$term&selectedCrn=$crn&selectedComponentId=$componentId&filterText=&pageOffset=0&pageMaxSize=20&sortColumn=name&sortDirection=asc"
         val response = executeWithAuth {
-            Request.Builder()
-                .url(url)
-                .header("Accept", "application/json, text/javascript, */*; q=0.01")
-                .header("X-Requested-With", "XMLHttpRequest")
-                .header("Referer", "$componentBaseUrl/componentDetails")
-                .get()
-                .build()
+            Request.Builder().url(url).header("Accept", "application/json")
+                .header("X-Requested-With", "XMLHttpRequest").header("Referer", "$componentBaseUrl/componentDetails").build()
         }
-
-        val jsonStr = response.use { it.body?.string().orEmpty() }
-        val subcomponentes = mutableListOf<SubComponente>()
-
-        try {
-            val parsed = JsonParser.parseString(jsonStr)
-            val items = when {
-                parsed.isJsonArray -> parsed.asJsonArray
-                parsed.isJsonObject && parsed.asJsonObject.has("data") -> parsed.asJsonObject.getAsJsonArray("data")
-                else -> null
-            }
-
-            items?.forEach { elem ->
-                if (elem.isJsonObject) {
-                    subcomponentes.add(parseSubComponente(elem.asJsonObject))
-                }
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
-
-        subcomponentes
+        parseBannerObjects(response.use { it.body?.string().orEmpty() }).map(::parseSubComponente)
     }
 
     private fun parseComponente(obj: JsonObject): ComponenteDetalle {
@@ -968,9 +896,12 @@ class BannerApi(private val context: Context) {
                 if (rawTotal != null) totalCount = rawTotal
                 allItems.addAll(pageItems)
 
-                if (pageItems.isEmpty()) break
+                if (pageItems.isEmpty()) {
+                    if (totalCount != null && allItems.size < totalCount) throw UpaoUnexpectedFormatException("Asistencia incompleta")
+                    break
+                }
                 if (totalCount != null && allItems.size >= totalCount) break
-                if (offset > 10000) break
+                if (offset > 10000) throw UpaoUnexpectedFormatException("Asistencia excede el límite de páginas")
                 offset += pageMaxSize
             }
 
@@ -983,16 +914,10 @@ class BannerApi(private val context: Context) {
                 totalSecciones = totalSecciones,
                 asistencia = cursos
             )
-        } catch (e: UpaoException) {
-            throw e
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
-            AsistenciaResponse(
-                success = false,
-                totalCount = 0,
-                totalSecciones = 0,
-                asistencia = emptyList()
-            )
-        }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: UpaoException) { throw e }
+        catch (e: java.io.IOException) { throw UpaoNetworkException(cause = e) }
+        catch (e: Exception) { throw UpaoUnexpectedFormatException("No se pudo interpretar asistencia", cause = e) }
     }
 
     private fun agruparAsistencia(rawItems: List<JsonObject>): List<AsistenciaCurso> {
