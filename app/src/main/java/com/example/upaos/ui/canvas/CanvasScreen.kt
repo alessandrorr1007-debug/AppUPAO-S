@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import com.example.upaos.data.canvas.*
+import com.example.upaos.data.refresh.*
 import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.webkit.WebView
@@ -125,7 +127,7 @@ private fun parseIsoDate(iso: String?): Long? {
             timeZone = TimeZone.getTimeZone("UTC")
         }
         fmt.parse(base)?.time
-    } catch (_: Exception) {
+    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
         null
     }
 }
@@ -204,7 +206,7 @@ private fun downloadCanvasFile(context: Context, url: String, fileName: String) 
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         dm.enqueue(request)
         Toast.makeText(context, "Iniciando descarga: $fileName", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
+    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
         Toast.makeText(context, "Error al iniciar descarga: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
@@ -291,6 +293,19 @@ fun CanvasContent(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isTokenExpired by remember { mutableStateOf(false) }
     var isOffline by remember { mutableStateOf(false) }
+    var completeTodoSnapshot by remember(userKey) { mutableStateOf(false) }
+    var refreshFailures by remember(userKey) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    fun markRefreshFailure(source: String, message: String) {
+        refreshFailures = refreshFailures + (source to message)
+        isOffline = true
+        errorMessage = refreshFailures.values.joinToString(" · ")
+    }
+    fun clearRefreshFailure(source: String) {
+        refreshFailures = refreshFailures - source
+        isOffline = !completeTodoSnapshot || refreshFailures.isNotEmpty()
+        errorMessage = refreshFailures.values.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+    }
+
 
     fun sortItems(list: List<CanvasTodoItem>): List<CanvasTodoItem> {
         val now = System.currentTimeMillis()
@@ -308,136 +323,59 @@ fun CanvasContent(
         )
     }
 
+    var todoFetchInProgress by remember(userKey) { mutableStateOf(false) }
     fun fetchTodo(isManual: Boolean = false) {
         val currentToken = savedCanvasToken ?: return
+        if (todoFetchInProgress) return
+        todoFetchInProgress = true
         scope.launch {
             if (isManual) isRefreshingTodo = true else if (items.isEmpty()) isLoadingTodo = true
-            errorMessage = null
             try {
-                // 1. Obtener cursos activos para poder escanear las tareas de todos ellos
-                val activeCourses = withContext(Dispatchers.IO) {
-                    if (courses.isNotEmpty()) {
-                        courses
-                    } else {
-                        val cResp = CanvasApiClient.apiService.getActiveCourses("Bearer $currentToken")
-                        if (cResp.isSuccessful && cResp.body() != null) {
-                            val clean = cResp.body()!!.filter { it.name.isNotBlank() }
-                            courses = clean
-                            cache.guardarCursos(userKey, clean)
-                            clean
-                        } else emptyList()
+                val previous = items
+                val result = withContext(Dispatchers.IO) {
+                    refreshCanvasTodos(previous, cache.cargarPendientesPorCurso(userKey),
+                        loadCourses = { CanvasApiClient.apiService.getActiveCourses("Bearer $currentToken").singlePageBody() },
+                        loadGlobal = { CanvasApiClient.apiService.getTodoList("Bearer $currentToken").singlePageBody() },
+                        loadAssignments = { CanvasApiClient.apiService.getCourseAssignments("Bearer $currentToken", it.id).singlePageBody() })
+                }
+                if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
+                    throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
+                val snapshot = when (result) {
+                    is RefreshResult.Complete -> result.value
+                    is RefreshResult.Partial -> result.value
+                    is RefreshResult.Error -> null
+                }
+                if (snapshot != null) {
+                    cache.guardarCursos(userKey, snapshot.courses)
+                    for (id in snapshot.completedCourses) cache.guardarPendientesCurso(userKey, id, snapshot.byCourse.getValue(id))
+                    items = sortItems(snapshot.items)
+                    courses = snapshot.courses
+                }
+                when (result) {
+                    is RefreshResult.Complete -> {
+                        publishComplete(result) { cache.guardar(userKey, sortItems(it.items)) }
+                        lastUpdatedMillis = System.currentTimeMillis()
+                        completeTodoSnapshot = true
+                        clearRefreshFailure("todo")
+                        clearRefreshFailure("courses")
+                    }
+                    is RefreshResult.Partial -> {
+                        isOffline = true
+                        markRefreshFailure("todo", "Actualización incompleta: " + result.issues.joinToString { it.source } + ". Se conservan los últimos datos válidos.")
+                        if (result.issues.any { it.cause.isCanvasUnauthorized() }) isTokenExpired = true
+                    }
+                    is RefreshResult.Error -> {
+                        isOffline = true
+                        markRefreshFailure("todo", "No se pudo actualizar " + result.issue.source + ". Se conservan los datos guardados.")
+                        if (result.issue.cause.isCanvasUnauthorized()) isTokenExpired = true
                     }
                 }
-
-                // 2. Ejecutar en paralelo:
-                // a) getTodoList (to-do global de Canvas)
-                // b) getCourseAssignments para CADA curso activo (detección exhaustiva)
-                val todoDeferred = async(Dispatchers.IO) {
-                    try {
-                        CanvasApiClient.apiService.getTodoList("Bearer $currentToken")
-                    } catch (_: Exception) { null }
-                }
-
-                val courseAssignmentsDeferred = activeCourses.map { course ->
-                    async(Dispatchers.IO) {
-                        try {
-                            val aResp = CanvasApiClient.apiService.getCourseAssignments("Bearer $currentToken", course.id)
-                            if (aResp.isSuccessful && aResp.body() != null) {
-                                Pair(course, aResp.body()!!)
-                            } else Pair(course, emptyList())
-                        } catch (_: Exception) {
-                            Pair(course, emptyList())
-                        }
-                    }
-                }
-
-                val todoResp = todoDeferred.await()
-                if (todoResp?.code() == 401) {
-                    isTokenExpired = true
-                    return@launch
-                }
-
-                val rawTodoList = todoResp?.body().orEmpty()
-                val combinedList = mutableListOf<CanvasTodoItem>()
-                val processedAssignmentIds = mutableSetOf<Long>()
-
-                // 3. Procesar items de To-Do nativo (filtrando las ya entregadas)
-                for (todo in rawTodoList) {
-                    val assignment = todo.assignment
-                    val yaEntregada = assignment?.isSubmitted == true ||
-                            assignment?.hasSubmittedSubmissions == true
-                    if (!yaEntregada) {
-                        combinedList.add(todo)
-                        if (assignment != null) {
-                            processedAssignmentIds.add(assignment.id)
-                        }
-                    }
-                }
-
-                // 4. Escaneo exhaustivo en cada curso activo (detecta tareas omitidas por To-Do, ej. Automatización)
-                val courseResults = courseAssignmentsDeferred.awaitAll()
-                for ((course, assignments) in courseResults) {
-                    for (assignment in assignments) {
-                        if (assignment.id in processedAssignmentIds) continue
-
-                        // Comprobar si requiere entrega online (subir archivos, texto, url, etc.)
-                        val subTypes = assignment.submissionTypes.orEmpty()
-                        val requiereEntregaOnline = subTypes.any { type ->
-                            type in listOf(
-                                "online_upload",
-                                "online_text_entry",
-                                "online_url",
-                                "media_recording",
-                                "student_annotation",
-                                "online_quiz"
-                            )
-                        }
-
-                        // Comprobar si el alumno YA la entregó
-                        val yaEntregada = assignment.isSubmitted ||
-                                assignment.hasSubmittedSubmissions == true
-
-                        // Comprobar si está bloqueada en el pasado lejano
-                        val lockMillis = parseIsoDate(assignment.lockAt)
-                        val bloqueadaAntigua = assignment.lockedForUser == true &&
-                                lockMillis != null &&
-                                lockMillis < System.currentTimeMillis() - 7 * 24 * 3600 * 1000L
-
-                        if (requiereEntregaOnline && !yaEntregada && !bloqueadaAntigua) {
-                            val nuevoPendiente = CanvasTodoItem(
-                                type = "submitting",
-                                contextType = "Course",
-                                courseId = course.id,
-                                contextName = course.name,
-                                contextShortName = course.courseCode,
-                                htmlUrl = assignment.htmlUrl,
-                                assignment = assignment,
-                                quiz = if (assignment.isQuizAssignment == true || assignment.quizId != null) {
-                                    CanvasQuiz(
-                                        id = assignment.quizId ?: assignment.id,
-                                        title = assignment.name,
-                                        dueAt = assignment.effectiveDueAt,
-                                        lockAt = assignment.lockAt,
-                                        unlockAt = assignment.unlockAt,
-                                        pointsPossible = assignment.pointsPossible,
-                                        htmlUrl = assignment.htmlUrl
-                                    )
-                                } else null
-                            )
-                            combinedList.add(nuevoPendiente)
-                            processedAssignmentIds.add(assignment.id)
-                        }
-                    }
-                }
-
-                val sorted = sortItems(combinedList)
-                items = sorted
-                isOffline = false
-                lastUpdatedMillis = System.currentTimeMillis()
-                cache.guardar(userKey, sorted)
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
                 isOffline = true
+                markRefreshFailure("todo", "No se pudo completar la actualización de pendientes. Se conservan los datos guardados.")
             } finally {
+                todoFetchInProgress = false
                 isLoadingTodo = false
                 isRefreshingTodo = false
             }
@@ -449,21 +387,17 @@ fun CanvasContent(
         scope.launch {
             if (isManual) isRefreshingConvs = true else if (conversations.isEmpty()) isLoadingConvs = true
             try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getConversations("Bearer $currentToken")
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    conversations = resp.body()!!
-                    cache.guardarConversaciones(userKey, conversations)
-                } else if (resp.code() == 401) {
-                    isTokenExpired = true
-                }
-            } catch (e: Exception) {
-                isOffline = true
-            } finally {
-                isLoadingConvs = false
-                isRefreshingConvs = false
-            }
+                val data = withContext(Dispatchers.IO) { CanvasApiClient.apiService.getConversations("Bearer $currentToken").singlePageBody() }
+                if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
+                    throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
+                cache.guardarConversaciones(userKey, data)
+                conversations = data
+                clearRefreshFailure("conversations")
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                markRefreshFailure("conversations", "No se pudo actualizar la bandeja de entrada. Se conservan los datos guardados.")
+                if (e.isCanvasUnauthorized()) isTokenExpired = true
+            } finally { isLoadingConvs = false; isRefreshingConvs = false }
         }
     }
 
@@ -472,21 +406,17 @@ fun CanvasContent(
         scope.launch {
             if (isManual) isRefreshingNotifs = true else if (notifications.isEmpty()) isLoadingNotifs = true
             try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getActivityStream("Bearer $currentToken")
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    notifications = resp.body()!!
-                    cache.guardarNotificaciones(userKey, notifications)
-                } else if (resp.code() == 401) {
-                    isTokenExpired = true
-                }
-            } catch (e: Exception) {
-                isOffline = true
-            } finally {
-                isLoadingNotifs = false
-                isRefreshingNotifs = false
-            }
+                val data = withContext(Dispatchers.IO) { CanvasApiClient.apiService.getActivityStream("Bearer $currentToken").singlePageBody() }
+                if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
+                    throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
+                cache.guardarNotificaciones(userKey, data)
+                notifications = data
+                clearRefreshFailure("notifications")
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                markRefreshFailure("notifications", "No se pudieron actualizar las notificaciones. Se conservan los datos guardados.")
+                if (e.isCanvasUnauthorized()) isTokenExpired = true
+            } finally { isLoadingNotifs = false; isRefreshingNotifs = false }
         }
     }
 
@@ -495,21 +425,17 @@ fun CanvasContent(
         scope.launch {
             if (isManual) isRefreshingGroups = true else if (groups.isEmpty()) isLoadingGroups = true
             try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getSelfGroups("Bearer $currentToken")
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    groups = resp.body()!!
-                    cache.guardarGrupos(userKey, groups)
-                } else if (resp.code() == 401) {
-                    isTokenExpired = true
-                }
-            } catch (e: Exception) {
-                isOffline = true
-            } finally {
-                isLoadingGroups = false
-                isRefreshingGroups = false
-            }
+                val data = withContext(Dispatchers.IO) { CanvasApiClient.apiService.getSelfGroups("Bearer $currentToken").singlePageBody() }
+                if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
+                    throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
+                cache.guardarGrupos(userKey, data)
+                groups = data
+                clearRefreshFailure("groups")
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                markRefreshFailure("groups", "No se pudieron actualizar los grupos. Se conservan los datos guardados.")
+                if (e.isCanvasUnauthorized()) isTokenExpired = true
+            } finally { isLoadingGroups = false; isRefreshingGroups = false }
         }
     }
 
@@ -518,16 +444,19 @@ fun CanvasContent(
         scope.launch {
             if (isManual) isRefreshingCourses = true else if (courses.isEmpty()) isLoadingCourses = true
             try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getActiveCourses("Bearer $currentToken")
+                val cleanCourses = withContext(Dispatchers.IO) {
+                    CanvasApiClient.apiService.getActiveCourses("Bearer $currentToken").singlePageBody().filter { it.name.isNotBlank() }
                 }
-                if (resp.isSuccessful && resp.body() != null) {
-                    val cleanCourses = resp.body()!!.filter { it.name.isNotBlank() }
-                    courses = cleanCourses
-                    cache.guardarCursos(userKey, cleanCourses)
-                }
-            } catch (_: Exception) {
+                if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
+                    throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
+                cache.guardarCursos(userKey, cleanCourses)
+                courses = cleanCourses
+                clearRefreshFailure("courses")
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
                 isOffline = true
+                markRefreshFailure("courses", "No se pudieron actualizar los cursos. Se conservan los datos guardados.")
+                if (e.isCanvasUnauthorized()) isTokenExpired = true
             } finally {
                 isLoadingCourses = false
                 isRefreshingCourses = false
@@ -540,8 +469,11 @@ fun CanvasContent(
         if (!savedCanvasToken.isNullOrBlank()) {
             // Cargar caché local
             val (cachedTodo, cachedTime) = cache.cargar(userKey)
-            if (cachedTodo.isNotEmpty()) {
-                items = sortItems(cachedTodo)
+            val cachedCourses = cache.cargarCursos(userKey)
+            val cachedByCourse = cache.cargarPendientesPorCurso(userKey)
+            val restoredTodos = restoreCanvasTodos(cachedTodo, cachedByCourse, cachedCourses.map { it.id }.toSet())
+            if (restoredTodos.isNotEmpty() || cachedTime != null) {
+                items = sortItems(restoredTodos)
                 lastUpdatedMillis = cachedTime
                 isOffline = true
             }
@@ -557,7 +489,6 @@ fun CanvasContent(
             if (cachedGroups.isNotEmpty()) {
                 groups = cachedGroups
             }
-            val cachedCourses = cache.cargarCursos(userKey)
             if (cachedCourses.isNotEmpty()) {
                 courses = cachedCourses
             }
@@ -785,6 +716,11 @@ fun CanvasContent(
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                errorMessage?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                }
 
                 // Contenido por Pestaña
                 when (selectedMainTab) {
@@ -1455,7 +1391,7 @@ private suspend fun submitFileToCanvas(
 
         submitResp.isSuccessful
     } catch (e: kotlinx.coroutines.CancellationException) { throw e
-    } catch (e: Exception) {
+    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
         android.util.Log.w("CanvasSubmission", "No se pudo completar la entrega")
         false
     }
@@ -1877,7 +1813,7 @@ fun CanvasGroupDetailSheet(
             if (resp.isSuccessful && resp.body() != null) {
                 members = resp.body()!!
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; android.util.Log.w("Canvas", "No se pudo completar la operación de Canvas") }
         finally {
             isLoadingMembers = false
         }
@@ -2016,7 +1952,7 @@ fun CanvasConversationDetailSheet(
             if (resp.isSuccessful) {
                 detail = resp.body()
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; android.util.Log.w("Canvas", "No se pudo completar la operación de Canvas") }
         isLoading = false
     }
 
@@ -2176,7 +2112,7 @@ fun CanvasFileViewerSheet(
                 if (resp.isSuccessful) {
                     fileDetail = resp.body()
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; android.util.Log.w("Canvas", "No se pudo completar la operación de Canvas") }
             isLoading = false
         } else {
             isLoading = false
@@ -2423,7 +2359,7 @@ fun CanvasSetupView(
                 } else {
                     errorText = "Error al validar token (${resp.code()}): ${resp.message()}"
                 }
-            } catch (e: Exception) {
+            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                 errorText = "Error de conexión: no se pudo contactar a Canvas LMS (${e.localizedMessage ?: "Revisa tu internet"})."
             } finally {
                 isValidating = false
@@ -2502,7 +2438,7 @@ fun CanvasSetupView(
                     try {
                         val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://upao.instructure.com/profile/settings"))
                         context.startActivity(browserIntent)
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; android.util.Log.w("Canvas", "No se pudo completar la operación de Canvas") }
                 },
                 modifier = Modifier.align(Alignment.End)
             ) {

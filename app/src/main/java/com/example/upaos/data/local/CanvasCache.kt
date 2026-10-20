@@ -129,8 +129,33 @@ class CanvasCache(private val context: Context) {
         }
     }
 
+    suspend fun guardarPendientesCurso(user: String, courseId: Long, items: List<CanvasTodoItem>) {
+        if (AccountPrivacy.isDeleting(user) || TokenManager(context).getSavedUser() != user) return
+        context.canvasDataStore.edit { prefs ->
+            prefs[stringPreferencesKey("canvas_course_todo_${user}_${courseId}")] = gson.toJson(items)
+        }
+    }
+
+    suspend fun cargarPendientesPorCurso(user: String): Map<Long, List<CanvasTodoItem>> {
+        val prefix = "canvas_course_todo_${user}_"
+        val result = mutableMapOf<Long, List<CanvasTodoItem>>()
+        val preferences = context.canvasDataStore.data.first()
+        for ((key, value) in preferences.asMap()) {
+            if (!key.name.startsWith(prefix)) continue
+            val id = key.name.removePrefix(prefix).toLongOrNull() ?: continue
+            try {
+                val type = object : TypeToken<List<CanvasTodoItem>>() {}.type
+                val items: List<CanvasTodoItem> = gson.fromJson(value as String, type) ?: emptyList()
+                result[id] = items
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { android.util.Log.w("CanvasCache", "Caché de pendientes de curso inválida") }
+        }
+        return result
+    }
+
     suspend fun limpiar(user: String) {
         context.canvasDataStore.edit { prefs ->
+            prefs.asMap().keys.filter { it.name.startsWith("canvas_course_todo_${user}_") }.forEach { prefs.remove(it) }
             prefs.remove(jsonKey(user))
             prefs.remove(timeKey(user))
             prefs.remove(convKey(user))
