@@ -256,7 +256,8 @@ data class CanvasModule(
     val id: Long,
     val name: String,
     val position: Int? = 0,
-    val items: List<CanvasModuleItem>? = emptyList()
+    val items: List<CanvasModuleItem>? = emptyList(),
+    @SerializedName("items_count") val itemsCount: Int? = null
 )
 
 data class CanvasGroup(

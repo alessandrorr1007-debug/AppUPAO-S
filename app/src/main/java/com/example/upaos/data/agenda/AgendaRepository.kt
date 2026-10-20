@@ -65,7 +65,7 @@ class AgendaRepository(context: Context) {
         val key = "agenda_${user.trim().lowercase()}"
         val items = try {
             cache.cargar(key)?.let { gson.fromJson<List<AgendaItem>>(it, object : TypeToken<List<AgendaItem>>() {}.type) } ?: emptyList()
-        } catch (_: Exception) { emptyList() }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("Agenda", "Caché de agenda inválida"); emptyList() }
         return prioritizeAgenda(items) to cache.actualizado(key)
     }
 
@@ -73,31 +73,15 @@ class AgendaRepository(context: Context) {
         val canvasToken = tokens.getCanvasToken(user)?.takeIf { it.isNotBlank() }
             ?: error("Conecta tu cuenta Canvas desde la pestaña Canvas para cargar tus entregas.")
         val auth = "Bearer $canvasToken"
-        val api = CanvasApiClient.apiService
-        val courses = mutableListOf<CanvasCourse>()
-        var page = 1
-        do {
-            val response = api.getActiveCourses(auth, page = page)
-            check(response.isSuccessful) { if (response.code() == 401) "Revisa tu token de Canvas." else "No se pudo actualizar Canvas (${response.code()})." }
-            courses += response.body() ?: error("Canvas devolvió una respuesta vacía.")
-            val more = response.headers()["Link"]?.contains("rel=\"next\"") == true
-            page++
-        } while (more && page <= 100)
-        check(page <= 100) { "Hay demasiadas páginas de cursos. Intenta de nuevo." }
+        val api = CanvasApiClient.pagedApiService
+        val courses = api.getActiveCourses(auth).body() ?: error("Canvas devolvió una respuesta vacía.")
         val items = mutableListOf<AgendaItem>()
         for (course in courses.distinctBy { it.id }) {
-            page = 1
-            do {
-                val response = api.getCourseAssignments(auth, course.id, page = page)
-                check(response.isSuccessful) { "No se pudo consultar ${course.displayTitle}. Se conservan tus datos guardados." }
-                for (a in response.body() ?: error("Canvas devolvió una respuesta vacía.")) {
-                    items += AgendaItem(a.id, course.id, course.displayTitle, a.name ?: "Entrega", a.dueAt,
-                        a.submission?.isSubmitted == true, a.submission?.workflowState == "graded", a.htmlUrl)
-                }
-                val more = response.headers()["Link"]?.contains("rel=\"next\"") == true
-                page++
-            } while (more && page <= 100)
-            check(page <= 100) { "La lista de entregas está incompleta. Intenta de nuevo." }
+            val assignments = api.getCourseAssignments(auth, course.id).body() ?: error("Canvas devolvió una respuesta vacía.")
+            for (a in assignments) {
+                items += AgendaItem(a.id, course.id, course.displayTitle, a.name ?: "Entrega", a.dueAt,
+                    a.submission?.isSubmitted == true, a.submission?.workflowState == "graded", a.htmlUrl)
+            }
         }
         // Never publish a partial refresh or repopulate an account deleted during the request.
         check(tokens.getCanvasToken(user) == canvasToken) { "La cuenta de Canvas cambió. Actualiza de nuevo." }

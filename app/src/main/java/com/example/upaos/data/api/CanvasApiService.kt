@@ -30,6 +30,14 @@ import retrofit2.http.Url
 
 interface CanvasApiService {
 
+    @GET
+    suspend fun getListPage(@Header("Authorization") authHeader: String, @Url pageUrl: String): Response<List<com.google.gson.JsonObject>>
+
+    @GET("api/v1/courses/{courseId}/modules/{moduleId}/items")
+    suspend fun getModuleItems(@Header("Authorization") authHeader: String,
+        @Path("courseId") courseId: Long, @Path("moduleId") moduleId: Long,
+        @Query("per_page") perPage: Int = 100, @Query("page") page: Int = 1): Response<List<com.example.upaos.data.model.CanvasModuleItem>>
+
     @GET("api/v1/users/self")
     suspend fun getUserSelf(
         @Header("Authorization") authHeader: String
@@ -37,7 +45,8 @@ interface CanvasApiService {
 
     @GET("api/v1/users/self/todo")
     suspend fun getTodoList(
-        @Header("Authorization") authHeader: String
+        @Header("Authorization") authHeader: String,
+        @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasTodoItem>>
 
     @GET("api/v1/courses")
@@ -50,7 +59,8 @@ interface CanvasApiService {
 
     @GET("api/v1/conversations")
     suspend fun getConversations(
-        @Header("Authorization") authHeader: String
+        @Header("Authorization") authHeader: String,
+        @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasConversation>>
 
     @GET("api/v1/conversations/{id}")
@@ -63,7 +73,8 @@ interface CanvasApiService {
     suspend fun getCourseModules(
         @Header("Authorization") authHeader: String,
         @Path("courseId") courseId: Long,
-        @Query("include[]") include: String = "items"
+        @Query("include[]") include: String = "items",
+        @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasModule>>
 
     @GET
@@ -102,7 +113,8 @@ interface CanvasApiService {
     @GET("api/v1/groups/{groupId}/users")
     suspend fun getGroupUsers(
         @Header("Authorization") authHeader: String,
-        @Path("groupId") groupId: Long
+        @Path("groupId") groupId: Long,
+        @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasUser>>
 
     @GET("api/v1/courses/{courseId}/discussion_topics")
@@ -123,7 +135,8 @@ interface CanvasApiService {
     @GET("api/v1/courses/{courseId}/groups")
     suspend fun getCourseGroups(
         @Header("Authorization") authHeader: String,
-        @Path("courseId") courseId: Long
+        @Path("courseId") courseId: Long,
+        @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasGroup>>
 
     @GET("api/v1/courses/{courseId}/files")
@@ -146,7 +159,8 @@ interface CanvasApiService {
     suspend fun getCourseTabs(
         @Header("Authorization") authHeader: String,
         @Path("courseId") courseId: Long,
-        @Query("include[]") include: String = "external"
+        @Query("include[]") include: String = "external",
+        @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasTab>>
 
     @FormUrlEncoded
@@ -192,6 +206,8 @@ object CanvasApiClient {
         .connectTimeout(35, TimeUnit.SECONDS)
         .readTimeout(35, TimeUnit.SECONDS)
         .build()
+
+    val pagedApiService: CanvasApiService by lazy { CanvasPagedApi(apiService) }
 
     val apiService: CanvasApiService by lazy {
         Retrofit.Builder()

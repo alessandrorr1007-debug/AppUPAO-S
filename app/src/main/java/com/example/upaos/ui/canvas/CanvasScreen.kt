@@ -334,9 +334,9 @@ fun CanvasContent(
                 val previous = items
                 val result = withContext(Dispatchers.IO) {
                     refreshCanvasTodos(previous, cache.cargarPendientesPorCurso(userKey),
-                        loadCourses = { CanvasApiClient.apiService.getActiveCourses("Bearer $currentToken").singlePageBody() },
-                        loadGlobal = { CanvasApiClient.apiService.getTodoList("Bearer $currentToken").singlePageBody() },
-                        loadAssignments = { CanvasApiClient.apiService.getCourseAssignments("Bearer $currentToken", it.id).singlePageBody() })
+                        loadCourses = { CanvasApiClient.pagedApiService.getActiveCourses("Bearer $currentToken").singlePageBody() },
+                        loadGlobal = { CanvasApiClient.pagedApiService.getTodoList("Bearer $currentToken").singlePageBody() },
+                        loadAssignments = { CanvasApiClient.pagedApiService.getCourseAssignments("Bearer $currentToken", it.id).singlePageBody() })
                 }
                 if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
                     throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
@@ -387,7 +387,7 @@ fun CanvasContent(
         scope.launch {
             if (isManual) isRefreshingConvs = true else if (conversations.isEmpty()) isLoadingConvs = true
             try {
-                val data = withContext(Dispatchers.IO) { CanvasApiClient.apiService.getConversations("Bearer $currentToken").singlePageBody() }
+                val data = withContext(Dispatchers.IO) { CanvasApiClient.pagedApiService.getConversations("Bearer $currentToken").singlePageBody() }
                 if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
                     throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
                 cache.guardarConversaciones(userKey, data)
@@ -406,7 +406,7 @@ fun CanvasContent(
         scope.launch {
             if (isManual) isRefreshingNotifs = true else if (notifications.isEmpty()) isLoadingNotifs = true
             try {
-                val data = withContext(Dispatchers.IO) { CanvasApiClient.apiService.getActivityStream("Bearer $currentToken").singlePageBody() }
+                val data = withContext(Dispatchers.IO) { CanvasApiClient.pagedApiService.getActivityStream("Bearer $currentToken").singlePageBody() }
                 if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
                     throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
                 cache.guardarNotificaciones(userKey, data)
@@ -425,7 +425,7 @@ fun CanvasContent(
         scope.launch {
             if (isManual) isRefreshingGroups = true else if (groups.isEmpty()) isLoadingGroups = true
             try {
-                val data = withContext(Dispatchers.IO) { CanvasApiClient.apiService.getSelfGroups("Bearer $currentToken").singlePageBody() }
+                val data = withContext(Dispatchers.IO) { CanvasApiClient.pagedApiService.getSelfGroups("Bearer $currentToken").singlePageBody() }
                 if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
                     throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
                 cache.guardarGrupos(userKey, data)
@@ -445,7 +445,7 @@ fun CanvasContent(
             if (isManual) isRefreshingCourses = true else if (courses.isEmpty()) isLoadingCourses = true
             try {
                 val cleanCourses = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getActiveCourses("Bearer $currentToken").singlePageBody().filter { it.name.isNotBlank() }
+                    CanvasApiClient.pagedApiService.getActiveCourses("Bearer $currentToken").singlePageBody().filter { it.name.isNotBlank() }
                 }
                 if (tokenManager.getSavedUser() != userKey || tokenManager.getCanvasToken(userKey) != currentToken)
                     throw kotlinx.coroutines.CancellationException("La cuenta de Canvas cambió")
@@ -1808,7 +1808,7 @@ fun CanvasGroupDetailSheet(
     LaunchedEffect(group.id) {
         try {
             val resp = withContext(Dispatchers.IO) {
-                CanvasApiClient.apiService.getGroupUsers("Bearer $token", group.id)
+                CanvasApiClient.pagedApiService.getGroupUsers("Bearer $token", group.id)
             }
             if (resp.isSuccessful && resp.body() != null) {
                 members = resp.body()!!

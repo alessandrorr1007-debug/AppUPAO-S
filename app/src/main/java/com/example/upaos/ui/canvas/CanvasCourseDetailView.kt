@@ -622,12 +622,12 @@ private fun CourseModulesSection(
             if (isManual) isRefreshing = true else isLoading = true
             try {
                 val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseModules("Bearer $token", courseId)
+                    CanvasApiClient.pagedApiService.getCourseModules("Bearer $token", courseId)
                 }
                 if (resp.isSuccessful && resp.body() != null) {
                     modules = resp.body()!!
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
             finally {
                 isLoading = false
                 isRefreshing = false
@@ -702,12 +702,12 @@ private fun CourseGradesSection(
             if (isManual) isRefreshing = true else isLoading = true
             try {
                 val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseAssignments("Bearer $token", course.id)
+                    CanvasApiClient.pagedApiService.getCourseAssignments("Bearer $token", course.id)
                 }
                 if (resp.isSuccessful && resp.body() != null) {
                     assignments = resp.body()!!
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
             finally {
                 isLoading = false
                 isRefreshing = false
@@ -969,12 +969,12 @@ private fun CoursePeopleSection(
         scope.launch {
             try {
                 val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseUsers("Bearer $token", courseId)
+                    CanvasApiClient.pagedApiService.getCourseUsers("Bearer $token", courseId)
                 }
                 if (resp.isSuccessful && resp.body() != null) {
                     users = resp.body()!!
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
             finally {
                 isLoadingUsers = false
             }
@@ -1120,12 +1120,12 @@ private fun CourseGroupsSection(
         scope.launch {
             try {
                 val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseGroups("Bearer $token", courseId)
+                    CanvasApiClient.pagedApiService.getCourseGroups("Bearer $token", courseId)
                 }
                 if (resp.isSuccessful && resp.body() != null) {
                     groups = resp.body()!!
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
             finally {
                 isLoadingGroups = false
             }
@@ -1263,12 +1263,12 @@ private fun CourseDiscussionsSection(
             if (isManual) isRefreshing = true else isLoading = true
             try {
                 val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseDiscussions("Bearer $token", courseId)
+                    CanvasApiClient.pagedApiService.getCourseDiscussions("Bearer $token", courseId)
                 }
                 if (resp.isSuccessful && resp.body() != null) {
                     topics = resp.body()!!
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
             finally {
                 isLoading = false
                 isRefreshing = false
@@ -1395,12 +1395,12 @@ private fun CourseFilesSection(
             if (isManual) isRefreshing = true else isLoading = true
             try {
                 val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseFiles("Bearer $token", courseId)
+                    CanvasApiClient.pagedApiService.getCourseFiles("Bearer $token", courseId)
                 }
                 if (resp.isSuccessful && resp.body() != null) {
                     files = resp.body()!!
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
             finally {
                 isLoading = false
                 isRefreshing = false
@@ -1543,7 +1543,7 @@ private fun CourseSyllabusSection(
             if (resp.isSuccessful && resp.body() != null) {
                 courseDetail = resp.body()!!
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
         finally {
             isLoading = false
         }
@@ -1895,7 +1895,7 @@ fun CourseZoomSection(
             try {
                 // 1. Consultar pestañas de Canvas
                 val tabsResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseTabs("Bearer $token", course.id)
+                    CanvasApiClient.pagedApiService.getCourseTabs("Bearer $token", course.id)
                 }
                 if (tabsResp.isSuccessful && tabsResp.body() != null) {
                     val zoomTab = tabsResp.body()!!.firstOrNull {
@@ -1910,12 +1910,12 @@ fun CourseZoomSection(
                         canvasLtiTabUrl = full
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
 
             try {
                 // 2. Escanear módulos de Canvas
                 val modResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseModules("Bearer $token", course.id)
+                    CanvasApiClient.pagedApiService.getCourseModules("Bearer $token", course.id)
                 }
                 if (modResp.isSuccessful && modResp.body() != null) {
                     modResp.body()!!.forEach { mod ->
@@ -1944,12 +1944,12 @@ fun CourseZoomSection(
                         }
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
 
             try {
                 // 3. Escanear discusiones y anuncios
                 val discResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseDiscussions("Bearer $token", course.id)
+                    CanvasApiClient.pagedApiService.getCourseDiscussions("Bearer $token", course.id)
                 }
                 if (discResp.isSuccessful && discResp.body() != null) {
                     discResp.body()!!.forEach { topic ->
@@ -1962,7 +1962,7 @@ fun CourseZoomSection(
                         }
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
 
             try {
                 // 4. Escanear syllabus si tiene enlace de Zoom
@@ -1972,7 +1972,7 @@ fun CourseZoomSection(
                     )
                     foundMeetings.addAll(extracted)
                 }
-            } catch (_: Exception) {}
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("CanvasDetail", "No se pudo actualizar la sección de Canvas") }
 
             // Deduplicar por URL
             val uniqueMeetings = mutableListOf<CourseZoomMeeting>()
