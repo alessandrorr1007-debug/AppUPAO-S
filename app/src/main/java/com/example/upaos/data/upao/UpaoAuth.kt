@@ -25,6 +25,14 @@ object UpaoAuth {
     private const val INSCRIPCION_LOGIN_URL = "https://inscripcion.upao.edu.pe/StudentRegistrationSsb/login"
 
 
+    internal fun buildLoginForm(user: String, password: String, hiddenInputs: Map<String, String>): FormBody {
+        val builder = FormBody.Builder()
+        hiddenInputs.forEach { (name, value) ->
+            if (name.lowercase() !in setOf("username", "password", "id_usuario", "nip", "btn_valida")) builder.add(name, value)
+        }
+        return builder.add("id_usuario", user).add("nip", password).add("btn_valida", "Iniciar sesión").build()
+    }
+
     /**
      * Extrae el nombre del estudiante a partir del HTML de studentGrades.
      */
@@ -67,7 +75,7 @@ object UpaoAuth {
 
     private suspend fun loginInSession(usuario: String, pass: String, session: UpaoHttpClient.AccountSession): UpaoLoginResult = withContext(Dispatchers.IO) {
         val user = usuario.trim()
-        val password = pass.trim()
+        val password = pass
 
         if (user.length != 9 || !user.all { it.isDigit() } || password.isEmpty()) {
             throw UpaoInvalidCredentialsException("El ID debe tener 9 dígitos y la contraseña no puede estar vacía.")
@@ -105,20 +113,7 @@ object UpaoAuth {
             }
 
             // Capturar todos los inputs presentes (incluye __RequestVerificationToken)
-            val formBuilder = FormBody.Builder()
-            for ((name, value) in loginFormInfo.hiddenInputs) {
-                if (name.equals("username", ignoreCase = true) || name.equals("password", ignoreCase = true)) {
-                    continue
-                }
-                if (name == "id_usuario" || name == "nip" || name == "btn_valida") {
-                    continue
-                }
-                formBuilder.add(name, value)
-            }
-
-            formBuilder.add("id_usuario", user)
-            formBuilder.add("nip", password)
-            formBuilder.add("btn_valida", "Iniciar sesión")
+            val formBody = buildLoginForm(user, password, loginFormInfo.hiddenInputs)
 
             // Paso 3: POST al endpoint de autenticación
             val postRequest = Request.Builder()
@@ -126,7 +121,7 @@ object UpaoAuth {
                 .header("Referer", initFinalUrl)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-                .post(formBuilder.build())
+                .post(formBody)
                 .build()
 
             val postResponse = client.newCall(postRequest).execute()
