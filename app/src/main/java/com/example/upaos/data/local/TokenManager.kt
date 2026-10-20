@@ -158,10 +158,19 @@ class TokenManager(
         if (password != null) accounts.add(CuentaGuardada(user, password, name))
         val values = mutableMapOf(
             "user_id" to user, "auth_token" to user, "keep_logged_in" to keep.toString(),
-            "cuentas_guardadas" to gson.toJson(accounts)
+            "cuentas_guardadas" to gson.toJson(accounts),
+            "session_id" to java.util.UUID.randomUUID().toString()
         )
         if (password != null) values["user_pass"] = password
         store.putAll(values, if (password == null) setOf("user_pass") else emptySet())
+    }
+
+    /** Persistent generation lets receivers reject alarms from a previous login after process death. */
+    fun getSessionId(): String? {
+        if (getSavedUser().isNullOrBlank() || getToken().isNullOrBlank()) return null
+        synchronized(migrationLock) {
+            return store.get("session_id") ?: java.util.UUID.randomUUID().toString().also { store.put("session_id", it) }
+        }
     }
 
     fun saveCuenta(usuario: String, password: String, nombre: String? = null) {
