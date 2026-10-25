@@ -728,12 +728,7 @@ fun CanvasContent(
             selectedTodoDetail?.let { item ->
                 CanvasAssignmentDetailSheet(
                     item = item,
-                    token = savedCanvasToken ?: "",
-                    onDismiss = { selectedTodoDetail = null },
-                    onSubmissionSuccess = {
-                        selectedTodoDetail = null
-                        fetchTodo(isManual = true)
-                    }
+                    onDismiss = { selectedTodoDetail = null }
                 )
             }
 
@@ -1120,9 +1115,7 @@ fun CanvasTodoItemCard(
 @Composable
 fun CanvasAssignmentDetailSheet(
     item: CanvasTodoItem,
-    token: String,
-    onDismiss: () -> Unit,
-    onSubmissionSuccess: () -> Unit = {}
+    onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val assignment = item.assignment
@@ -1343,6 +1336,8 @@ fun CanvasAssignmentDetailSheet(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            CanvasExternalButton(assignment?.htmlUrl ?: item.webUrl, "Entregar en Canvas")
 
             PrimaryButton(
                 text = "Cerrar",

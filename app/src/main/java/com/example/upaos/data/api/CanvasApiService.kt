@@ -4,7 +4,6 @@ import com.example.upaos.data.model.CanvasAssignment
 import com.example.upaos.data.model.CanvasConversation
 import com.example.upaos.data.model.CanvasCourse
 import com.example.upaos.data.model.CanvasDiscussionTopic
-import com.example.upaos.data.model.CanvasFileUploadInitResponse
 import com.example.upaos.data.model.CanvasGroup
 import com.example.upaos.data.model.CanvasModule
 import com.example.upaos.data.model.CanvasNotificationItem
@@ -15,11 +14,8 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.Field
-import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
-import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
@@ -163,25 +159,7 @@ interface CanvasApiService {
         @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasTab>>
 
-    @FormUrlEncoded
-    @POST("api/v1/courses/{courseId}/assignments/{assignmentId}/submissions/self/files")
-    suspend fun initSubmissionFileUpload(
-        @Header("Authorization") authHeader: String,
-        @Path("courseId") courseId: Long,
-        @Path("assignmentId") assignmentId: Long,
-        @Field("name") name: String,
-        @Field("size") size: Long
-    ): Response<CanvasFileUploadInitResponse>
 
-    @FormUrlEncoded
-    @POST("api/v1/courses/{courseId}/assignments/{assignmentId}/submissions")
-    suspend fun submitAssignment(
-        @Header("Authorization") authHeader: String,
-        @Path("courseId") courseId: Long,
-        @Path("assignmentId") assignmentId: Long,
-        @Field("submission[submission_type]") submissionType: String = "online_upload",
-        @Field("submission[file_ids][]") fileId: Long
-    ): Response<CanvasAssignment>
 }
 
 object CanvasApiClient {

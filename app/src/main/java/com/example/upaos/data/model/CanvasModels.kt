@@ -292,11 +292,6 @@ data class CanvasNotificationItem(
         get() = readState == false
 }
 
-data class CanvasFileUploadInitResponse(
-    @SerializedName("upload_url") val uploadUrl: String,
-    @SerializedName("upload_params") val uploadParams: Map<String, String>? = emptyMap()
-)
-
 data class CanvasTab(
     val id: String,
     @SerializedName("html_url") val htmlUrl: String? = null,
