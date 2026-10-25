@@ -613,6 +613,7 @@ private fun CourseModulesSection(
 ) {
     val resource = canvasResourceViewModel("modules:${courseId}", token, emptyList<CanvasModule>()) { modules(courseId) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val modules = resourceState.data
     val isLoading = resourceState.loading
     val isRefreshing = resourceState.refreshing
@@ -674,6 +675,7 @@ private fun CourseGradesSection(
 ) {
     val resource = canvasResourceViewModel("assignments:${course.id}", token, emptyList<CanvasAssignment>()) { assignments(course.id) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val assignments = resourceState.data
     val isLoading = resourceState.loading
     val isRefreshing = resourceState.refreshing
@@ -846,8 +848,8 @@ private fun CourseGradesSection(
                                         hasGrade -> {
                                             val scoreVal = submission?.score
                                             val gradeText = submission?.grade ?: scoreVal?.toString() ?: "-"
-                                            val maxPts = assignment.pointsPossible?.toInt() ?: 20
-                                            val isPassing = (scoreVal ?: 0.0) >= (maxPts * 0.55)
+                                            val maxPts = assignment.pointsPossible
+                                            val isPassing = canvasPassing(scoreVal, maxPts) == true
 
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
@@ -865,7 +867,7 @@ private fun CourseGradesSection(
                                                         color = if (isPassing) Color(0xFF2E7D32) else Color(0xFFD32F2F)
                                                     )
                                                     Text(
-                                                        text = "de $maxPts pts",
+                                                        text = "de ${canvasPoints(maxPts)} pts",
                                                         fontSize = 10.sp,
                                                         color = if (isPassing) Color(0xFF2E7D32) else Color(0xFFD32F2F)
                                                     )
@@ -923,6 +925,7 @@ private fun CoursePeopleSection(
 ) {
     val resource = canvasResourceViewModel("users:${courseId}", token, emptyList<CanvasUser>()) { people(courseId) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val users = resourceState.data
     val isLoadingUsers = resourceState.loading
     var searchQuery by remember { mutableStateOf("") }
@@ -1061,6 +1064,7 @@ private fun CourseGroupsSection(
 ) {
     val resource = canvasResourceViewModel("groups:${courseId}", token, emptyList<CanvasGroup>()) { courseGroups(courseId) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val groups = resourceState.data
     val isLoadingGroups = resourceState.loading
 
@@ -1188,6 +1192,7 @@ private fun CourseDiscussionsSection(
 ) {
     val resource = canvasResourceViewModel("topics:${courseId}", token, emptyList<CanvasDiscussionTopic>()) { discussions(courseId) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val topics = resourceState.data
     val isLoading = resourceState.loading
     val isRefreshing = resourceState.refreshing
@@ -1300,6 +1305,7 @@ private fun CourseFilesSection(
 ) {
     val resource = canvasResourceViewModel("files:${courseId}", token, emptyList<CanvasFileDetail>()) { files(courseId) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val files = resourceState.data
     val isLoading = resourceState.loading
     val isRefreshing = resourceState.refreshing
@@ -1428,6 +1434,7 @@ private fun CourseSyllabusSection(
 ) {
     val resource = canvasResourceViewModel("courseDetail:${course.id}", token, null as CanvasCourse?) { syllabus(course.id) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val courseDetail = resourceState.data
     val isLoading = resourceState.loading
 

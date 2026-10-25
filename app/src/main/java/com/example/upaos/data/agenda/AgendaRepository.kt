@@ -79,7 +79,7 @@ class AgendaRepository(context: Context) {
         for (course in courses.distinctBy { it.id }) {
             val assignments = api.getCourseAssignments(auth, course.id).body() ?: error("Canvas devolvió una respuesta vacía.")
             for (a in assignments) {
-                items += AgendaItem(a.id, course.id, course.displayTitle, a.name ?: "Entrega", a.dueAt,
+                items += AgendaItem(a.id, course.id, course.displayTitle, a.name ?: "Entrega", a.effectiveDueAt,
                     a.submission?.isSubmitted == true, a.submission?.workflowState == "graded", a.htmlUrl)
             }
         }

@@ -251,6 +251,8 @@ fun CanvasContent(
     var savedCanvasToken by remember(usuario) { mutableStateOf(tokenManager.getCanvasToken(userKey)) }
     var isSetupMode by remember(userKey) { mutableStateOf(savedCanvasToken.isNullOrBlank()) }
 
+    LaunchedEffect(userKey) { canvasTokenRequests.collect { isSetupMode = true } }
+
     var selectedMainTab by remember(userKey) { mutableIntStateOf(0) } // 0: Cursos, 1: Pendientes, 2: Notificaciones, 3: Bandeja de entrada
 
     // Modales In-App (visualización 100% nativa)
@@ -312,7 +314,7 @@ fun CanvasContent(
                 onOpenAssignment = { selectedTodoDetail = it },
                 onOpenGroup = { selectedGroupDetail = it },
                 onOpenFile = { fileItem, modName -> selectedFileItem = Pair(fileItem, modName) },
-                onOpenUrl = { url, title -> inAppWebUrl = Pair(url, title) },
+                onOpenUrl = { url, _ -> openCanvasExternal(context, url) },
                 todoItems = items,
                 notifications = notifications,
                 modifier = modifier
@@ -1219,6 +1221,9 @@ fun CanvasAssignmentDetailSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            assignment?.unlockAt?.let { Text("Abre: $it") }
+            assignment?.lockAt?.let { Text("Cierra: $it") }
+
             // Metrics row: Points, Submission Type, Status
             Row(
                 modifier = Modifier
@@ -1231,7 +1236,7 @@ fun CanvasAssignmentDetailSheet(
                 if (points != null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Puntos", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${points.toInt()} pts", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("${canvasPoints(points)} pts", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -1250,7 +1255,7 @@ fun CanvasAssignmentDetailSheet(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Intentos", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        text = if (attempts != null && attempts > 0) "$attempts" else "Ilimitados",
+                        text = canvasAttempts(attempts),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -1323,7 +1328,7 @@ fun CanvasAssignmentDetailSheet(
                                 )
                                 crit.points?.let { pts ->
                                     Text(
-                                        text = "${pts.toInt()} pts",
+                                        text = "${canvasPoints(pts)} pts",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary
@@ -1517,6 +1522,8 @@ fun CanvasGroupDetailSheet(
 ) {
     val resource = canvasResourceViewModel("members:${group.id}", token, emptyList<CanvasUser>()) { groupPeople(group.id) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val members = resourceState.data
     val isLoadingMembers = resourceState.loading
 
@@ -1643,6 +1650,8 @@ fun CanvasConversationDetailSheet(
 ) {
     val resource = canvasResourceViewModel("detail:${conversation.id}", token, null as CanvasConversation?) { conversation(conversation.id) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val detail = resourceState.data
     val isLoading = resourceState.loading
 
@@ -1790,6 +1799,8 @@ fun CanvasFileViewerSheet(
     val context = LocalContext.current
     val resource = canvasResourceViewModel("fileDetail:${item.id}", token, null as CanvasFileDetail?) { if (item.url.isNullOrBlank()) null else fileByUrl(item.url) }
     val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val fileDetail = resourceState.data
     val isLoading = resourceState.loading
 
@@ -1917,6 +1928,11 @@ fun InAppWebViewModal(
     title: String,
     onDismiss: () -> Unit
 ) {
+    val browserContext = LocalContext.current
+    if (url.startsWith("https://upao.instructure.com/")) {
+        LaunchedEffect(url) { openCanvasExternal(browserContext, url); onDismiss() }
+        return
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -1954,7 +1970,7 @@ fun InAppWebViewModal(
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
-                                settings.javaScriptEnabled = true
+                                settings.javaScriptEnabled = false
                                 settings.domStorageEnabled = true
                                 settings.loadWithOverviewMode = true
                                 settings.useWideViewPort = true

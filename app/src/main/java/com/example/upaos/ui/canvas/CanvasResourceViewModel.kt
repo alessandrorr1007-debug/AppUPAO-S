@@ -2,7 +2,7 @@ package com.example.upaos.ui.canvas
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.upaos.data.canvas.CanvasResourceRepository
+import com.example.upaos.data.canvas.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,7 +11,8 @@ data class CanvasResourceState<T>(
     val data: T,
     val loading: Boolean = true,
     val refreshing: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val failure: CanvasError? = null
 )
 
 class CanvasResourceViewModel<T>(
@@ -26,14 +27,14 @@ class CanvasResourceViewModel<T>(
     fun refresh(manual: Boolean = false) {
         if (request?.isActive == true) return
         request = viewModelScope.launch(start = CoroutineStart.LAZY) {
-            mutable.value = state.value.copy(loading = !manual, refreshing = manual, error = null)
+            mutable.value = state.value.copy(loading = !manual, refreshing = manual, error = null, failure = null)
             try {
-                val data = repository.load()
+                val data = canvasReadWithBackoff { repository.load() }
                 ensureActive()
                 mutable.value = state.value.copy(data = data)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                mutable.value = state.value.copy(error = e.message ?: "No se pudo actualizar Canvas")
+                mutable.value = state.value.copy(error = canvasError(e).text, failure = canvasError(e))
             } finally {
                 mutable.value = state.value.copy(loading = false, refreshing = false)
             }

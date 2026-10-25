@@ -51,7 +51,7 @@ data class CanvasQuiz(
     @SerializedName("html_url") val htmlUrl: String? = null
 ) {
     val effectiveDueAt: String?
-        get() = dueAt?.takeIf { it.isNotBlank() } ?: lockAt?.takeIf { it.isNotBlank() }
+        get() = dueAt?.takeIf { it.isNotBlank() }
 }
 
 data class CanvasRubricRating(
@@ -90,7 +90,8 @@ data class CanvasAssignmentDate(
     @SerializedName("unlock_at") val unlockAt: String? = null,
     @SerializedName("lock_at") val lockAt: String? = null,
     val title: String? = null,
-    @SerializedName("set_type") val setType: String? = null
+    @SerializedName("set_type") val setType: String? = null,
+    val base: Boolean? = null
 )
 
 data class CanvasAssignment(
@@ -118,9 +119,8 @@ data class CanvasAssignment(
 
     val effectiveDueAt: String?
         get() = dueAt?.takeIf { it.isNotBlank() }
-            ?: lockAt?.takeIf { it.isNotBlank() }
-            ?: allDates?.firstOrNull { !it.dueAt.isNullOrBlank() }?.dueAt
-            ?: allDates?.firstOrNull { !it.lockAt.isNullOrBlank() }?.lockAt
+            ?: allDates?.singleOrNull { it.base == true }?.dueAt?.takeIf { it.isNotBlank() }
+
 }
 
 data class CanvasTodoItem(
