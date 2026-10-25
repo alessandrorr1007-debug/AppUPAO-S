@@ -24,6 +24,8 @@ import com.example.upaos.data.model.CanvasFileDetail
 import com.example.upaos.data.model.CanvasTab
 import retrofit2.http.Url
 
+import com.example.upaos.data.model.*
+
 interface CanvasApiService {
 
     @GET
@@ -59,7 +61,7 @@ interface CanvasApiService {
         @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasConversation>>
 
-    @GET("api/v1/conversations/{id}")
+    @GET("api/v1/conversations/{id}?auto_mark_as_read=false")
     suspend fun getConversationDetail(
         @Header("Authorization") authHeader: String,
         @Path("id") conversationId: Long
@@ -160,6 +162,66 @@ interface CanvasApiService {
     ): Response<List<CanvasTab>>
 
 
+    @GET("api/v1/announcements")
+    suspend fun getAnnouncements(@Header("Authorization") auth: String,
+        @Query("context_codes[]") contexts: List<String>, @Query("start_date") start: String,
+        @Query("end_date") end: String, @Query("active_only") active: Boolean = true,
+        @Query("per_page") perPage: Int = 50): Response<List<CanvasAnnouncement>>
+
+    @GET("api/v1/courses/{C}/assignments/{A}/submissions/self")
+    suspend fun getSubmission(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("A") assignment: Long,
+        @Query("include[]") include: List<String> = listOf("submission_comments", "rubric_assessment")): Response<CanvasSubmission>
+
+    @GET("api/v1/courses/{C}/enrollments")
+    suspend fun getEnrollments(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Query("user_id") user: String = "self", @Query("type[]") type: String = "StudentEnrollment",
+        @Query("per_page") perPage: Int = 100): Response<List<CanvasCourseEnrollment>>
+
+    @GET("api/v1/courses/{C}/assignment_groups")
+    suspend fun getAssignmentGroups(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Query("include[]") include: List<String> = listOf("assignments", "submission"),
+        @Query("per_page") perPage: Int = 100): Response<List<CanvasAssignmentGroup>>
+
+    @GET("api/v1/calendar_events")
+    suspend fun getCalendarEvents(@Header("Authorization") auth: String, @Query("type") type: String,
+        @Query("context_codes[]") contexts: List<String>, @Query("start_date") start: String,
+        @Query("end_date") end: String, @Query("per_page") perPage: Int = 100): Response<List<CanvasCalendarEvent>>
+
+    @GET("api/v1/courses/{C}/pages")
+    suspend fun getPages(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Query("sort") sort: String = "title", @Query("per_page") perPage: Int = 100): Response<List<CanvasPage>>
+
+    @GET("api/v1/courses/{C}/pages/{page}")
+    suspend fun getPage(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("page") page: String): Response<CanvasPage>
+
+    @GET("api/v1/courses/{C}/front_page")
+    suspend fun getFrontPage(@Header("Authorization") auth: String, @Path("C") course: Long): Response<CanvasPage>
+
+    @GET("api/v1/courses/{C}/quizzes")
+    suspend fun getQuizzes(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Query("per_page") perPage: Int = 100): Response<List<CanvasQuiz>>
+
+    @GET("api/v1/courses/{C}/quizzes/{Q}/submissions")
+    suspend fun getQuizSubmissions(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("Q") quiz: Long, @Query("per_page") perPage: Int = 100): Response<CanvasQuizSubmissions>
+
+    @GET
+    suspend fun getQuizSubmissionPage(@Header("Authorization") auth: String, @Url url: String): Response<CanvasQuizSubmissions>
+
+    @GET("api/v1/courses/{C}/discussion_topics/{T}/view")
+    suspend fun getDiscussionView(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("T") topic: Long): Response<CanvasDiscussionView>
+
+    @GET("api/v1/courses/{C}/folders")
+    suspend fun getFolders(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Query("per_page") perPage: Int = 100): Response<List<CanvasFolder>>
+
+    @GET("api/v1/folders/{F}/files")
+    suspend fun getFolderFiles(@Header("Authorization") auth: String, @Path("F") folder: Long,
+        @Query("per_page") perPage: Int = 100): Response<List<CanvasFileDetail>>
+
 }
 
 object CanvasApiClient {
@@ -171,7 +233,7 @@ object CanvasApiClient {
 
     private val destinationGuard = okhttp3.Interceptor { chain ->
         val request = chain.request()
-        if (request.header("Authorization") != null && !TrustedServers.isCanvas(request.url)) {
+        if (request.method != "GET" || !TrustedServers.isCanvas(request.url)) {
             throw java.io.IOException("Destino de Canvas no autorizado")
         }
         chain.proceed(request)

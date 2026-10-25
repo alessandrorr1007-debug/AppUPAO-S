@@ -20,8 +20,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import android.provider.OpenableColumns
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -109,9 +107,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -132,7 +128,7 @@ private fun parseIsoDate(iso: String?): Long? {
 }
 
 private fun formatCanvasDueDate(iso: String?): Pair<String, Color> {
-    val millis = parseIsoDate(iso) ?: return Pair("Sin fecha límite", Color(0xFF757575))
+    val millis = parseIsoDate(iso) ?: return Pair("Sin fecha de entrega", Color(0xFF757575))
     val calHoy = Calendar.getInstance()
     val calTarget = Calendar.getInstance().apply { timeInMillis = millis }
 
@@ -231,7 +227,16 @@ fun HtmlText(
         update = { tv ->
             tv.setTextColor(textColor)
             tv.setLinkTextColor(linkColor)
-            tv.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT)
+            val text = android.text.SpannableString(HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT))
+            text.getSpans(0, text.length, android.text.style.URLSpan::class.java).forEach { link ->
+                val start = text.getSpanStart(link)
+                val end = text.getSpanEnd(link)
+                text.removeSpan(link)
+                text.setSpan(object : android.text.style.ClickableSpan() {
+                    override fun onClick(widget: android.view.View) { openCanvasContentLink(widget.context, link.url) }
+                }, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            tv.text = text
         },
         modifier = modifier
     )
@@ -251,8 +256,6 @@ fun CanvasContent(
     var savedCanvasToken by remember(usuario) { mutableStateOf(tokenManager.getCanvasToken(userKey)) }
     var isSetupMode by remember(userKey) { mutableStateOf(savedCanvasToken.isNullOrBlank()) }
 
-    LaunchedEffect(userKey) { canvasTokenRequests.collect { isSetupMode = true } }
-
     var selectedMainTab by remember(userKey) { mutableIntStateOf(0) } // 0: Cursos, 1: Pendientes, 2: Notificaciones, 3: Bandeja de entrada
 
     // Modales In-App (visualización 100% nativa)
@@ -262,6 +265,17 @@ fun CanvasContent(
     var selectedGroupDetail by remember(userKey) { mutableStateOf<CanvasGroup?>(null) }
     var selectedFileItem by remember(userKey) { mutableStateOf<Pair<CanvasModuleItem, String>?>(null) }
     var inAppWebUrl by remember(userKey) { mutableStateOf<Pair<String, String>?>(null) }
+    LaunchedEffect(userKey) {
+        canvasTokenRequests.collect {
+            selectedCourseForDetail = null
+            selectedTodoDetail = null
+            selectedConversationDetail = null
+            selectedGroupDetail = null
+            selectedFileItem = null
+            inAppWebUrl = null
+            isSetupMode = true
+        }
+    }
 
     val repository = rememberCanvasRepository(savedCanvasToken.orEmpty(), userKey)
     val hub: CanvasHubViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
@@ -284,6 +298,10 @@ fun CanvasContent(
     val groups = hubState.groups
     val isLoadingGroups = hubState.isLoadingGroups
     val isRefreshingGroups = hubState.isRefreshingGroups
+    var inboxSearch by remember(userKey) { mutableStateOf("") }
+    var unreadOnly by remember(userKey) { mutableStateOf(false) }
+    val filteredConversations = conversations.filter { (!unreadOnly || it.isUnread) &&
+        (inboxSearch.isBlank() || listOfNotNull(it.subject, it.lastMessage, it.contextName).any { text -> text.contains(inboxSearch, true) }) }
     val errorMessage = hubState.errorMessage
     val isTokenExpired = hubState.isTokenExpired
     val isOffline = hubState.isOffline
@@ -314,7 +332,7 @@ fun CanvasContent(
                 onOpenAssignment = { selectedTodoDetail = it },
                 onOpenGroup = { selectedGroupDetail = it },
                 onOpenFile = { fileItem, modName -> selectedFileItem = Pair(fileItem, modName) },
-                onOpenUrl = { url, _ -> openCanvasExternal(context, url) },
+                onOpenUrl = { url, _ -> openCanvasContentLink(context, url) },
                 todoItems = items,
                 notifications = notifications,
                 modifier = modifier
@@ -502,6 +520,9 @@ fun CanvasContent(
                             }
                         }
                     )
+                    Tab(selected = selectedMainTab == 4, onClick = { selectedMainTab = 4 }, text = { Text("Anuncios") })
+                    Tab(selected = selectedMainTab == 5, onClick = { selectedMainTab = 5 }, text = { Text("Calendario") })
+
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -689,6 +710,8 @@ fun CanvasContent(
                                     .fillMaxSize()
                                     .padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
+                                OutlinedTextField(value = inboxSearch, onValueChange = { inboxSearch = it }, label = { Text("Buscar mensajes") }, modifier = Modifier.fillMaxWidth())
+                                FilterChip(selected = unreadOnly, onClick = { unreadOnly = !unreadOnly }, label = { Text("No leídos") })
                                 when {
                                     isLoadingConvs -> {
                                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -709,7 +732,7 @@ fun CanvasContent(
                                             verticalArrangement = Arrangement.spacedBy(10.dp),
                                             modifier = Modifier.fillMaxSize()
                                         ) {
-                                            items(conversations, key = { it.id }) { conv ->
+                                            items(filteredConversations, key = { it.id }) { conv ->
                                                 CanvasConversationCard(
                                                     conversation = conv,
                                                     onClick = { selectedConversationDetail = conv }
@@ -722,6 +745,9 @@ fun CanvasContent(
                             }
                         }
                     }
+                    4 -> CanvasAnnouncements(savedCanvasToken.orEmpty(), courses.map { it.id })
+                    5 -> CanvasCalendar(savedCanvasToken.orEmpty(), courses.map { it.id })
+
                 }
             }
         }
@@ -954,6 +980,12 @@ fun CanvasModuleCard(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
+                                item.completionRequirement?.let { requirement ->
+                                    Text(listOfNotNull(requirement.type,
+                                        requirement.completed?.let { if (it) "Completado" else "Pendiente" },
+                                        requirement.minScore?.let { "Mínimo ${canvasPoints(it)}" }).joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall)
+                                }
                                 Icon(
                                     imageVector = if (item.isFile) Icons.Filled.Download else Icons.Filled.Visibility,
                                     contentDescription = null,
@@ -1082,7 +1114,7 @@ fun CanvasTodoItemCard(
 
             if (item.pointsPossible != null && item.pointsPossible!! > 0) {
                 Text(
-                    text = "${item.pointsPossible!!.toInt()} pts",
+                    text = "${canvasPoints(item.pointsPossible)} pts",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1293,53 +1325,7 @@ fun CanvasAssignmentDetailSheet(
                 )
             }
 
-            // Rubric if available
-            val rubric = assignment?.rubric
-            if (!rubric.isNullOrEmpty()) {
-                Spacer(modifier = Modifier.height(20.dp))
-                Text(
-                    text = "Criterios de Evaluación (Rúbrica)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    rubric.forEach { crit ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = crit.description ?: "Criterio",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                crit.points?.let { pts ->
-                                    Text(
-                                        text = "${canvasPoints(pts)} pts",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
+            CanvasAssignmentExtras(item)
             Spacer(modifier = Modifier.height(24.dp))
 
             CanvasExternalButton(assignment?.htmlUrl ?: item.webUrl, "Entregar en Canvas")
@@ -1687,6 +1673,7 @@ fun CanvasConversationDetailSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            CanvasExternalButton("https://upao.instructure.com/conversations/${conversation.id}", "Responder en Canvas")
             // Participants
             val participants = detail?.participants ?: conversation.participants ?: emptyList()
             if (participants.isNotEmpty()) {
@@ -1763,12 +1750,7 @@ fun CanvasConversationDetailSheet(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = msg.body ?: "",
-                                        fontSize = 14.sp,
-                                        lineHeight = 21.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
+                                    HtmlText(msg.body.orEmpty())
                                 }
                             }
                         }
@@ -1929,8 +1911,8 @@ fun InAppWebViewModal(
     onDismiss: () -> Unit
 ) {
     val browserContext = LocalContext.current
-    if (url.startsWith("https://upao.instructure.com/")) {
-        LaunchedEffect(url) { openCanvasExternal(browserContext, url); onDismiss() }
+    if (!url.startsWith("private-pdf:")) {
+        LaunchedEffect(url) { openCanvasContentLink(browserContext, url); onDismiss() }
         return
     }
     Dialog(

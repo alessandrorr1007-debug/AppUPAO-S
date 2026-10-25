@@ -59,9 +59,4 @@ class CanvasRefreshIntegrityTest {
         assertEquals(listOf(latest), restored)
         assertTrue(restoreCanvasTodos(listOf(old), mapOf(1L to emptyList()), setOf(1L)).isEmpty())
     }
-    @Test fun aFirstPageCannotBeCachedAsACompleteList() {
-        val response = retrofit2.Response.success(listOf(todo(1, 10)), okhttp3.Headers.headersOf("Link", "<https://fixture.invalid/?page=2>; rel=\"next\""))
-        try { response.singlePageBody(); fail("First page is incomplete") } catch (_: IOException) { }
-        assertTrue(retrofit2.Response.success(emptyList<CanvasTodoItem>()).singlePageBody().isEmpty())
-    }
 }

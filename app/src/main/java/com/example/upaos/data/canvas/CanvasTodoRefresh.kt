@@ -15,14 +15,6 @@ internal fun <T> Response<T>.completeBody(): T {
     return body() ?: throw IOException("Canvas devolvió una respuesta vacía")
 }
 
-/** Until the paged adapter is used, a first page must never be cached as a full list. */
-internal fun <T> Response<T>.singlePageBody(): T {
-    val value = completeBody()
-    if (headers().values("Link").any { Regex("rel\\s*=\\s*\"?next", RegexOption.IGNORE_CASE).containsMatchIn(it) })
-        throw IOException("Hay páginas de Canvas pendientes")
-    return value
-}
-
 internal fun Throwable.isCanvasUnauthorized(): Boolean =
     this is HttpException && code() == 401 || cause?.takeIf { it !== this }?.isCanvasUnauthorized() == true
 

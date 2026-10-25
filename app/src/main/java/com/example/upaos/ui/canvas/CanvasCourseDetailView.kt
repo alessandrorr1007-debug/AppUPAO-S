@@ -107,6 +107,11 @@ fun CanvasCourseDetailView(
     // 0: Inicio, 1: Módulos, 2: Personas, 3: Grupos, 4: Calificaciones,
     // 5: Foro de discusión, 6: Archivos, 7: Programa de curso, 8: Zoom
     var selectedSection by remember { mutableIntStateOf(0) }
+    var selectedPage by remember { mutableStateOf<String?>(null) }
+    var selectedDiscussion by remember { mutableStateOf<CanvasDiscussionTopic?>(null) }
+    selectedPage?.let { CanvasPageDetail(course.id, it, token) { selectedPage = null } }
+    selectedDiscussion?.let { CanvasDiscussionDetail(course.id, it, token) { selectedDiscussion = null } }
+
 
     val sections = remember {
         listOf(
@@ -118,7 +123,11 @@ fun CanvasCourseDetailView(
             Triple(5, "Foro de discusión", Icons.Filled.Forum),
             Triple(6, "Archivos", Icons.AutoMirrored.Filled.InsertDriveFile),
             Triple(7, "Programa de curso", Icons.Filled.Description),
-            Triple(8, "Zoom", Icons.Filled.Videocam)
+            Triple(8, "Zoom", Icons.Filled.Videocam),
+            Triple(9, "Anuncios", Icons.Filled.Info),
+            Triple(10, "Páginas", Icons.Filled.Description),
+            Triple(11, "Quizzes", Icons.Filled.Quiz),
+            Triple(12, "Carpetas", Icons.Filled.Folder)
         )
     }
 
@@ -222,7 +231,9 @@ fun CanvasCourseDetailView(
                     courseId = course.id,
                     token = token,
                     onItemClick = { item, modName ->
-                        if (item.isFile) {
+                        if (item.type.equals("Page", true) && (item.pageUrl != null || item.contentId != null)) {
+                            selectedPage = item.pageUrl ?: "page_id:${item.contentId}"
+                        } else if (item.isFile) {
                             onOpenFile(item, modName)
                         } else if (!item.htmlUrl.isNullOrBlank()) {
                             onOpenUrl(item.htmlUrl, item.title ?: "Módulo")
@@ -247,11 +258,7 @@ fun CanvasCourseDetailView(
                 5 -> CourseDiscussionsSection(
                     courseId = course.id,
                     token = token,
-                    onOpenTopic = { topic ->
-                        if (!topic.htmlUrl.isNullOrBlank()) {
-                            onOpenUrl(topic.htmlUrl, topic.title ?: "Foro de discusión")
-                        }
-                    }
+                    onOpenTopic = { topic -> selectedDiscussion = topic }
                 )
                 6 -> CourseFilesSection(
                     courseId = course.id,
@@ -272,6 +279,11 @@ fun CanvasCourseDetailView(
                     token = token,
                     onOpenUrl = onOpenUrl
                 )
+                9 -> CanvasAnnouncements(token, listOf(course.id))
+                10 -> CanvasPages(course.id, token)
+                11 -> CanvasQuizzes(course.id, token)
+                12 -> CanvasFolders(course.id, token)
+
             }
         }
     }
@@ -531,7 +543,7 @@ private fun CourseHomeSection(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    val dueText = todo.dueAt?.let { formatRelativeDateText(it) } ?: "Sin fecha límite"
+                                    val dueText = todo.dueAt?.let { formatRelativeDateText(it) } ?: "Sin fecha de entrega"
                                     Text(
                                         text = dueText,
                                         style = MaterialTheme.typography.labelSmall,
@@ -673,245 +685,7 @@ private fun CourseGradesSection(
     token: String,
     onOpenAssignment: (CanvasTodoItem) -> Unit
 ) {
-    val resource = canvasResourceViewModel("assignments:${course.id}", token, emptyList<CanvasAssignment>()) { assignments(course.id) }
-    val resourceState by resource.state.collectAsState()
-    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
-    val assignments = resourceState.data
-    val isLoading = resourceState.loading
-    val isRefreshing = resourceState.refreshing
-    fun loadGrades(isManual: Boolean = false) = resource.refresh(isManual)
-
-
-    RefreshableContent(
-        isRefreshing = isRefreshing,
-        onRefresh = { loadGrades(isManual = true) },
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-            when {
-                isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                    }
-                }
-                assignments.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        EmptyState(
-                            icon = Icons.Filled.Star,
-                            title = "Sin calificaciones registradas",
-                            subtitle = "No se encontraron tareas ni notas evaluadas en este curso."
-                        )
-                    }
-                }
-                else -> {
-                    // Métricas de calificaciones
-                    val gradedAssignments = remember(assignments) {
-                        assignments.filter { it.submission?.score != null || !it.submission?.grade.isNullOrBlank() }
-                    }
-                    val submittedAssignments = remember(assignments) {
-                        assignments.filter { it.isSubmitted }
-                    }
-
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        // Tarjeta de resumen de notas
-                        item {
-                            AppCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                contentPadding = PaddingValues(14.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceAround
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = "${assignments.size}",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "Total Tareas",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    }
-
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = "${submittedAssignments.size}",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "Entregadas",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    }
-
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = "${gradedAssignments.size}",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "Calificadas",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Lista de tareas y notas
-                        items(assignments, key = { it.id }) { assignment ->
-                            val submission = assignment.submission
-                            val hasGrade = submission?.score != null || !submission?.grade.isNullOrBlank()
-                            val isSubmitted = assignment.isSubmitted
-
-                            AppCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(12.dp),
-                                onClick = {
-                                    val todo = CanvasTodoItem(
-                                        type = "submitting",
-                                        contextType = "Course",
-                                        courseId = course.id,
-                                        contextName = course.name,
-                                        contextShortName = course.courseCode,
-                                        htmlUrl = assignment.htmlUrl,
-                                        assignment = assignment,
-                                        quiz = if (assignment.isQuizAssignment == true || assignment.quizId != null) {
-                                            CanvasQuiz(
-                                                id = assignment.quizId ?: assignment.id,
-                                                title = assignment.name,
-                                                dueAt = assignment.effectiveDueAt,
-                                                lockAt = assignment.lockAt,
-                                                unlockAt = assignment.unlockAt,
-                                                pointsPossible = assignment.pointsPossible,
-                                                htmlUrl = assignment.htmlUrl
-                                            )
-                                        } else null
-                                    )
-                                    onOpenAssignment(todo)
-                                }
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = assignment.name ?: "Tarea sin título",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        val dueText = assignment.effectiveDueAt?.let { formatRelativeDateText(it) } ?: "Sin fecha límite"
-                                        Text(
-                                            text = dueText,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-
-                                        if (assignment.pointsPossible != null && assignment.pointsPossible > 0) {
-                                            Text(
-                                                text = "Puntaje máximo: ${assignment.pointsPossible.toInt()} pts",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    // Badge de Nota / Estado
-                                    when {
-                                        hasGrade -> {
-                                            val scoreVal = submission?.score
-                                            val gradeText = submission?.grade ?: scoreVal?.toString() ?: "-"
-                                            val maxPts = assignment.pointsPossible
-                                            val isPassing = canvasPassing(scoreVal, maxPts) == true
-
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isPassing) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
-                                                modifier = Modifier.padding(2.dp)
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally
-                                                ) {
-                                                    Text(
-                                                        text = gradeText,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 16.sp,
-                                                        color = if (isPassing) Color(0xFF2E7D32) else Color(0xFFD32F2F)
-                                                    )
-                                                    Text(
-                                                        text = "de ${canvasPoints(maxPts)} pts",
-                                                        fontSize = 10.sp,
-                                                        color = if (isPassing) Color(0xFF2E7D32) else Color(0xFFD32F2F)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        isSubmitted -> {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = Color(0xFFE3F2FD)
-                                            ) {
-                                                Text(
-                                                    text = "Entregado",
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF1976D2),
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                        else -> {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = MaterialTheme.colorScheme.surfaceVariant
-                                            ) {
-                                                Text(
-                                                    text = "Sin entregar",
-                                                    fontWeight = FontWeight.Normal,
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        item { Spacer(modifier = Modifier.height(16.dp)) }
-                    }
-                }
-            }
-        }
-    }
+    CanvasCourseGrades(course, token, onOpenAssignment)
 }
 
 // -------------------------------------------------------------

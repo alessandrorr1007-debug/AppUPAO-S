@@ -163,9 +163,27 @@ class CanvasCache(private val context: Context) : CanvasCacheStore {
         return result
     }
 
+    suspend fun readCanvasList(user: String, key: String): String? =
+        context.canvasDataStore.data.first()[stringPreferencesKey("canvas_read_${user.trim().lowercase()}_$key")]
+
+    suspend fun saveCanvasList(user: String, key: String, json: String) {
+        if (AccountPrivacy.isDeleting(user) || TokenManager(context).getSavedUser() != user) return
+        context.canvasDataStore.edit { it[stringPreferencesKey("canvas_read_${user.trim().lowercase()}_$key")] = json }
+    }
+
+    suspend fun seenAnnouncements(user: String): Set<String> =
+        context.canvasDataStore.data.first()[androidx.datastore.preferences.core.stringSetPreferencesKey("canvas_seen_${user.trim().lowercase()}")] ?: emptySet()
+
+    suspend fun markAnnouncementSeen(user: String, id: String) {
+        if (AccountPrivacy.isDeleting(user) || TokenManager(context).getSavedUser() != user) return
+        val key = androidx.datastore.preferences.core.stringSetPreferencesKey("canvas_seen_${user.trim().lowercase()}")
+        context.canvasDataStore.edit { it[key] = (it[key] ?: emptySet()) + id }
+    }
+
     override suspend fun limpiar(user: String) {
         context.canvasDataStore.edit { prefs ->
             prefs.asMap().keys.filter { it.name.startsWith("canvas_course_todo_${user}_") }.forEach { prefs.remove(it) }
+            prefs.asMap().keys.filter { it.name.startsWith("canvas_read_${user.trim().lowercase()}_") || it.name == "canvas_seen_${user.trim().lowercase()}" }.forEach { prefs.remove(it) }
             prefs.remove(jsonKey(user))
             prefs.remove(timeKey(user))
             prefs.remove(convKey(user))

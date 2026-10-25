@@ -60,14 +60,17 @@ class DefaultCanvasZoomRepository(
             }
         }
         attempt("ANNOUNCEMENT") {
-            for (topic in repository.discussions(course.id)) {
+            for (topic in repository.announcements(listOf(course.id))) {
                 found += ZoomUrlExtractor.extractZoomMeetingsFromText(
                     topic.title.orEmpty() + "\n" + topic.message.orEmpty(), course.id,
                     topic.title ?: "Aviso con Zoom","ANNOUNCEMENT")
             }
         }
-        found += ZoomUrlExtractor.extractZoomMeetingsFromText(course.syllabusBody.orEmpty(),
-            course.id,"Zoom en Sílabo","SYLLABUS")
+        attempt("SYLLABUS") {
+            val syllabus = repository.syllabus(course.id).syllabusBody.orEmpty()
+            found += ZoomUrlExtractor.extractZoomMeetingsFromText(syllabus,
+                course.id,"Zoom en Sílabo","SYLLABUS")
+        }
         validateSession()
         CanvasZoomSnapshot(found.distinctBy { it.joinUrl.trim().lowercase() },lti,custom,failed)
     }

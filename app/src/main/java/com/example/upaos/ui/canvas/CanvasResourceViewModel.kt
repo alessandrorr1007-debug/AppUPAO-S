@@ -17,11 +17,13 @@ data class CanvasResourceState<T>(
 
 class CanvasResourceViewModel<T>(
     private val repository: CanvasResourceRepository<T>,
-    initial: T
+    initial: T,
+    private val restore: (suspend () -> T?)? = null
 ) : ViewModel() {
     private val mutable = MutableStateFlow(CanvasResourceState(initial))
     val state = mutable.asStateFlow()
     private var request: Job? = null
+    private var restored = false
     init { refresh() }
 
     fun refresh(manual: Boolean = false) {
@@ -29,6 +31,12 @@ class CanvasResourceViewModel<T>(
         request = viewModelScope.launch(start = CoroutineStart.LAZY) {
             mutable.value = state.value.copy(loading = !manual, refreshing = manual, error = null, failure = null)
             try {
+                if (!restored) {
+                    restored = true
+                    try { restore?.invoke()?.let { mutable.value = state.value.copy(data = it, loading = false, refreshing = true) } }
+                    catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { /* A corrupt cache must not block the live request. */ }
+                }
                 val data = canvasReadWithBackoff { repository.load() }
                 ensureActive()
                 mutable.value = state.value.copy(data = data)

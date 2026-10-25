@@ -122,6 +122,30 @@ class CanvasPagedApi(
             }
         })
 
+
+    override suspend fun getAnnouncements(auth: String, contexts: List<String>, start: String, end: String, active: Boolean, perPage: Int) =
+        all(auth) { delegate.getAnnouncements(auth, contexts, start, end, active, perPage) }
+    override suspend fun getEnrollments(auth: String, course: Long, user: String, type: String, perPage: Int) =
+        all(auth) { delegate.getEnrollments(auth, course, user, type, perPage) }
+    override suspend fun getAssignmentGroups(auth: String, course: Long, include: List<String>, perPage: Int) =
+        all(auth) { delegate.getAssignmentGroups(auth, course, include, perPage) }
+    override suspend fun getCalendarEvents(auth: String, type: String, contexts: List<String>, start: String, end: String, perPage: Int) =
+        all(auth) { delegate.getCalendarEvents(auth, type, contexts, start, end, perPage) }
+    override suspend fun getPages(auth: String, course: Long, sort: String, perPage: Int) = all(auth) { delegate.getPages(auth, course, sort, perPage) }
+    override suspend fun getQuizzes(auth: String, course: Long, perPage: Int) = all(auth) { delegate.getQuizzes(auth, course, perPage) }
+    override suspend fun getFolders(auth: String, course: Long, perPage: Int) = all(auth) { delegate.getFolders(auth, course, perPage) }
+    override suspend fun getFolderFiles(auth: String, folder: Long, perPage: Int) = all(auth) { delegate.getFolderFiles(auth, folder, perPage) }
+    override suspend fun getQuizSubmissions(auth: String, course: Long, quiz: Long, perPage: Int): Response<CanvasQuizSubmissions> {
+        fun unwrap(response: Response<CanvasQuizSubmissions>): Response<List<CanvasQuizAttempt>> {
+            if (!response.isSuccessful) throw HttpException(response)
+            return Response.success(response.body()?.submissions ?: emptyList(), response.raw())
+        }
+        val result = collectCanvasPages(origin,
+            { unwrap(delegate.getQuizSubmissions(auth, course, quiz, perPage)) },
+            { unwrap(delegate.getQuizSubmissionPage(auth, it)) })
+        return Response.success(CanvasQuizSubmissions(result.body()), result.raw())
+    }
+
     override suspend fun getActiveCourses(authHeader: String, state: String, perPage: Int, page: Int) =
         all(authHeader) { delegate.getActiveCourses(authHeader, state, perPage, page) }
     override suspend fun getCourseAssignments(authHeader: String, courseId: Long, perPage: Int, page: Int) =
