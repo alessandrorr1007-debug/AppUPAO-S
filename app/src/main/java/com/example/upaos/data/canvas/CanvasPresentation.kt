@@ -12,3 +12,8 @@ fun canvasAttempts(attempts: Int?): String = when (attempts) {
 }
 fun canvasPassing(score: Double?, possible: Double?): Boolean? =
     if (score != null && possible != null && possible > 0) score / possible >= UPAO_PASSING_RATIO else null
+
+fun canvasCalendarDay(iso: String?, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String? =
+    com.example.upaos.data.agenda.parseServerDate(iso)?.let {
+        java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalDate().toString()
+    }

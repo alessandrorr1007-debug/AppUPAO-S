@@ -1457,6 +1457,7 @@ fun CourseZoomSection(
         key = canvasViewModelKey("zoom:" + course.id, tokens.getSavedUser().orEmpty(), tokens.getSessionId(), token),
         factory = canvasViewModelFactory { CanvasZoomViewModel(zoomRepository) })
     val zoomState by zoomVm.state.collectAsState()
+    CanvasResourceFeedback(zoomState) { zoomVm.refresh() }
     val zoomMeetings = zoomState.data.meetings
     val canvasLtiTabUrl = zoomState.data.ltiUrl
     val isLoading = zoomState.loading

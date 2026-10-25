@@ -52,7 +52,21 @@ class CanvasViewModelTest {
         runCurrent(); assertEquals(listOf(7),vm.state.value.data)
         fail=true;vm.refresh(true);runCurrent()
         assertEquals(listOf(7),vm.state.value.data)
-        assertEquals("fixture offline",vm.state.value.error)
+        assertEquals(CanvasError.NETWORK.text,vm.state.value.error)
+        assertFalse(vm.state.value.refreshing)
+    }
+
+    @Test fun cacheIsVisibleWhileTheBackgroundRefreshIsPending() = runTest {
+        val network = CompletableDeferred<List<Int>>()
+        val vm = CanvasResourceViewModel(CanvasResourceRepository { network.await() },
+            emptyList<Int>(), restore = { listOf(7) })
+        runCurrent()
+        assertEquals(listOf(7), vm.state.value.data)
+        assertFalse(vm.state.value.loading)
+        assertTrue(vm.state.value.refreshing)
+        network.complete(listOf(8))
+        runCurrent()
+        assertEquals(listOf(8), vm.state.value.data)
         assertFalse(vm.state.value.refreshing)
     }
 

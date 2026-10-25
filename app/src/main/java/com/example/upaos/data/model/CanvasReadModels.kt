@@ -36,6 +36,8 @@ data class CanvasCalendarEvent(
     @SerializedName("end_at") val endAt: String? = null,
     @SerializedName("context_code") val contextCode: String? = null,
     @SerializedName("html_url") val htmlUrl: String? = null,
+    @SerializedName("all_day") val allDay: Boolean? = null,
+    @SerializedName("all_day_date") val allDayDate: String? = null,
     val assignment: CanvasAssignment? = null,
     @SerializedName("location_name") val locationName: String? = null,
     @SerializedName("location_address") val locationAddress: String? = null

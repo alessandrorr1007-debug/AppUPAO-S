@@ -25,10 +25,11 @@ class CanvasZoomViewModel(private val repository: CanvasZoomRepository) : ViewMo
                 val merged = next.copy(
                     meetings=(next.meetings + retained).distinctBy { it.joinUrl.trim().lowercase() },
                     ltiUrl=if ("TABS" in next.failedSources) old.ltiUrl else next.ltiUrl)
+                val failure = next.failure ?: CanvasError.INVALID.takeIf { next.failedSources.isNotEmpty() }
                 mutable.value = state.value.copy(data=merged,
-                    error=next.failedSources.takeIf { it.isNotEmpty() }?.joinToString())
+                    error=failure?.text, failure=failure)
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { mutable.value=state.value.copy(error=e.message ?: "No se pudo actualizar Zoom") }
+            catch (e: Exception) { mutable.value=state.value.copy(error=canvasError(e).text, failure=canvasError(e)) }
             finally { mutable.value=state.value.copy(loading=false) }
         }
         request!!.start()

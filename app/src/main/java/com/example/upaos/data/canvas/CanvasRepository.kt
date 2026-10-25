@@ -71,8 +71,8 @@ class DefaultCanvasRepository(
     override suspend fun groups() = read { api.getSelfGroups(auth).completeBody() }
     override suspend fun todos(previous: List<CanvasTodoItem>) = read {
         refreshCanvasTodos(previous, cache.cargarPendientesPorCurso(user),
-            loadCourses = { courses() }, loadGlobal = { api.getTodoList(auth).completeBody() },
-            loadAssignments = { assignments(it.id) })
+            loadCourses = { canvasReadWithBackoff { courses() } }, loadGlobal = { canvasReadWithBackoff { api.getTodoList(auth).completeBody() } },
+            loadAssignments = { course -> canvasReadWithBackoff { assignments(course.id) } })
     }
     override suspend fun modules(id: Long) = read { api.getCourseModules(auth,id).completeBody() }
     override suspend fun assignments(id: Long) = read { api.getCourseAssignments(auth,id).completeBody() }

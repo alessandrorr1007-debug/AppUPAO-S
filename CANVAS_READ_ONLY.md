@@ -10,9 +10,11 @@ Los intentos se distinguen entre −1, null y cero. Las notas de curso provienen
 
 New Quizzes no ofrece un identificador universal en estos endpoints. Las actividades LTI se rotulan como posibles New Quizzes y se abren externamente, sin afirmar que todo LTI sea un examen. Los hilos no visibles por requerir una publicación previa muestran el error 403; la app no publica para desbloquearlos.
 
-El diagnóstico de Ajustes solo se ejecuta a petición. Usa la primera página para medir cada endpoint y el primer curso activo, y los detalles solo si hay elementos que permitan identificarlos. Copia nombres de endpoint con placeholders, código HTTP, conteo y tiempo; no incluye parámetros, identificadores, cuerpos, nombres, correos, tokens ni mensajes de excepción. Un guion en HTTP indica que no hubo respuesta HTTP. No verifica transporte de descarga ni continuaciones opacas como endpoints separados.
+El diagnóstico de Ajustes solo se ejecuta a petición. Pagina las listas completas y usa el primer curso activo; prueba detalles solo si hay elementos que permitan identificarlos. Copia nombres de endpoint con placeholders, código HTTP, conteo y tiempo; no incluye parámetros, identificadores, cuerpos, nombres, correos, tokens ni mensajes de excepción. Un guion en HTTP con 0 ms indica un recurso previo no disponible; con tiempo indica ausencia de respuesta HTTP. No verifica transporte de descarga ni continuaciones opacas como endpoints separados.
 
 Las pruebas y `canvas_models_synthetic.json` usan exclusivamente datos sintéticos. No se ha accedido al Canvas real de UPAO: disponibilidad, permisos, respuestas institucionales y presentación en un teléfono son **NO VERIFICADO**. Los avisos opcionales de anuncios/notas no se implementan sin verificar primero las fases obligatorias. No se añade exportador ICS ni otro worker.
+
+La búsqueda dirigida encontró IcsCalendarExporter, pero sus operaciones de generación/exportación requieren HorarioCurso y un periodo académico. No ofrece una entrada para eventos de Canvas; no se amplía ese componente para respetar la restricción de no modificar Horario.
 
 Referencias oficiales consultadas:
 

@@ -10,7 +10,8 @@ data class CanvasZoomSnapshot(
     val meetings: List<CourseZoomMeeting> = emptyList(),
     val ltiUrl: String? = null,
     val custom: CourseZoomMeeting? = null,
-    val failedSources: Set<String> = emptySet()
+    val failedSources: Set<String> = emptySet(),
+    val failure: CanvasError? = null
 )
 
 interface CanvasZoomRepository {
@@ -31,10 +32,14 @@ class DefaultCanvasZoomRepository(
         val found = mutableListOf<CourseZoomMeeting>()
         custom?.let { found += it }
         val failed = mutableSetOf<String>()
+        var failure: CanvasError? = null
         var lti: String? = null
         suspend fun attempt(source: String, action: suspend () -> Unit) {
-            when (captureRefresh(source, action)) {
-                is RefreshResult.Error -> failed += source
+            when (val result = captureRefresh(source) { canvasReadWithBackoff { action() } }) {
+                is RefreshResult.Error -> {
+                    failed += source
+                    if (failure != CanvasError.TOKEN) failure = canvasError(result.issue.cause)
+                }
                 else -> Unit
             }
         }
@@ -72,7 +77,7 @@ class DefaultCanvasZoomRepository(
                 course.id,"Zoom en Sílabo","SYLLABUS")
         }
         validateSession()
-        CanvasZoomSnapshot(found.distinctBy { it.joinUrl.trim().lowercase() },lti,custom,failed)
+        CanvasZoomSnapshot(found.distinctBy { it.joinUrl.trim().lowercase() },lti,custom,failed,failure)
     }
 
     override fun save(meeting: CourseZoomMeeting) {

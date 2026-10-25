@@ -213,14 +213,14 @@ class CanvasHubViewModel(
         viewModelScope.launch {
             if (isManual) isRefreshingConvs = true else if (conversations.isEmpty()) isLoadingConvs = true
             try {
-                val data = repository.conversations()
+                val data = canvasReadWithBackoff { repository.conversations() }
                 repository.requireSession()
                 cache.guardarConversaciones(userKey, data)
                 conversations = data
                 clearRefreshFailure("conversations")
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {
-                markRefreshFailure("conversations", "No se pudo actualizar la bandeja de entrada. Se conservan los datos guardados.")
+                markRefreshFailure("conversations", canvasError(e).text + ". Se conservan los datos guardados.")
                 if (e.isCanvasUnauthorized()) isTokenExpired = true
             } finally { isLoadingConvs = false; isRefreshingConvs = false }
         }
@@ -232,14 +232,14 @@ class CanvasHubViewModel(
         viewModelScope.launch {
             if (isManual) isRefreshingNotifs = true else if (notifications.isEmpty()) isLoadingNotifs = true
             try {
-                val data = repository.notifications()
+                val data = canvasReadWithBackoff { repository.notifications() }
                 repository.requireSession()
                 cache.guardarNotificaciones(userKey, data)
                 notifications = data
                 clearRefreshFailure("notifications")
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {
-                markRefreshFailure("notifications", "No se pudieron actualizar las notificaciones. Se conservan los datos guardados.")
+                markRefreshFailure("notifications", canvasError(e).text + ". Se conservan los datos guardados.")
                 if (e.isCanvasUnauthorized()) isTokenExpired = true
             } finally { isLoadingNotifs = false; isRefreshingNotifs = false }
         }
@@ -251,14 +251,14 @@ class CanvasHubViewModel(
         viewModelScope.launch {
             if (isManual) isRefreshingGroups = true else if (groups.isEmpty()) isLoadingGroups = true
             try {
-                val data = repository.groups()
+                val data = canvasReadWithBackoff { repository.groups() }
                 repository.requireSession()
                 cache.guardarGrupos(userKey, data)
                 groups = data
                 clearRefreshFailure("groups")
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {
-                markRefreshFailure("groups", "No se pudieron actualizar los grupos. Se conservan los datos guardados.")
+                markRefreshFailure("groups", canvasError(e).text + ". Se conservan los datos guardados.")
                 if (e.isCanvasUnauthorized()) isTokenExpired = true
             } finally { isLoadingGroups = false; isRefreshingGroups = false }
         }
@@ -270,7 +270,7 @@ class CanvasHubViewModel(
         viewModelScope.launch {
             if (isManual) isRefreshingCourses = true else if (courses.isEmpty()) isLoadingCourses = true
             try {
-                val cleanCourses = repository.courses()
+                val cleanCourses = canvasReadWithBackoff { repository.courses() }
                 repository.requireSession()
                 cache.guardarCursos(userKey, cleanCourses)
                 courses = cleanCourses
@@ -278,7 +278,7 @@ class CanvasHubViewModel(
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {
                 isOffline = true
-                markRefreshFailure("courses", "No se pudieron actualizar los cursos. Se conservan los datos guardados.")
+                markRefreshFailure("courses", canvasError(e).text + ". Se conservan los datos guardados.")
                 if (e.isCanvasUnauthorized()) isTokenExpired = true
             } finally {
                 isLoadingCourses = false

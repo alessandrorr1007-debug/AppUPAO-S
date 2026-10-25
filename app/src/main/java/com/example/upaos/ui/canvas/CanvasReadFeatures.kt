@@ -55,7 +55,7 @@ private fun <T> canvasCachedList(flow: String, token: String, itemClass: Class<T
 }
 
 @Composable
-private fun <T> CanvasReadList(vm: CanvasResourceViewModel<List<T>>, row: @Composable (T) -> Unit) {
+private fun <T> CanvasReadList(vm: CanvasResourceViewModel<List<T>>, leading: @Composable () -> Unit = {}, row: @Composable (T) -> Unit) {
     val state by vm.state.collectAsState()
     CanvasResourceFeedback(state) { vm.refresh(true) }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
@@ -65,6 +65,7 @@ private fun <T> CanvasReadList(vm: CanvasResourceViewModel<List<T>>, row: @Compo
         }
         if (!state.loading && state.data.isEmpty()) Text("Sin elementos disponibles")
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { leading() }
             items(state.data) { item -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) { row(item) } } }
         }
     }
@@ -199,7 +200,12 @@ internal fun CanvasCalendar(token: String, courses: List<Long>) {
             TextButton(onClick = { vm.refresh(true) }) { Text("Actualizar") }
         }
         if (state.loading || state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
-        val grouped = state.data.groupBy { (it.startAt ?: it.assignment?.effectiveDueAt)?.take(10) ?: "Sin fecha" }
+        val window = canvasCalendarWindow()
+        Text("Ventana: ${window.first} a ${window.second}", style = MaterialTheme.typography.bodySmall)
+        val grouped = state.data.groupBy {
+            (if (it.allDay == true) it.allDayDate else null)
+                ?: canvasCalendarDay(it.startAt ?: it.assignment?.effectiveDueAt) ?: "Sin fecha"
+        }
         LazyColumn {
             grouped.toSortedMap().filterKeys { it.startsWith(month.toString()) || it == "Sin fecha" }.forEach { (day, events) ->
                 item { Text(day, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 12.dp)) }
@@ -248,20 +254,21 @@ internal fun CanvasQuizzes(course: Long, token: String) {
     val quizzes by vm.state.collectAsState()
     CanvasResourceFeedback(tasks) { assignments.refresh(true) }
     var selected by remember { mutableStateOf<CanvasQuiz?>(null) }
-    Column(Modifier.fillMaxSize()) {
+    CanvasReadList(vm, leading = {
         // Canvas does not expose a reliable New Quizzes flag in every account: label LTI conservatively.
+        Column {
         tasks.data.filter { a -> (a.isQuizAssignment == true || a.submissionTypes.orEmpty().contains("external_tool")) && quizzes.data.none { it.id == a.quizId } }.forEach { a ->
             Text(a.name ?: "Actividad externa / posible New Quiz", Modifier.padding(horizontal = 12.dp))
             Text("Actividad externa / posible New Quiz · vence ${a.effectiveDueAt ?: "Sin fecha de entrega"}", Modifier.padding(horizontal = 12.dp))
             CanvasExternalButton(a.htmlUrl)
         }
-        CanvasReadList(vm) { quiz ->
+        }
+    }) { quiz ->
             TextButton(onClick = { selected = quiz }) { Text(quiz.title ?: "Quiz") }
             Text("Vence: ${quiz.effectiveDueAt ?: "Sin fecha de entrega"} · ${canvasPoints(quiz.pointsPossible)} pts")
             Text("Abre: ${quiz.unlockAt ?: "No especificado"} · Cierra: ${quiz.lockAt ?: "No especificado"}")
             Text("Intentos permitidos: ${canvasAttempts(quiz.allowedAttempts)}")
             CanvasExternalButton(quiz.htmlUrl)
-        }
     }
     selected?.let { quiz ->
         val attempts = canvasResourceViewModel("quizAttempts:$course:${quiz.id}", token, emptyList<CanvasQuizAttempt>()) { quizAttempts(course, quiz.id) }
@@ -293,19 +300,30 @@ internal fun CanvasDiscussionDetail(course: Long, topic: CanvasDiscussionTopic, 
 
 @Composable
 private fun CanvasDiscussionEntries(entries: List<CanvasDiscussionEntry>, people: List<CanvasParticipant>, depth: Int = 0) {
-    entries.forEach { entry ->
-        Column(Modifier.padding(start = if (depth > 0) 12.dp else 0.dp)) {
+    val rows = remember(entries) {
+        val pending = java.util.ArrayDeque<Pair<Int, CanvasDiscussionEntry>>()
+        entries.asReversed().forEach { pending.addFirst(depth to it) }
+        buildList {
+            while (pending.isNotEmpty()) {
+                val next = pending.removeFirst()
+                add(next)
+                next.second.replies.orEmpty().asReversed().forEach { pending.addFirst((next.first + 1) to it) }
+            }
+        }
+    }
+    rows.forEach { (level, entry) ->
+        Column(Modifier.padding(start = (level.coerceAtMost(6) * 12).dp)) {
             HorizontalDivider()
             Text("${people.firstOrNull { it.id == entry.userId }?.let { it.displayName ?: it.name } ?: "Autor no disponible"} · ${entry.createdAt.orEmpty()}")
             if (entry.deleted == true) Text("Entrada eliminada") else HtmlText(entry.message.orEmpty())
-            if (depth < 20) CanvasDiscussionEntries(entry.replies.orEmpty(), people, depth + 1)
-            if (entry.hasMoreReplies == true || depth >= 20 && !entry.replies.isNullOrEmpty()) Text("Hay más respuestas. Abrir el hilo en Canvas.")
+            if (entry.hasMoreReplies == true) Text("Canvas indica que hay más respuestas. Abrir el hilo en Canvas.")
         }
     }
 }
 
 @Composable
 internal fun CanvasFolders(course: Long, token: String) {
+    val context = LocalContext.current
     val vm = canvasCachedList("folders:$course", token, CanvasFolder::class.java) { folders(course) }
     var selected by remember { mutableStateOf<CanvasFolder?>(null) }
     var metadata by remember { mutableStateOf<CanvasFileDetail?>(null) }
@@ -329,7 +347,7 @@ internal fun CanvasFolders(course: Long, token: String) {
         CanvasReadDetail(state.data.fileName, { metadata = null }) {
             Text("${state.data.formattedSize} · ${state.data.contentType.orEmpty()}")
             Text("Actualizado: ${state.data.updatedAt ?: "No disponible"}")
-            CanvasExternalButton(state.data.url, "Descargar en Canvas")
+            TextButton(onClick = { openCanvasContentLink(context, state.data.url) }, enabled = state.data.url != null) { Text("Descargar") }
         }
     }
 }

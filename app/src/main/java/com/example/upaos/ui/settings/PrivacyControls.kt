@@ -41,6 +41,8 @@ fun PrivacyControls(usuario: String, onAccountRemoved: () -> Unit) {
         }
     }
 
+    com.example.upaos.ui.canvas.CanvasDiagnosticsEntry(usuario)
+
     action?.let { mode ->
         AlertDialog(
             onDismissRequest = { if (!busy) action = null },
