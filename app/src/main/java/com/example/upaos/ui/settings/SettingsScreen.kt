@@ -61,9 +61,6 @@ fun SettingsScreen(
 
     var nombreEstudiante by remember { mutableStateOf<String?>(null) }
 
-    var buscandoActualizacion by remember { mutableStateOf(false) }
-    var dialogActualizacionInfo by remember { mutableStateOf<com.example.upaos.util.UpdateInfo?>(null) }
-    var descargandoActualizacion by remember { mutableStateOf(false) }
 
     LaunchedEffect(usuario) {
         if (usuario == null) {
@@ -431,45 +428,6 @@ fun SettingsScreen(
                     }
 
                     if (checkNotasEnabled || checkAsistenciaEnabled) {
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Botón de sincronización manual inmediata
-                        Button(
-                            onClick = {
-                                SyncScheduler.runNow(context)
-                                Toast.makeText(context, "Sincronizando notas y asistencias en segundo plano...", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Sincronizar ahora (comprobar notas y asistencias)")
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedButton(
-                            onClick = {
-                                if (checkAsistenciaEnabled) {
-                                    NotificationService.mostrarNotificacionAsistencia(
-                                        context,
-                                        "✅ Asistencia registrada (Prueba)",
-                                        "Redes y Comunicaciones: ¡Se registró tu asistencia! (8 asistencias, 1 falta)."
-                                    )
-                                } else {
-                                    NotificationService.mostrarNotificacionNotas(
-                                        context,
-                                        "📢 Nueva nota publicada (Prueba)",
-                                        "Redes y Comunicaciones: Se publicó la nota de Evaluación Parcial (17.5)."
-                                    )
-                                }
-                                Toast.makeText(context, "Notificación de prueba enviada al móvil", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Probar notificación en este celular")
-                        }
-
                         // Verificación de optimización de batería
                         val powerManager = remember {
                             context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
@@ -603,74 +561,6 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Sección Actualizaciones
-            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = "Buscar actualizaciones",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        },
-                        supportingContent = {
-                            val currentVer = com.example.upaos.util.AppUpdater.getCurrentVersionName(context)
-                            Text(
-                                text = "Versión actual: v$currentVer",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        leadingContent = {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.EmojiObjects,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        },
-                        trailingContent = {
-                            if (buscandoActualizacion) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                            }
-                        },
-                        modifier = Modifier.clickable(enabled = !buscandoActualizacion) {
-                            buscandoActualizacion = true
-                            scope.launch {
-                                try {
-                                    val info = com.example.upaos.util.AppUpdater.checkForUpdates(context)
-                                    buscandoActualizacion = false
-                                    if (info.hasUpdate) {
-                                        dialogActualizacionInfo = info
-                                    } else {
-                                        Toast.makeText(context, "¡Tienes instalada la última versión disponible (v${info.currentVersion})!", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    buscandoActualizacion = false
-                                    Toast.makeText(context, "No se pudo verificar: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
@@ -678,38 +568,6 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
-
-            dialogActualizacionInfo?.let { info ->
-                com.example.upaos.ui.components.UpdateDialog(
-                    updateInfo = info,
-                    isDownloading = descargandoActualizacion,
-                    onDismiss = { dialogActualizacionInfo = null },
-                    onConfirmUpdate = {
-                        if (info.downloadUrl != null) {
-                            descargandoActualizacion = true
-                            com.example.upaos.util.AppUpdater.downloadAndInstall(
-                                context = context,
-                                downloadUrl = info.downloadUrl,
-                                versionName = info.latestVersion
-                            )
-                            Toast.makeText(
-                                context,
-                                "Descargando actualización en segundo plano...",
-                                Toast.LENGTH_LONG
-                            ).show()
-                            dialogActualizacionInfo = null
-                            descargandoActualizacion = false
-                        } else {
-                            val browserIntent = android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse(info.releasePageUrl)
-                            )
-                            context.startActivity(browserIntent)
-                            dialogActualizacionInfo = null
-                        }
-                    }
-                )
-            }
         }
     }
 }

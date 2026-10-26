@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Grade
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
@@ -132,6 +133,8 @@ fun HomeScreen(
     }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    var showAboutDialog by remember { mutableStateOf(false) }
+    val appVersion = remember { com.example.upaos.util.AppUpdater.getCurrentVersionName(context) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -209,6 +212,23 @@ fun HomeScreen(
                 )
 
                 NavigationDrawerItem(
+                    label = { Text("Acerca de", fontWeight = FontWeight.Medium) },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    selected = false,
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        showAboutDialog = true
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+
+                NavigationDrawerItem(
                     label = {
                         Text(
                             "Cerrar sesión",
@@ -230,6 +250,15 @@ fun HomeScreen(
                         cerrarSesion()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Text(
+                    text = "v.$appVersion",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(start = 24.dp, bottom = 20.dp)
                 )
             }
         }
@@ -458,5 +487,75 @@ fun HomeScreen(
         }
     }
 }
+
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.School,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+            },
+            title = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "UPAO S",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "v.$appVersion",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Aplicación estudiantil no oficial diseñada para optimizar el acceso a cursos, horarios, notas y asistencias UPAO.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Desarrollado para la comunidad universitaria UPAO.",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("Cerrar")
+                }
+            }
+        )
+    }
 }
 
