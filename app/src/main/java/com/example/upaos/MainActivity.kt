@@ -574,7 +574,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
             }
             Spacer(modifier = Modifier.height(20.dp))
             Text(
-                text = "UPAO Móvil",
+                text = "UPAO",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
