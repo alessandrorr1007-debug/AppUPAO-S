@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.upaos"
         minSdk = 24
         targetSdk = 37
-        versionCode = 18
-        versionName = "1.7.2"
+        versionCode = 25
+        versionName = "1.7.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -34,7 +34,8 @@ android {
             if (!System.getenv("UPAOS_KEYSTORE_PATH").isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("distribution")
             }
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -48,6 +49,14 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    // Opt-in instrumentation against the actual optimized release, using a separately supplied test key.
+    testBuildType = providers.gradleProperty("upaosTestBuildType").getOrElse("debug").also {
+        require(it in setOf("debug", "release")) { "upaosTestBuildType must be debug or release" }
+    }
+    sourceSets {
+        getByName("test").java.srcDir("src/contractTest/java")
+        getByName("androidTest").java.srcDir("src/contractTest/java")
     }
     testOptions {
         unitTests.isReturnDefaultValues = true

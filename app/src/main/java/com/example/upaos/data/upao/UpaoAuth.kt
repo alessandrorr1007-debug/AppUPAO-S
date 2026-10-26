@@ -40,21 +40,35 @@ object UpaoAuth {
         if (html.isBlank()) return null
         try {
             val doc = Jsoup.parse(html)
-            val selectors = listOf(".user-name", "#user-name", ".profile-name", ".student-name", "span.name")
+            val selectors = listOf(
+                ".user-name", "#user-name", ".profile-name", ".student-name", "span.name",
+                "#userName", ".userName", ".username", ".user-display-name", "#user-display-name",
+                ".user-info", "#user-info", ".user-welcome", ".identity"
+            )
             for (sel in selectors) {
                 val element = doc.selectFirst(sel)
                 val text = element?.text()?.trim()
-                if (!text.isNullOrBlank()) {
+                if (!text.isNullOrBlank() && !text.equals("null", ignoreCase = true)) {
                     return text
                 }
             }
+            val attrElement = doc.selectFirst("[data-user-name], [data-fullname], [data-name]")
+            val attrText = attrElement?.let {
+                it.attr("data-user-name").ifBlank { it.attr("data-fullname") }.ifBlank { it.attr("data-name") }
+            }?.trim()
+            if (!attrText.isNullOrBlank()) return attrText
 
-            val pattern = Pattern.compile("[\"']fullName[\"']\\s*:\\s*[\"']([^\"']+)[\"']")
-            val matcher = pattern.matcher(html)
-            if (matcher.find()) {
-                val name = matcher.group(1)?.trim()
-                if (!name.isNullOrBlank()) {
-                    return name
+            val patterns = listOf(
+                Pattern.compile("[\"'](?:fullName|displayName|studentName|nombreCompleto|userName)[\"']\\s*:\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE),
+                Pattern.compile("[\"']name[\"']\\s*:\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE)
+            )
+            for (pattern in patterns) {
+                val matcher = pattern.matcher(html)
+                if (matcher.find()) {
+                    val name = matcher.group(1)?.trim()
+                    if (!name.isNullOrBlank() && !name.equals("null", ignoreCase = true)) {
+                        return name
+                    }
                 }
             }
         } catch (_: Exception) {}

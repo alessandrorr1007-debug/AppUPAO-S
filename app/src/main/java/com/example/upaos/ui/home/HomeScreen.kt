@@ -64,6 +64,9 @@ fun HomeScreen(
     onSwitchAccount: () -> Unit = onLogout,
     onOpenCalculator: () -> Unit,
     onOpenSettings: () -> Unit,
+    profileName: String? = null,
+    profileFirstName: String? = null,
+    onOpenProfile: () -> Unit = {},
     onOpenNotifications: () -> Unit,
     onOpenCourse: (String, String, String, String) -> Unit = { _, _, _, _ -> }
 ) {
@@ -92,6 +95,19 @@ fun HomeScreen(
     }
 
     val usuario = tokenManager.getSavedUser()
+    val savedAccount = remember(usuario) { tokenManager.getCuentas().firstOrNull { it.usuario == usuario } }
+    val cachedProfile = remember(usuario) {
+        usuario?.let { u ->
+            try {
+                tokenManager.getProfileJson(u)?.let { com.example.upaos.data.profile.StudentProfile.parse(it) }
+            } catch (_: Exception) { null }
+        }
+    }
+    val greetingName = profileFirstName
+        ?: cachedProfile?.firstName
+        ?: com.example.upaos.data.profile.StudentProfile.givenName(
+            profileName ?: cachedProfile?.fullName ?: savedAccount?.nombreCorto ?: savedAccount?.nombre
+        )
 
     fun cerrarSesion() {
         com.example.upaos.data.local.AccountPrivacy.logout(context)
@@ -145,6 +161,11 @@ fun HomeScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
+                    profileName?.takeIf { it.isNotBlank() }?.let { name ->
+                        Text(name, style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
                     Text(
                         text = usuario ?: "Estudiante UPAO",
                         style = MaterialTheme.typography.titleMedium,
@@ -161,6 +182,14 @@ fun HomeScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
 
 
+
+                NavigationDrawerItem(
+                    label = { Text("Mi perfil", fontWeight = FontWeight.Medium) },
+                    icon = { Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                    selected = false,
+                    onClick = { coroutineScope.launch { drawerState.close(); onOpenProfile() } },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
 
                 NavigationDrawerItem(
                     label = { Text("Cambiar de cuenta", fontWeight = FontWeight.Medium) },
@@ -377,6 +406,17 @@ fun HomeScreen(
                         )
                     }
                 }
+            }
+            if (pagerState.currentPage == 0) {
+                Text(
+                    text = greetingName?.let { "Hola, $it" } ?: "Hola",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 10.dp)
+                )
             }
             HorizontalPager(
                 state = pagerState,

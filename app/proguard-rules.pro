@@ -1,21 +1,51 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Gson and Retrofit read generic signatures and runtime annotations reflectively.
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
+-keepattributes SourceFile,LineNumberTable
+-keep,allowobfuscation class com.google.gson.reflect.TypeToken
+-keep,allowobfuscation class * extends com.google.gson.reflect.TypeToken
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# JSON/cache DTO class names may change; field names must remain stable across app upgrades.
+# Several Canvas fields and legacy cache fields have no @SerializedName annotation.
+-keep,allowoptimization,allowobfuscation class com.example.upaos.data.model.**
+-keepclassmembers,allowoptimization class com.example.upaos.data.model.** {
+    <fields>;
+    <init>();
+}
+-keep,allowoptimization,allowobfuscation class com.example.upaos.data.local.CuentaGuardada
+-keepclassmembers,allowoptimization class com.example.upaos.data.local.CuentaGuardada {
+    <fields>;
+    <init>();
+}
+-keep,allowoptimization,allowobfuscation class com.example.upaos.data.agenda.AgendaItem
+-keepclassmembers,allowoptimization class com.example.upaos.data.agenda.AgendaItem {
+    <fields>;
+    <init>();
+}
+-keep,allowoptimization,allowobfuscation class com.example.upaos.util.GitHubAsset
+-keepclassmembers,allowoptimization class com.example.upaos.util.GitHubAsset {
+    <fields>;
+    <init>();
+}
+-keep,allowoptimization,allowobfuscation class com.example.upaos.util.GitHubRelease
+-keepclassmembers,allowoptimization class com.example.upaos.util.GitHubRelease {
+    <fields>;
+    <init>();
+}
+-keep,allowoptimization,allowobfuscation class com.example.upaos.service.AsistenciaWorker$SnapshotCurso
+-keepclassmembers,allowoptimization class com.example.upaos.service.AsistenciaWorker$SnapshotCurso {
+    <fields>;
+    <init>();
+}
+-keep,allowoptimization,allowobfuscation class com.example.upaos.service.GradeSyncCheck$SnapshotNotasCurso
+-keepclassmembers,allowoptimization class com.example.upaos.service.GradeSyncCheck$SnapshotNotasCurso {
+    <fields>;
+    <init>();
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Retrofit implements this annotated interface dynamically. Its methods/signatures are API contracts.
+-keep,allowoptimization interface com.example.upaos.data.api.CanvasApiService { public *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# WorkManager persists fully qualified worker names in its database between app versions.
+-keep,allowoptimization class com.example.upaos.service.*Worker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}

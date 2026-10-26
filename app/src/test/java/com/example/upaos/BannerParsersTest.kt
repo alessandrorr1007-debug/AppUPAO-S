@@ -109,6 +109,78 @@ class BannerParsersTest {
         }
     }
 
+    @Test
+    fun parseHorarioJson_conRegistrosRetirados_filtraSoloActivos() {
+        val jsonConBajas = """
+        {
+          "data": {
+            "registrations": [
+              {
+                "courseReferenceNumber": "5045",
+                "courseTitle": "MACHINE LEARNING",
+                "subject": "ISIA",
+                "courseNumber": "110",
+                "sequenceNumber": "01",
+                "status": "DW",
+                "statusIndicator": "N",
+                "statusDescription": "Eliminado por Web"
+              },
+              {
+                "courseReferenceNumber": "5046",
+                "courseTitle": "MACHINE LEARNING",
+                "subject": "ISIA",
+                "courseNumber": "110",
+                "sequenceNumber": "02",
+                "status": "RW",
+                "statusIndicator": "Y",
+                "statusDescription": "Inscrito por Web"
+              },
+              {
+                "courseReferenceNumber": "6001",
+                "courseTitle": "BASE DE DATOS",
+                "subject": "ISIA",
+                "courseNumber": "112"
+              }
+            ]
+          }
+        }
+        """.trimIndent()
+
+        val activos = BannerParsers.parseHorarioJson(jsonConBajas)
+        assertEquals(2, activos.size)
+        assertEquals("5046", activos[0].get("courseReferenceNumber").asString)
+        assertEquals("6001", activos[1].get("courseReferenceNumber").asString)
+
+        // Verificamos que si se desactiva soloActivos, devuelve todos (incluyendo la baja)
+        val todos = BannerParsers.parseHorarioJson(jsonConBajas, soloActivos = false)
+        assertEquals(3, todos.size)
+    }
+
+    @Test
+    fun esRegistroActivo_distingueActivosEInactivos() {
+        fun makeReg(status: String? = null, statusIndicator: String? = null, statusDesc: String? = null): com.google.gson.JsonObject {
+            val obj = com.google.gson.JsonObject()
+            status?.let { obj.addProperty("status", it) }
+            statusIndicator?.let { obj.addProperty("statusIndicator", it) }
+            statusDesc?.let { obj.addProperty("statusDescription", it) }
+            return obj
+        }
+
+        // Bajas / eliminados / retirados
+        assertFalse(BannerParsers.esRegistroActivo(makeReg(status = "DW")))
+        assertFalse(BannerParsers.esRegistroActivo(makeReg(status = "DD")))
+        assertFalse(BannerParsers.esRegistroActivo(makeReg(status = "WD")))
+        assertFalse(BannerParsers.esRegistroActivo(makeReg(statusIndicator = "N")))
+        assertFalse(BannerParsers.esRegistroActivo(makeReg(statusDesc = "Eliminado por Web")))
+        assertFalse(BannerParsers.esRegistroActivo(makeReg(statusDesc = "Baja por Web")))
+        assertFalse(BannerParsers.esRegistroActivo(makeReg(statusDesc = "Retirado")))
+
+        // Activos
+        assertTrue(BannerParsers.esRegistroActivo(makeReg(status = "RW", statusIndicator = "Y", statusDesc = "Inscrito por Web")))
+        assertTrue(BannerParsers.esRegistroActivo(makeReg(status = "RE", statusIndicator = "Y", statusDesc = "Inscrito")))
+        assertTrue(BannerParsers.esRegistroActivo(makeReg())) // Sin campos de estado = activo por defecto
+    }
+
     // ---------- 4. ASISTENCIA (studentAttendanceTracking) ----------
 
     @Test

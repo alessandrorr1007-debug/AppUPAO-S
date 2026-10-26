@@ -52,6 +52,9 @@ import com.example.upaos.ui.home.HomeScreen
 import com.example.upaos.ui.login.EligeCuentaScreen
 import com.example.upaos.ui.login.LoginScreen
 import com.example.upaos.ui.notificaciones.NotificacionesScreen
+import com.example.upaos.ui.profile.ProfileScreen
+import com.example.upaos.ui.profile.RefreshProfileOnResume
+import com.example.upaos.ui.profile.rememberProfileViewModel
 import com.example.upaos.ui.settings.SettingsScreen
 import com.example.upaos.ui.theme.UPAOSTheme
 import com.example.upaos.widget.ProximoCursoWidget
@@ -108,12 +111,14 @@ class MainActivity : FragmentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* Permission granted */ }
 
     override fun onStop() {
+        com.example.upaos.service.GradeSyncController.onHidden()
         super.onStop()
         ultimaVezEnSegundoPlano = System.currentTimeMillis()
     }
 
     override fun onResume() {
         super.onResume()
+        com.example.upaos.service.GradeSyncController.onVisible(this)
         actualizarProteccionPantalla()
         if (SecurityLockPolicy.debeBloquear(
                 ultimaVezEnSegundoPlano = ultimaVezEnSegundoPlano,
@@ -332,7 +337,21 @@ class MainActivity : FragmentActivity() {
                                         popUpTo("elige-cuenta") { inclusive = true }
                                     }
                                 },
-                                onBack = { navController.popBackStack() }
+                                onBack = {
+                                    val activeUser = tokenManager.getSavedUser()
+                                    val token = tokenManager.getToken()
+                                    if (!activeUser.isNullOrBlank() && !token.isNullOrBlank()) {
+                                        com.example.upaos.data.upao.UpaoHttpClient.selectAccount(activeUser)
+                                        val popped = navController.popBackStack()
+                                        if (!popped) {
+                                            navegarPorTipoCuenta(token)
+                                        }
+                                    } else {
+                                        if (!navController.popBackStack()) {
+                                            navController.navigate("login") { popUpTo("elige-cuenta") { inclusive = true } }
+                                        }
+                                    }
+                                }
                             )
                         }
 
@@ -343,6 +362,9 @@ class MainActivity : FragmentActivity() {
                             exitTransition = { fadeOut(tween(200)) }
                         ) { backStackEntry ->
                             val token = backStackEntry.arguments?.getString("token") ?: ""
+                            val profileModel = rememberProfileViewModel(backStackEntry)
+                            val profileState by profileModel.state.collectAsState()
+                            RefreshProfileOnResume(profileModel)
                             HomeScreen(
                                 token = token,
                                 initialTab = destinationTabRequest,
@@ -359,9 +381,7 @@ class MainActivity : FragmentActivity() {
                                     }
                                 },
                                 onSwitchAccount = {
-                                    navController.navigate("elige-cuenta") {
-                                        popUpTo(0) { inclusive = true }
-                                    }
+                                    navController.navigate("elige-cuenta") { launchSingleTop = true }
                                 },
                                 onOpenCalculator = {
                                     navController.navigate("calculadora")
@@ -369,6 +389,9 @@ class MainActivity : FragmentActivity() {
                                 onOpenSettings = {
                                     navController.navigate("settings")
                                 },
+                                profileName = profileState.profile?.fullName,
+                                profileFirstName = profileState.profile?.firstName,
+                                onOpenProfile = { navController.navigate("mi-perfil") },
                                 onOpenNotifications = {
                                     navController.navigate("notificaciones")
                                 },
@@ -419,6 +442,20 @@ class MainActivity : FragmentActivity() {
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() }
                             )
+                        }
+
+                        composable(
+                            "mi-perfil",
+                            enterTransition = { slideInHorizontally(tween(280)) { it } },
+                            exitTransition = { fadeOut(tween(180)) },
+                            popEnterTransition = { fadeIn(tween(220)) },
+                            popExitTransition = { slideOutHorizontally(tween(280)) { it } }
+                        ) { profileEntry ->
+                            val homeEntry = remember(profileEntry) { navController.getBackStackEntry("home/{token}") }
+                            val profileModel = rememberProfileViewModel(homeEntry)
+                            val profileState by profileModel.state.collectAsState()
+                            RefreshProfileOnResume(profileModel)
+                            ProfileScreen(profileState, onBack = { navController.popBackStack() }, onRefresh = profileModel::refresh)
                         }
 
                         composable(

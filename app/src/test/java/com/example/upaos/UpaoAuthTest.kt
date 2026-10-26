@@ -60,6 +60,24 @@ class UpaoAuthTest {
     }
 
     @Test
+    fun extractStudentNameFromDataAttribute() {
+        val html = """
+            <div class="user-menu" data-user-name="RODRIGUEZ RUIZ/ALESSANDRO"></div>
+        """.trimIndent()
+        assertEquals("RODRIGUEZ RUIZ/ALESSANDRO", UpaoAuth.extractStudentName(html))
+    }
+
+    @Test
+    fun extractStudentNameFromDisplayNameJson() {
+        val html = """
+            <script>
+                window.initialState = { "displayName": "ALESSANDRO DANIEL" };
+            </script>
+        """.trimIndent()
+        assertEquals("ALESSANDRO DANIEL", UpaoAuth.extractStudentName(html))
+    }
+
+    @Test
     fun parseLoginFormInputsCorrectly() {
         val html = """
             <html>

@@ -432,7 +432,9 @@ class BannerApi(private val context: Context) {
             }
 
             val jsonStr = response.use { it.body?.string().orEmpty() }
-            val registros = BannerParsers.parseHorarioJson(jsonStr).toMutableList()
+            val registros = BannerParsers.parseHorarioJson(jsonStr)
+                .filter { BannerParsers.esRegistroActivo(it) }
+                .toMutableList()
 
             val crns = registros.mapNotNull {
                 it.get("courseReferenceNumber")?.asStringOrNull() ?: it.get("crn")?.asStringOrNull()
@@ -460,7 +462,7 @@ class BannerApi(private val context: Context) {
                     val parsedEvents = JsonParser.parseString(eventsJson)
                     if (parsedEvents.isJsonArray) {
                         for (elem in parsedEvents.asJsonArray) {
-                            if (elem.isJsonObject) eventos.add(elem.asJsonObject)
+                            if (elem.isJsonObject && BannerParsers.esRegistroActivo(elem.asJsonObject)) eventos.add(elem.asJsonObject)
                         }
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
@@ -576,6 +578,7 @@ class BannerApi(private val context: Context) {
         val cursosMap = mutableMapOf<String, MutableHorarioCurso>()
 
         for (reg in registros) {
+            if (!BannerParsers.esRegistroActivo(reg)) continue
             val crn = reg.get("courseReferenceNumber")?.asStringOrNull()
                 ?: reg.get("crn")?.asStringOrNull()
             val subject = reg.get("subject")?.asStringOrNull()
@@ -712,6 +715,7 @@ class BannerApi(private val context: Context) {
         val cursosMap = mutableMapOf<String, MutableHorarioCurso>()
 
         for (ev in eventos) {
+            if (!BannerParsers.esRegistroActivo(ev)) continue
             val crn = ev.get("crn")?.asStringOrNull()
                 ?: ev.get("courseReferenceNumber")?.asStringOrNull()
                 ?: ev.get("id")?.asStringOrNull()

@@ -37,7 +37,6 @@ import com.example.upaos.service.SyncScheduler
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.cursoColor
-import com.example.upaos.ui.components.toTitleCase
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,8 +70,15 @@ fun SettingsScreen(
             cargando = false
             return@LaunchedEffect
         }
-        val cuentaGuardada = TokenManager(context).getCuentas().firstOrNull { it.usuario == usuario }
-        nombreEstudiante = cuentaGuardada?.nombre
+        nombreEstudiante = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val tokens = TokenManager(context)
+            val savedName = tokens.getCuentas().firstOrNull { it.usuario == usuario }?.nombre
+            val profileName = try {
+                tokens.getProfileJson(usuario)?.let { com.example.upaos.data.profile.StudentProfile.parse(it).fullName }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { null }
+            com.example.upaos.data.profile.StudentProfile.normalizeName(profileName ?: savedName)
+        }
         checkAsistenciaEnabled = notificationPrefs.checkAsistenciaEnabled
         checkNotasEnabled = notificationPrefs.checkNotasEnabled
         recordatorioClasesEnabled = notificationPrefs.recordatorioClasesEnabled
@@ -159,7 +165,6 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            if (usuario != null) PrivacyControls(usuario, onAccountRemoved)
             if (cargando) {
                 Box(
                     modifier = Modifier.fillMaxWidth(),
@@ -225,7 +230,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (!nombreEstudiante.isNullOrBlank()) toTitleCase(nombreEstudiante!!) else "Estudiante",
+                            text = "Estudiante",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -235,9 +240,17 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Nombre completo: ${nombreEstudiante ?: "No disponible"}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
+
+            PrivacyControls(usuario, onAccountRemoved)
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -267,7 +280,7 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Revisión automática cada ~10 min (más espaciada de noche y domingos)",
+                                text = "Revisión automática en segundo plano",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontSize = 11.sp,
@@ -483,7 +496,7 @@ fun SettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Para que el teléfono no detenga la revisión automática en segundo plano cuando la pantalla está apagada (Xiaomi, Samsung, etc.), desactiva el ahorro de batería para UPAO S.",
+                                        text = "Xiaomi: activa Inicio automático y selecciona Batería > Sin restricciones para UPAO S.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onErrorContainer,
                                         fontSize = 11.sp

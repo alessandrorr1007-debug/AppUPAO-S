@@ -11,7 +11,8 @@ import com.google.gson.reflect.TypeToken
 data class CuentaGuardada(
     val usuario: String,
     val password: String,
-    val nombre: String? = null
+    val nombre: String? = null,
+    val nombreCorto: String? = null
 )
 
 class TokenManager(
@@ -157,9 +158,13 @@ class TokenManager(
     }
 
     /** Persist the complete login before allowing navigation to the authenticated UI. */
-    fun saveLogin(user: String, password: String?, keep: Boolean, name: String? = null) {
-        val accounts = getCuentas().filterNot { it.usuario == user }.toMutableList()
-        if (password != null) accounts.add(CuentaGuardada(user, password, name))
+    fun saveLogin(user: String, password: String?, keep: Boolean, name: String? = null) = synchronized(SessionCleanup.lock) {
+        val savedAccounts = getCuentas()
+        val previous = savedAccounts.firstOrNull { it.usuario == user }
+        val accounts = savedAccounts.filterNot { it.usuario == user }.toMutableList()
+        val displayName = if (!previous?.nombreCorto.isNullOrBlank()) previous?.nombre else name ?: previous?.nombre
+        val shortName = previous?.nombreCorto ?: com.example.upaos.data.profile.StudentProfile.shortNameFromFullName(displayName)
+        if (password != null) accounts.add(CuentaGuardada(user, password, displayName, shortName))
         val values = mutableMapOf(
             "user_id" to user, "auth_token" to user, "keep_logged_in" to keep.toString(),
             "cuentas_guardadas" to gson.toJson(accounts),
@@ -180,7 +185,8 @@ class TokenManager(
     fun saveCuenta(usuario: String, password: String, nombre: String? = null) {
         val actuales = getCuentas().toMutableList()
         actuales.removeAll { it.usuario == usuario }
-        actuales.add(CuentaGuardada(usuario, password, nombre))
+        val shortName = com.example.upaos.data.profile.StudentProfile.shortNameFromFullName(nombre)
+        actuales.add(CuentaGuardada(usuario, password, nombre, shortName))
         val json = guardarJson(actuales)
         store.put("cuentas_guardadas", json)
     }
@@ -195,11 +201,33 @@ class TokenManager(
         }
     }
 
+    fun getProfileJson(usuario: String): String? = store.get(profileKey(usuario))
+
+    fun saveProfileIfCurrent(usuario: String, sessionId: String, json: String,
+        fullName: String? = null, shortName: String? = null): Boolean = synchronized(SessionCleanup.lock) {
+        if (getSavedUser() != usuario || getSessionId() != sessionId || AccountPrivacy.isDeleting(usuario)) return@synchronized false
+        val values = mutableMapOf(profileKey(usuario) to json)
+        if (!fullName.isNullOrBlank() || !shortName.isNullOrBlank()) {
+            var changed = false
+            val accounts = getCuentas().map { account ->
+                if (account.usuario != usuario) account else account.copy(
+                    nombre = fullName?.takeIf { it.isNotBlank() } ?: account.nombre,
+                    nombreCorto = shortName?.takeIf { it.isNotBlank() } ?: account.nombreCorto
+                ).also { if (it != account) changed = true }
+            }
+            if (changed) values["cuentas_guardadas"] = gson.toJson(accounts)
+        }
+        store.putAll(values)
+        true
+    }
+
+    private fun profileKey(usuario: String) = "student_profile_${usuario.trim().lowercase(java.util.Locale.ROOT)}"
+
     fun removeCuenta(usuario: String) {
         val actuales = getCuentas().toMutableList()
         actuales.removeAll { it.usuario == usuario }
         val json = guardarJson(actuales)
-        store.put("cuentas_guardadas", json)
+        store.putAll(mapOf("cuentas_guardadas" to json), setOf(profileKey(usuario)))
     }
 
     private fun guardarJson(cuentas: List<CuentaGuardada>): String {
@@ -224,9 +252,10 @@ class TokenManager(
     }
 
     /** Cierra la sesión actual sin borrar las cuentas guardadas del dispositivo. */
-    fun clearSession() {
-        store.putAll(mapOf("keep_logged_in" to "false"),
-            setOf("auth_token", "user_id", "user_pass", "session_id"))
+    fun clearSession() = synchronized(SessionCleanup.lock) {
+        val removals = mutableSetOf("auth_token", "user_id", "user_pass", "session_id")
+        getSavedUser()?.let { removals.add(profileKey(it)) }
+        store.putAll(mapOf("keep_logged_in" to "false"), removals)
     }
 
     fun clearAll() {

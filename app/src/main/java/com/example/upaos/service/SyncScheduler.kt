@@ -17,6 +17,7 @@ object SyncScheduler {
     private const val WORK_NAME = "upao_adaptive_sync"
 
     fun start(context: Context) = synchronized(SessionCleanup.lock) {
+        GradeSyncController.reconcile(context)
         removeLegacySchedules(context)
         enqueue(context, ExistingWorkPolicy.KEEP)
     }
@@ -58,11 +59,14 @@ object SyncScheduler {
 
     fun runNow(context: Context) = synchronized(SessionCleanup.lock) {
         removeLegacySchedules(context)
+        GradeSyncController.ensureBackup(context)
+        WorkManager.getInstance(context).enqueue(OneTimeWorkRequestBuilder<GradeBackupWorker>().build())
         // A manual request replaces a delayed chain; cancellation propagates from any old round.
         enqueue(context, ExistingWorkPolicy.REPLACE, immediate = true)
     }
 
     fun cancel(context: Context) = synchronized(SessionCleanup.lock) {
+        GradeSyncController.cancel(context)
         WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         removeLegacySchedules(context)
     }
