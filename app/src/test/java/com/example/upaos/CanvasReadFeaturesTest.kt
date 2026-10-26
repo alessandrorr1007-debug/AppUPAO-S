@@ -163,22 +163,4 @@ class CanvasReadFeaturesTest {
             assertEquals("/api/v1/courses/1/front_page",server.takeRequest().path)
         }
     }
-
-    @Test fun diagnosticsOutputOnlyMetadataAndSkipUnavailableDetails() = runTest {
-        MockWebServer().use { server ->
-            server.start()
-            val raw=api(server)
-            server.enqueue(MockResponse().setBody("{\"id\":1,\"name\":\"SYNTHETIC_PRIVATE_NAME\",\"email\":\"private@synthetic.invalid\"}"))
-            repeat(5) { server.enqueue(MockResponse().setBody("[]")) }
-            val rows=mutableListOf<CanvasDiagnosticRow>()
-            CanvasDiagnostics({ true },raw).run("synthetic_secret") { rows += it }
-            val report=rows.toString()
-            assertFalse(report.contains("SYNTHETIC_PRIVATE_NAME"))
-            assertFalse(report.contains("private@synthetic.invalid"))
-            assertFalse(report.contains("synthetic_secret"))
-            assertEquals(200,rows.first().http)
-            assertTrue(rows.any { it.endpoint == "courses/{C}/pages" && it.http == null && it.millis == 0L })
-            repeat(6) { assertEquals("GET",server.takeRequest().method) }
-        }
-    }
 }

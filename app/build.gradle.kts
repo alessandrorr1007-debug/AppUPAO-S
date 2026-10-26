@@ -69,7 +69,6 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity)
-    implementation(libs.androidx.constraintlayout)
     
     // Jetpack Compose & Navigation
     implementation(platform("androidx.compose:compose-bom:2024.09.00"))

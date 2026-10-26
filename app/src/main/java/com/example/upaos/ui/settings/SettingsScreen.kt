@@ -25,17 +25,13 @@ import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import com.example.upaos.data.local.BiometricHelper
 import com.example.upaos.data.local.NotificationPreferences
 import com.example.upaos.data.local.SecurityPreferences
 import com.example.upaos.data.local.TokenManager
-import com.example.upaos.service.AsistenciaWorker
-import com.example.upaos.service.NotificationService
 import com.example.upaos.service.SyncScheduler
 import com.example.upaos.ui.components.AppCard
-import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.cursoColor
 import kotlinx.coroutines.launch
 
