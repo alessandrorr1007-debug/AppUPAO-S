@@ -1,11 +1,14 @@
 package com.example.upaos.ui.home
+import com.example.upaos.ui.components.CampusCard
+import com.example.upaos.ui.components.limpiarMensajeNotificacion
+import com.example.upaos.ui.components.toTitleCase
 
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import com.example.upaos.ui.theme.campusIsDark
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -48,10 +54,16 @@ fun TodayHero(
     onNotifications: () -> Unit = {}
 ) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF123B91), Color(0xFF245DCA))))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF102C67), Color(0xFF245BE0), Color(0xFF197DAD))))
+            .drawBehind {
+                val center = Offset(size.width * 1.02f, size.height * .12f)
+                for (radius in listOf(58.dp, 92.dp, 126.dp)) {
+                    drawCircle(Color.White.copy(alpha = .09f), radius.toPx(), center, style = Stroke(1.dp.toPx()))
+                }
+            }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -60,14 +72,14 @@ fun TodayHero(
                 color = Color.White.copy(alpha = .85f)
             )
             Surface(color = Color.White.copy(alpha = .15f), shape = RoundedCornerShape(50)) {
-                Text("HOY", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("HOY", Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text("Tu día, a la vista", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
             Text("Clases, pendientes y novedades de hoy", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = .85f))
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HeroMetric(classes, "Clases", Icons.Filled.Schedule, Modifier.weight(1f), onClick = onSchedule)
             HeroMetric(tasks, "Pendientes", Icons.AutoMirrored.Filled.Assignment, Modifier.weight(1f), onClick = onCanvas)
             HeroMetric(news, "Novedades", Icons.Filled.Notifications, Modifier.weight(1f), onClick = onNotifications)
@@ -85,14 +97,14 @@ private fun HeroMetric(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(Color.White.copy(alpha = .12f))
             .clickable(onClick = onClick)
-            .padding(6.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = .85f), modifier = Modifier.size(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = .85f), modifier = Modifier.size(13.dp))
             Text(count?.toString() ?: "—", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
         }
         Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = .85f))
@@ -122,7 +134,7 @@ data class TodayCardTheme(
 
 @Composable
 fun rememberTodayCardTheme(): TodayCardTheme {
-    val isDark = isSystemInDarkTheme()
+    val isDark = campusIsDark
     return if (isDark) {
         TodayCardTheme(
             cardBg = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -186,48 +198,41 @@ fun TodaySchedule(classes: List<NextClass>, available: Boolean, now: Long, updat
     val next = classes.firstOrNull { it.end > now }
     val theme = rememberTodayCardTheme()
 
-    Card(
+    CampusCard(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBg, contentColor = theme.cardTextColor),
         border = BorderStroke(1.dp, theme.cardBorder)
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Surface(shape = RoundedCornerShape(14.dp), color = theme.cardIconBg) {
-                    Icon(Icons.Filled.Schedule, null, Modifier.padding(12.dp).size(22.dp), tint = theme.cardAccent)
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = RoundedCornerShape(10.dp), color = theme.cardIconBg) {
+                    Icon(Icons.Filled.Schedule, null, Modifier.padding(8.dp).size(18.dp), tint = theme.cardAccent)
                 }
                 Column(Modifier.weight(1f)) {
-                    Text("Tus clases de hoy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = theme.cardTextColor)
+                    Text("Tus clases de hoy", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = theme.cardTextColor)
                     Text(when { !available -> "Horario por actualizar"; classes.isEmpty() -> "Hoy no tienes clases programadas"; next == null -> "Clases de hoy finalizadas"; next.start <= now -> "Estás en horario de clase"; else -> "Tu siguiente clase de hoy" },
                         style = MaterialTheme.typography.bodySmall, color = theme.cardSubtextColor)
                 }
             }
-            if (next != null) {
-                Surface(
-                    color = theme.innerCardBg,
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, theme.innerCardBorder)
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(if (next.start <= now) "EN CURSO" else "A LAS ${campusFormat(next.start, "HH:mm")}",
-                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = theme.cardAccent)
-                        Text(next.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = theme.cardTextColor)
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Icon(if (next.room == "Virtual") Icons.Filled.Videocam else Icons.Filled.LocationOn, null, Modifier.size(17.dp), tint = theme.cardSubtextColor)
-                            Text(next.room, style = MaterialTheme.typography.bodySmall, color = theme.cardSubtextColor)
+            Column {
+                classes.forEachIndexed { index, lesson ->
+                    com.example.upaos.ui.components.ClassTimelineRow(
+                        start = campusFormat(lesson.start, "HH:mm"),
+                        end = campusFormat(lesson.end, "HH:mm"),
+                        title = lesson.name,
+                        room = lesson.room,
+                        accent = com.example.upaos.ui.components.courseAccent(lesson.name),
+                        connectAbove = index > 0,
+                        connectBelow = index < classes.lastIndex,
+                        highlighted = lesson == next,
+                        detail = when {
+                            lesson.end <= now -> "Finalizada"
+                            lesson.start <= now -> "En curso"
+                            lesson == next -> "Próxima clase"
+                            else -> null
                         }
-                        Text("${campusFormat(next.start, "HH:mm")} – ${campusFormat(next.end, "HH:mm")}", style = MaterialTheme.typography.bodyMedium, color = theme.cardSubtextColor)
-                    }
-                }
-            }
-            classes.filter { it != next }.forEach { lesson ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(campusFormat(lesson.start, "HH:mm"), style = MaterialTheme.typography.labelLarge, color = theme.cardAccent, fontWeight = FontWeight.Bold)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(lesson.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = theme.cardTextColor)
-                        Text("${lesson.room} · ${if (lesson.end <= now) "Finalizada" else "Hasta ${campusFormat(lesson.end, "HH:mm")}"}", style = MaterialTheme.typography.bodySmall, color = theme.cardSubtextColor)
-                    }
+                    )
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -247,7 +252,7 @@ fun TodayAssignments(items: List<AgendaItem>, now: Long, updated: Long?, current
     if (items.isEmpty()) return
     val theme = rememberTodayCardTheme()
 
-    Card(
+    CampusCard(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBg, contentColor = theme.cardTextColor),
@@ -288,7 +293,7 @@ fun TodayAssignment(item: AgendaItem, now: Long, todayOnly: Boolean, theme: Toda
     val late = !item.submitted && !item.graded && (item.dueMillis ?: Long.MAX_VALUE) < now
     val accent = if (late) MaterialTheme.colorScheme.error else theme.cardAccent
 
-    Card(
+    CampusCard(
         Modifier.fillMaxWidth().clickable(enabled = deliveryUrl != null, onClick = { openDelivery() }),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.innerCardBg, contentColor = theme.cardTextColor),
@@ -330,7 +335,7 @@ fun TodayNewsCard(
     if (items.isEmpty()) return
     val theme = rememberTodayCardTheme()
 
-    Card(
+    CampusCard(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBg, contentColor = theme.cardTextColor),
@@ -413,10 +418,10 @@ fun TodayNewsCard(
                                         Text(campusFormat(it, "HH:mm"), style = MaterialTheme.typography.labelSmall, color = theme.cardSubtextColor)
                                     }
                                 }
-                                Text(notice.mensaje, style = MaterialTheme.typography.bodyMedium, color = theme.cardTextColor)
                                 notice.curso?.takeIf { it.isNotBlank() }?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall, color = theme.cardSubtextColor)
+                                    Text(toTitleCase(it), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = theme.cardTextColor)
                                 }
+                                Text(limpiarMensajeNotificacion(notice.mensaje, notice.curso), style = MaterialTheme.typography.bodyMedium, color = theme.cardTextColor)
                             }
                         }
                     }

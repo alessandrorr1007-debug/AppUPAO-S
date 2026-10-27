@@ -44,7 +44,7 @@ import com.example.upaos.ui.components.RefreshableContent
 import com.example.upaos.ui.components.SectionHeader
 import com.example.upaos.ui.components.SkeletonBox
 import com.example.upaos.ui.components.StatusBadge
-import com.example.upaos.ui.components.cursoColor
+import com.example.upaos.ui.components.courseAccent
 import com.example.upaos.ui.components.toTitleCase
 import com.example.upaos.ui.theme.UpaoAmber
 import com.example.upaos.ui.theme.UpaoBlue
@@ -546,9 +546,9 @@ private fun ResumenAsistencia(
     periodo: String
 ) {
     AppCard(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MaterialTheme.colorScheme.surface,
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-        corner = 14.dp,
+        corner = 20.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -566,17 +566,10 @@ private fun ResumenAsistencia(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = if (semanaCiclo > 0) "Semana $semanaCiclo de ${AcademicCalendar.TOTAL_SEMANAS_REGULARES}" else "Calendario académico",
+                        text = "Periodo $periodo",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Periodo $periodo · " + (AcademicCalendar.calcularSemana(periodo).etiqueta ?: "Sin calendario") +
-                            if (AcademicCalendar.calcularSemana(periodo).fechaEstimada) " · estimado" else "",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -630,11 +623,11 @@ fun AsistenciaCard(
 ) {
     val tieneRegistro = item.tieneRegistroAsistencia && !sinDatos
     val pct = item.porcentaje
-    val color = porcentajeColor(pct, tieneRegistro)
+    val color = com.example.upaos.ui.theme.campusAccent(porcentajeColor(pct, tieneRegistro))
     val faltas = item.totalFaltasCalculadas
     val (estado, _) = estadoAsistencia(pct, faltas, tieneRegistro)
     val activos = diasActivos(item.horarioDias)
-    val courseColor = cursoColor(item.displayNombre)
+    val courseColor = courseAccent(item.displayNombre)
     val diasNombres = if (activos.isNotEmpty()) {
         activos.sorted().joinToString(" · ") { dayNames[it].lowercase().replaceFirstChar { it.uppercase() } }
     } else {
@@ -650,13 +643,13 @@ fun AsistenciaCard(
             modifier = Modifier
                 .width(4.dp)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
+                .clip(RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
                 .background(color)
         )
         AppCard(
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            corner = 14.dp,
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            color = MaterialTheme.colorScheme.surface,
+            corner = 20.dp,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
             onClick = onClick,
             modifier = Modifier.weight(1f)
         ) {
@@ -730,7 +723,7 @@ fun AsistenciaCard(
                     // Fila destacada: Faltas
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (faltas > 0) UpaoRed.copy(alpha = 0.12f) else UpaoGreen.copy(alpha = 0.10f),
+                        color = if (faltas > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.12f) else com.example.upaos.ui.theme.campusSuccess.copy(alpha = 0.10f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -741,7 +734,7 @@ fun AsistenciaCard(
                             Icon(
                                 imageVector = if (faltas > 0) Icons.Filled.Cancel else Icons.Filled.CheckCircle,
                                 contentDescription = null,
-                                tint = if (faltas > 0) UpaoRed else UpaoGreen,
+                                tint = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess,
                                 modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -749,7 +742,7 @@ fun AsistenciaCard(
                                 text = if (faltas == 1) "1 Falta" else "$faltas Faltas",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (faltas > 0) UpaoRed else UpaoGreen
+                                color = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess
                             )
                         }
                     }
@@ -778,7 +771,7 @@ fun AsistenciaCard(
                                     text = dayInitials[index],
                                     fontSize = 10.sp,
                                     fontWeight = if (activo) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (activo) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (activo) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -798,7 +791,7 @@ fun AsistenciaCard(
 
 @Composable
 private fun SkeletonAsistenciaCard() {
-    AppCard(corner = 14.dp, contentPadding = PaddingValues(10.dp)) {
+    AppCard(corner = 20.dp, contentPadding = PaddingValues(10.dp)) {
         Column {
             SkeletonBox(modifier = Modifier.fillMaxWidth(0.7f).height(14.dp), corner = 7.dp)
             Spacer(modifier = Modifier.height(6.dp))
@@ -893,7 +886,7 @@ private fun AsistenciaDetalleModal(
 
             // Resumen consolidado del curso
             AppCard(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = MaterialTheme.colorScheme.surface,
                 corner = 12.dp,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -912,7 +905,7 @@ private fun AsistenciaDetalleModal(
                     StatChip(
                         label = "Faltas",
                         value = "${curso.totalFaltasCalculadas}",
-                        color = if (curso.totalFaltasCalculadas > 0) UpaoRed else UpaoGreen
+                        color = if (curso.totalFaltasCalculadas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess
                     )
                 }
             }
@@ -946,15 +939,15 @@ private fun ComponenteCard(
     componente: AsistenciaComponente
 ) {
     val (tipoColor, tipoIcono) = when (tipo) {
-        "Teoría" -> UpaoBlue to Icons.Filled.MenuBook
-        "Práctica" -> UpaoOrange to Icons.Filled.Assignment
-        "Laboratorio" -> Color(0xFF7C3AED) to Icons.Filled.Science
+        "Teoría" -> MaterialTheme.colorScheme.primary to Icons.Filled.MenuBook
+        "Práctica" -> com.example.upaos.ui.theme.campusWarning to Icons.Filled.Assignment
+        "Laboratorio" -> com.example.upaos.ui.theme.campusPurple to Icons.Filled.Science
         else -> MaterialTheme.colorScheme.primary to Icons.Filled.CheckCircle
     }
 
     val tieneRegistro = componente.tieneRegistroAsistencia
     val pct = componente.porcentaje
-    val colorEstado = porcentajeColor(pct, tieneRegistro)
+    val colorEstado = com.example.upaos.ui.theme.campusAccent(porcentajeColor(pct, tieneRegistro))
     val faltas = componente.faltas ?: 0
 
     Surface(
@@ -1046,7 +1039,7 @@ private fun ComponenteCard(
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = (if (faltas > 0) UpaoRed else UpaoGreen).copy(alpha = 0.12f),
+                    color = (if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess).copy(alpha = 0.12f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1057,7 +1050,7 @@ private fun ComponenteCard(
                         Icon(
                             imageVector = if (faltas > 0) Icons.Filled.Cancel else Icons.Filled.CheckCircle,
                             contentDescription = null,
-                            tint = if (faltas > 0) UpaoRed else UpaoGreen,
+                            tint = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -1065,7 +1058,7 @@ private fun ComponenteCard(
                             text = if (faltas == 1) "1 Falta" else "$faltas Faltas",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (faltas > 0) UpaoRed else UpaoGreen
+                            color = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess
                         )
                     }
                 }
@@ -1121,7 +1114,7 @@ private fun ComponenteCard(
 private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
     val tieneRegistro = curso.tieneRegistroAsistencia
     val pct = curso.porcentaje
-    val colorEstado = porcentajeColor(pct, tieneRegistro)
+    val colorEstado = com.example.upaos.ui.theme.campusAccent(porcentajeColor(pct, tieneRegistro))
     val faltas = curso.totalFaltasCalculadas
 
     Surface(
@@ -1138,7 +1131,7 @@ private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = UpaoBlue.copy(alpha = 0.15f)
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1147,7 +1140,7 @@ private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
                         Icon(
                             imageVector = Icons.Filled.MenuBook,
                             contentDescription = null,
-                            tint = UpaoBlue,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -1155,7 +1148,7 @@ private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
                             text = "TEORÍA / GENERAL",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = UpaoBlue
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -1195,7 +1188,7 @@ private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = (if (faltas > 0) UpaoRed else UpaoGreen).copy(alpha = 0.12f),
+                    color = (if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess).copy(alpha = 0.12f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1206,7 +1199,7 @@ private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
                         Icon(
                             imageVector = if (faltas > 0) Icons.Filled.Cancel else Icons.Filled.CheckCircle,
                             contentDescription = null,
-                            tint = if (faltas > 0) UpaoRed else UpaoGreen,
+                            tint = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -1214,7 +1207,7 @@ private fun ComponenteGeneralCard(curso: AsistenciaCurso) {
                             text = if (faltas == 1) "1 Falta" else "$faltas Faltas",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (faltas > 0) UpaoRed else UpaoGreen
+                            color = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess
                         )
                     }
                 }

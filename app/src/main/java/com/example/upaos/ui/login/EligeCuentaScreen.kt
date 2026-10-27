@@ -137,7 +137,7 @@ fun EligeCuentaScreen(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "Elige una cuenta",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -169,7 +169,7 @@ fun EligeCuentaScreen(
                         AppCard(
                             onClick = { iniciarSesionCon(cuenta) },
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                            corner = 14.dp
+                            corner = 20.dp
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -179,12 +179,12 @@ fun EligeCuentaScreen(
                                     modifier = Modifier
                                         .size(40.dp)
                                         .clip(CircleShape)
-                                        .background(cursoColor(nombreMostrar)),
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = nombreMostrar.firstOrNull()?.uppercase() ?: "?",
-                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp
                                     )

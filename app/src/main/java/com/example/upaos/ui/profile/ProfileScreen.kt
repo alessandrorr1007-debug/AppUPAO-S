@@ -1,4 +1,5 @@
 package com.example.upaos.ui.profile
+import com.example.upaos.ui.components.CampusTopBar
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,7 +31,7 @@ fun ProfileScreen(state: ProfileState, onBack: () -> Unit, onRefresh: () -> Unit
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(title = { Text("Mi perfil", fontWeight = FontWeight.Bold) },
+            CampusTopBar(title = { Text("Mi perfil", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
         }
@@ -49,10 +50,16 @@ fun ProfileScreen(state: ProfileState, onBack: () -> Unit, onRefresh: () -> Unit
             }
             sections.forEach { section -> item {
                 AppCard(modifier = Modifier.fillMaxWidth(), corner = 20.dp) {
-                    Text(section.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    section.fields.forEach { field ->
+                    Text(section.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary)
+                    section.fields.forEachIndexed { index, field ->
                         Spacer(Modifier.height(12.dp))
+                        if (index > 0) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
+                            Spacer(Modifier.height(12.dp))
+                        }
                         Text(field.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
                         SelectionContainer { Text(field.value, style = MaterialTheme.typography.bodyLarge) }
                     }
                 }

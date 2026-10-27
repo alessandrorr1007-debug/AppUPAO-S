@@ -77,7 +77,7 @@ class UpaoRepository(private val context: Context) {
                     } else {
                         try {
                             val detail = bannerApi.getCourseGradeDetail(term, crn)
-                            val notaActual = Calculators.calcularNotaActual(detail.detalles)
+                            val notaActual = Calculators.calcularNotaActual(detail.detalles, term)
                             detail.notaProyectada?.let { projections[crn] = it.toString() }
 
                             val compEp1 = detail.detalles.firstOrNull { c ->

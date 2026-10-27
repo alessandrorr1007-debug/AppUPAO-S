@@ -98,7 +98,7 @@ fun CanvasCourseDetailView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val courseAccentColor = remember(course.name) { cursoColor(course.name) }
+    val courseAccentColor = com.example.upaos.ui.theme.campusAccent(remember(course.name) { cursoColor(course.name) })
 
     // Interceptar botón atrás físico para volver a la lista de cursos
     BackHandler { onBack() }
@@ -508,7 +508,7 @@ private fun CourseHomeSection(
                         Icon(
                             imageVector = Icons.Filled.CheckCircle,
                             contentDescription = null,
-                            tint = Color(0xFF2E7D32),
+                            tint = com.example.upaos.ui.theme.campusSuccess,
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
@@ -531,7 +531,7 @@ private fun CourseHomeSection(
                                 Icon(
                                     imageVector = if (todo.isQuiz) Icons.Filled.Quiz else Icons.AutoMirrored.Filled.Assignment,
                                     contentDescription = null,
-                                    tint = if (todo.isQuiz) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary,
+                                    tint = if (todo.isQuiz) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
@@ -1143,7 +1143,7 @@ private fun CourseFilesSection(
                     ) {
                         items(filteredFiles, key = { it.id }) { file ->
                             val isPdf = file.fileName.endsWith(".pdf", ignoreCase = true)
-                            val iconColor = if (isPdf) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary
+                            val iconColor = if (isPdf) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
                             AppCard(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1299,7 +1299,7 @@ fun CanvasCourseCard(
     course: CanvasCourse,
     onClick: () -> Unit
 ) {
-    val accentColor = remember(course.name) { cursoColor(course.name) }
+    val accentColor = com.example.upaos.ui.theme.campusAccent(remember(course.name) { cursoColor(course.name) })
 
     AppCard(
         modifier = Modifier.fillMaxWidth(),
@@ -1332,7 +1332,7 @@ fun CanvasCourseCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = course.displayTitle,
+                    text = toTitleCase(course.displayTitle),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,

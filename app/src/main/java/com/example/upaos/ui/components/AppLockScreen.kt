@@ -37,7 +37,7 @@ fun AppLockScreen(
             Box(
                 modifier = Modifier
                     .size(80.dp)
-                    .clip(CircleShape)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {

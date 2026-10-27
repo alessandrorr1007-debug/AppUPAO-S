@@ -180,19 +180,19 @@ class AsistenciaWorker(
                         val dif = faltasActuales - faltasPrevias
                         val plural = if (dif == 1) "una nueva falta" else "$dif faltas nuevas"
                         val titulo = "⚠️ Falta registrada"
-                        val mensaje = "$nombreConTipo: Te registraron $plural (Total: $faltasActuales). Asistencia: ${formatearPct(pctActual)}%."
+                        val mensaje = "Te registraron $plural (Total: $faltasActuales). Asistencia: ${formatearPct(pctActual)}%."
                         publishForCurrentSession { NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje) }
                         upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     } else if (asistenciasActuales != null && asistPrevias != null && asistenciasActuales > asistPrevias) {
                         val dif = asistenciasActuales - asistPrevias
                         val plural = if (dif == 1) "asistencia" else "$dif asistencias"
                         val titulo = "✅ Asistencia registrada"
-                        val mensaje = "$nombreConTipo: ¡Se registró tu $plural! Llevas $asistenciasActuales asistencias."
+                        val mensaje = "¡Se registró tu $plural! Llevas $asistenciasActuales asistencias."
                         publishForCurrentSession { NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje) }
                         upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     } else if (previo.porcentaje != null && pctActual > previo.porcentaje && faltasActuales == faltasPrevias) {
                         val titulo = "✅ Asistencia registrada"
-                        val mensaje = "$nombreConTipo: ¡Se registró una nueva asistencia! (${formatearPct(pctActual)}%)."
+                        val mensaje = "¡Se registró una nueva asistencia! (${formatearPct(pctActual)}%)."
                         publishForCurrentSession { NotificationService.mostrarNotificacionAsistencia(applicationContext, titulo, mensaje) }
                         upaoRepository.registrarNotificacionLocal(user, mensaje, curso = nombreConTipo, componente = "Asistencia")
                     }

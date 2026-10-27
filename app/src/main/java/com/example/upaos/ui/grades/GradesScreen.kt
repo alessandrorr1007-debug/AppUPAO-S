@@ -12,7 +12,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,6 +30,7 @@ import androidx.compose.runtime.*
 import com.example.upaos.data.local.TokenManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
@@ -44,7 +47,8 @@ import com.example.upaos.ui.components.ErrorView
 import com.example.upaos.ui.components.RefreshableContent
 import com.example.upaos.ui.components.SkeletonCourseCard
 import com.example.upaos.ui.components.StatusBadge
-import com.example.upaos.ui.components.gradeColor
+import com.example.upaos.ui.components.courseAccent
+import com.example.upaos.ui.components.gradeAccent
 import com.example.upaos.ui.components.isPendiente
 import com.example.upaos.ui.components.toTitleCase
 import kotlin.math.roundToInt
@@ -94,25 +98,51 @@ fun GradesContent(
             .padding(12.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ExposedDropdownMenuBox(
-                expanded = periodosExpanded,
-                onExpandedChange = { periodosExpanded = !periodosExpanded },
-                modifier = Modifier.weight(1f)
-            ) {
-                OutlinedTextField(
-                    value = selectedPeriodo,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Periodo", fontSize = 12.sp) },
-                    shape = RoundedCornerShape(12.dp),
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = periodosExpanded) },
-                    modifier = Modifier.menuAnchor()
-                )
-                ExposedDropdownMenu(
+            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                AppCard(
+                    color = MaterialTheme.colorScheme.surface,
+                    corner = 14.dp,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    onClick = { periodosExpanded = true }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "PERIODO",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = selectedPeriodo.ifBlank { "Periodo" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                DropdownMenu(
                     expanded = periodosExpanded,
                     onDismissRequest = { periodosExpanded = false }
                 ) {
@@ -128,21 +158,45 @@ fun GradesContent(
                 }
             }
 
-            ExposedDropdownMenuBox(
-                expanded = carrerasExpanded,
-                onExpandedChange = { carrerasExpanded = !carrerasExpanded },
-                modifier = Modifier.weight(1f)
-            ) {
-                OutlinedTextField(
-                    value = selectedCarrera,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Nivel / Carrera", fontSize = 12.sp) },
-                    shape = RoundedCornerShape(12.dp),
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = carrerasExpanded) },
-                    modifier = Modifier.menuAnchor()
-                )
-                ExposedDropdownMenu(
+            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                AppCard(
+                    color = MaterialTheme.colorScheme.surface,
+                    corner = 14.dp,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    onClick = { carrerasExpanded = true }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "NIVEL / CARRERA",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = selectedCarrera.ifBlank { "Carrera" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                DropdownMenu(
                     expanded = carrerasExpanded,
                     onDismissRequest = { carrerasExpanded = false }
                 ) {
@@ -158,7 +212,11 @@ fun GradesContent(
                 }
             }
 
-            IconButton(
+            AppCard(
+                color = MaterialTheme.colorScheme.surface,
+                corner = 14.dp,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 11.dp),
+                modifier = Modifier.fillMaxHeight(),
                 onClick = {
                     if (cursos.isEmpty()) {
                         Toast.makeText(context, "No hay notas para compartir todavía", Toast.LENGTH_SHORT).show()
@@ -167,15 +225,21 @@ fun GradesContent(
                     }
                 }
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Share,
-                    contentDescription = "Compartir resumen de notas",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Box(
+                    modifier = Modifier.fillMaxHeight(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = "Compartir resumen de notas",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         if (offline || isLoading || isRefreshing) {
             Column(Modifier.padding(vertical = 4.dp)) {
@@ -211,9 +275,10 @@ fun GradesContent(
                     promedioGeneral = promedioGeneral,
                     promedioPeriodoRes = promedioPeriodoRes,
                     cursos = cursos,
-                    notasProyectadas = notasProyectadas
+                    notasProyectadas = notasProyectadas,
+                    periodo = selectedPeriodo
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
 
@@ -252,8 +317,8 @@ fun GradesContent(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                        contentPadding = PaddingValues(bottom = 12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(cursos) { course ->
@@ -298,27 +363,12 @@ fun GradesContent(
  * Calcula la nota acumulada ponderada de un curso (ej: EP1 de 14 * 20% = 2.8).
  * A medida que se cargan el Parcial, EP2 y Final, el acumulado va aumentando.
  */
-fun calcularAcumuladoCurso(course: CourseGrade, notaProyectada: Any? = null): Double? {
-    if (!isPendiente(notaProyectada)) {
-        val np = notaProyectada?.toString()?.trim()?.toDoubleOrNull()
-        if (np != null && !np.isNaN() && !np.isInfinite()) return np
-    }
-    val ep1 = course.displayEp1.nota?.toString()?.trim()?.toDoubleOrNull()
-    if (ep1 != null && !ep1.isNaN() && !ep1.isInfinite()) {
-        val ep2 = course.displayEp2.nota?.toString()?.trim()?.toDoubleOrNull()
-        return if (ep2 != null && !ep2.isNaN() && !ep2.isInfinite()) {
-            (ep1 * 0.20) + (ep2 * 0.20)
-        } else {
-            ep1 * 0.20
-        }
-    }
-    val na = course.displayNotaActual?.toString()?.trim()?.toDoubleOrNull()
-    if (na != null && !na.isNaN() && !na.isInfinite()) {
-        // En semestres en curso, la nota de Banner (ej: 14.0) es la nota del EP1 (20%)
-        // El acumulado real para el ponderado es 14.0 * 20% = 2.8 pts
-        return if (na > 4.0) (na * 0.20) else na
-    }
-    return null
+fun calcularAcumuladoCurso(course: CourseGrade, notaProyectada: Any? = null, periodo: String? = null): Double? {
+    com.example.upaos.data.upao.Calculators.progresoCurso(course, periodo)?.let { return it.acumulado }
+    // With no breakdown, never infer an evaluation's weight from the size of its grade.
+    if (course.componentes.isNotEmpty()) return null
+    return com.example.upaos.data.upao.Calculators.toDouble(notaProyectada ?: course.displayNotaActual)
+        ?.takeIf { it.isFinite() && it in 0.0..20.0 }
 }
 
 fun resolverCreditosCurso(course: CourseGrade, promedioPeriodoRes: PromedioPeriodoResponse? = null): Int {
@@ -331,13 +381,30 @@ fun resolverCreditosCurso(course: CourseGrade, promedioPeriodoRes: PromedioPerio
     return com.example.upaos.domain.academic.AcademicRules.credits(course.rawBanner) ?: 0
 }
 
+fun referenciaAcumuladaCurso(course: CourseGrade, periodo: String? = null): Double =
+    com.example.upaos.data.upao.Calculators.progresoCurso(course, periodo)?.minimoAcumulado ?: 10.5
+
+fun referenciaPonderada(cursos: List<CourseGrade>, periodo: String?, promedioPeriodoRes: PromedioPeriodoResponse?): Double? {
+    val evaluados = cursos.filter { calcularAcumuladoCurso(it, periodo = periodo) != null }
+    val creditos = evaluados.sumOf { resolverCreditosCurso(it, promedioPeriodoRes) }
+    return if (creditos > 0) evaluados.sumOf {
+        referenciaAcumuladaCurso(it, periodo) * resolverCreditosCurso(it, promedioPeriodoRes)
+    } / creditos else null
+}
+
+@Composable
+fun AcumuladoColor(puntos: Double?, referencia: Double?): Color = gradeAccent(
+    if (puntos == null || referencia == null) null else if (puntos + 1e-9 >= referencia) 10.5 else 0.0
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PromedioCard(
     promedioGeneral: Any?,
     promedioPeriodoRes: PromedioPeriodoResponse? = null,
     cursos: List<CourseGrade> = emptyList(),
-    notasProyectadas: Map<String, Any?> = emptyMap()
+    notasProyectadas: Map<String, Any?> = emptyMap(),
+    periodo: String? = null
 ) {
     var showSheet by remember { mutableStateOf(false) }
 
@@ -345,12 +412,12 @@ fun PromedioCard(
     val ppsCalculado = promedioPeriodoRes?.ppsCalculado?.toDouble()
 
     // Cálculo ponderado usando el acumulado y los créditos reales de cada curso
-    val ponderadoLocal: Double? = remember(cursos, notasProyectadas, promedioPeriodoRes) {
+    val ponderadoLocal: Double? = remember(cursos, notasProyectadas, promedioPeriodoRes, periodo) {
         var puntos = 0.0
         var creditos = 0
         cursos.forEach { c ->
             val crn = c.crn ?: c.courseReferenceNumber ?: ""
-            val acumulado = calcularAcumuladoCurso(c, notasProyectadas[crn])
+            val acumulado = calcularAcumuladoCurso(c, notasProyectadas[crn], periodo)
             val cr = resolverCreditosCurso(c, promedioPeriodoRes)
             if (acumulado != null && !acumulado.isNaN() && !acumulado.isInfinite()) {
                 puntos += (acumulado * cr)
@@ -378,26 +445,25 @@ fun PromedioCard(
         else -> "Sin notas registradas"
     }
 
-    val gaugeColor = gradeColor(pFinal)
+    val gaugeColor = if (ponderadoLocal != null) AcumuladoColor(pFinal, referenciaPonderada(cursos, periodo, promedioPeriodoRes)) else gradeAccent(pFinal)
     val notaTexto = formatPromedio(pFinal)
 
     AppCard(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        color = MaterialTheme.colorScheme.surface,
         corner = 14.dp,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
         modifier = Modifier.fillMaxWidth(),
         onClick = { showSheet = true }
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "Ponderado",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -409,19 +475,31 @@ fun PromedioCard(
                         modifier = Modifier.size(16.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "$fuenteTexto · Toca para ver cálculo",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(
-                text = notaTexto,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (notaTexto != "--") gaugeColor else MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "PONDERADO",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = notaTexto,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1
+                )
+            }
         }
     }
 
@@ -438,6 +516,7 @@ fun PromedioCard(
                 promedioPeriodoRes = promedioPeriodoRes,
                 cursos = cursos,
                 notasProyectadas = notasProyectadas,
+                periodo = periodo,
                 onClose = { showSheet = false }
             )
         }
@@ -449,7 +528,8 @@ data class DetalleCursoPonderado(
     val crn: String,
     val nota: Double?,
     val creditos: Int,
-    val puntos: Double?
+    val puntos: Double?,
+    val referencia: Double = 10.5
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -460,21 +540,23 @@ fun DetallePonderadoSheet(
     promedioPeriodoRes: PromedioPeriodoResponse?,
     cursos: List<CourseGrade>,
     notasProyectadas: Map<String, Any?> = emptyMap(),
+    periodo: String? = null,
     onClose: () -> Unit
 ) {
-    val itemsPonderados = remember(cursos, promedioPeriodoRes, notasProyectadas) {
+    val itemsPonderados = remember(cursos, promedioPeriodoRes, notasProyectadas, periodo) {
         cursos.map { c ->
             val crn = c.crn ?: c.courseReferenceNumber ?: ""
             val cr = resolverCreditosCurso(c, promedioPeriodoRes)
             // Usamos estrictamente el acumulado del curso (ej: EP1 de 14 * 20% = 2.8)
-            val acumulado = calcularAcumuladoCurso(c, notasProyectadas[crn])
+            val acumulado = calcularAcumuladoCurso(c, notasProyectadas[crn], periodo)
             val puntos = if (acumulado != null && !acumulado.isNaN() && !acumulado.isInfinite()) acumulado * cr else null
             DetalleCursoPonderado(
                 nombre = toTitleCase(c.displayNombre),
                 crn = crn,
                 nota = acumulado,
                 creditos = cr,
-                puntos = puntos
+                puntos = puntos,
+                referencia = referenciaAcumuladaCurso(c, periodo)
             )
         }
     }
@@ -518,7 +600,7 @@ fun DetallePonderadoSheet(
                         text = formatPromedio(notaMostrar),
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
-                        color = gradeColor(notaMostrar),
+                        color = AcumuladoColor(notaMostrar, referenciaPonderada(cursos, periodo, promedioPeriodoRes)),
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
                 }
@@ -594,7 +676,7 @@ fun DetallePonderadoSheet(
                                         text = "Acumulado ${formatNota(item.nota)}",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
-                                        color = gradeColor(item.nota),
+                                        color = AcumuladoColor(item.nota, item.referencia),
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
@@ -728,7 +810,7 @@ fun DetallePonderadoSheet(
                                 text = formatPromedio(pCalculado),
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = gradeColor(pCalculado),
+                                color = AcumuladoColor(pCalculado, referenciaPonderada(cursos, periodo, promedioPeriodoRes)),
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                         }
@@ -760,21 +842,16 @@ fun CourseGradeCard(
     onClick: () -> Unit = {}
 ) {
     // Puntos acumulados ponderados (ej: EP1 de 14 * 20% = 2.8)
-    val puntajeAcumulado = calcularAcumuladoCurso(course, notaProyectada)
+    val progreso = com.example.upaos.data.upao.Calculators.progresoCurso(course, periodo)
+    val puntajeAcumulado = calcularAcumuladoCurso(course, notaProyectada, periodo)
+    val promedioParcial: Double? = progreso?.promedio
+        ?: com.example.upaos.data.upao.Calculators.toDouble(course.displayNotaActual)
 
-    val promedioEvaluado = when {
-        !isPendiente(course.displayEp1.nota) -> course.displayEp1.nota
-        !isPendiente(course.displayEp2.nota) -> course.displayEp2.nota
-        !isPendiente(course.displayNotaActual) -> course.displayNotaActual
-        else -> null
+    val barColor = when {
+        promedioParcial == null -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        promedioParcial >= 10.5 -> gradeAccent(10.5)
+        else -> gradeAccent(0.0)
     }
-
-    val statusColor = when {
-        isPendiente(puntajeAcumulado) -> gradeColor(null)
-        promedioEvaluado != null -> gradeColor(promedioEvaluado)
-        else -> gradeColor(puntajeAcumulado)
-    }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -785,16 +862,15 @@ fun CourseGradeCard(
                 .width(4.dp)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
-                .background(statusColor)
+                .background(barColor)
         )
         AppCard(
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = MaterialTheme.colorScheme.surface,
             corner = 14.dp,
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
             modifier = Modifier.weight(1f),
             onClick = onClick
         ) {
-            val courseCrn = course.crn ?: course.courseReferenceNumber ?: ""
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -802,19 +878,12 @@ fun CourseGradeCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = toTitleCase(course.displayNombre),
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    if (courseCrn.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "NRC $courseCrn",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(horizontalAlignment = Alignment.End) {
@@ -829,7 +898,7 @@ fun CourseGradeCard(
                         text = formatNota(puntajeAcumulado),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = statusColor,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1
                     )
                 }
@@ -839,7 +908,7 @@ fun CourseGradeCard(
 }
 
 @Composable
-fun ComponenteRow(componente: ComponenteDetalle) {
+fun ComponenteRow(componente: ComponenteDetalle, periodo: String? = null) {
     var expanded by remember { mutableStateOf(false) }
     val hasSub = componente.hasSubComponents && componente.subcomponentes.isNotEmpty()
 
@@ -854,7 +923,7 @@ fun ComponenteRow(componente: ComponenteDetalle) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = componente.displayNombre, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                val pesoTxt = formatPesoTexto(componente.displayPeso, componente.displayNombre)
+                val pesoTxt = formatPesoTexto(com.example.upaos.data.upao.Calculators.pesoComponente(componente, periodo), componente.displayNombre)
                 val puntaje = componente.displayPuntaje
                 val detalleTxt = listOfNotNull(puntaje, pesoTxt?.let { if (it.startsWith("Peso", ignoreCase = true)) it else "Peso $it" }).joinToString(" · ")
                 if (detalleTxt.isNotBlank()) {
@@ -943,7 +1012,7 @@ fun ComponenteRow(componente: ComponenteDetalle) {
                                     text = displayGrade(sub.displayNota),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = gradeColor(sub.displayNota),
+                                    color = gradeAccent(sub.displayNota),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -997,7 +1066,7 @@ fun formatPromedio(value: Any?): String {
 
 @Composable
 fun GradeBadge(label: String, value: Any?) {
-    val color = gradeColor(value)
+    val color = gradeAccent(value)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,

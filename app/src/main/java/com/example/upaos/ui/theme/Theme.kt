@@ -6,7 +6,11 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.unit.dp
 
 private val DarkColorScheme = darkColorScheme(
@@ -26,15 +30,15 @@ private val DarkColorScheme = darkColorScheme(
     onBackground = Color(0xFFE2E6EE),
     surface = UpaoSurfaceDark,
     onSurface = Color(0xFFE2E6EE),
-    surfaceVariant = Color(0xFF232936),
+    surfaceVariant = Color(0xFF24334D),
     onSurfaceVariant = Color(0xFFC0C5D2),
-    surfaceContainerLowest = Color(0xFF080B0F),
+    surfaceContainerLowest = Color(0xFF070C17),
     surfaceContainerLow = UpaoSurfaceLowDark,
     surfaceContainer = UpaoSurfaceDark,
     surfaceContainerHigh = UpaoSurfaceHighDark,
-    surfaceContainerHighest = Color(0xFF262D3D),
+    surfaceContainerHighest = Color(0xFF22334E),
     outline = Color(0xFF868C9A),
-    outlineVariant = Color(0xFF232936),
+    outlineVariant = Color(0xFF2C3E5A),
     error = Color(0xFFF87171),
     onError = Color(0xFF600004),
     errorContainer = Color(0xFF8C0009),
@@ -46,23 +50,23 @@ private val LightColorScheme = lightColorScheme(
     onPrimary = Color.White,
     primaryContainer = UpaoBlueContainer,
     onPrimaryContainer = UpaoBlueDark,
-    secondary = Color(0xFFCA8A04),
+    secondary = Color(0xFF925B00),
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFFEF08A),
     onSecondaryContainer = Color(0xFF422006),
-    tertiary = Color(0xFF0D9488),
+    tertiary = Color(0xFF08766D),
     onTertiary = Color.White,
     tertiaryContainer = Color(0xFFCCFBF1),
     onTertiaryContainer = Color(0xFF115E59),
     background = BackgroundLight,
-    onBackground = Color(0xFF1A1C20),
+    onBackground = Color(0xFF18243B),
     surface = SurfaceLight,
-    onSurface = Color(0xFF1A1C20),
+    onSurface = Color(0xFF18243B),
     surfaceVariant = Color(0xFFE2E6F0),
-    onSurfaceVariant = Color(0xFF434651),
+    onSurfaceVariant = Color(0xFF526079),
     surfaceContainerLowest = Color.White,
     surfaceContainerLow = Color(0xFFF1F3F9),
-    surfaceContainer = Color(0xFFE7EAED),
+    surfaceContainer = Color(0xFFEDF2FA),
     surfaceContainerHigh = SurfaceLightHigh,
     surfaceContainerHighest = Color(0xFFDCE0E9),
     outline = Color(0xFF717580),
@@ -76,9 +80,9 @@ private val LightColorScheme = lightColorScheme(
 private val UpaoShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(20.dp)
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp)
 )
 
 @Composable
@@ -87,6 +91,19 @@ fun UPAOSTheme(
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            (view.context as? android.app.Activity)?.window?.let { window ->
+                window.statusBarColor = colorScheme.background.toArgb()
+                window.navigationBarColor = colorScheme.background.toArgb()
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+        }
+    }
 
     MaterialTheme(
         colorScheme = colorScheme,

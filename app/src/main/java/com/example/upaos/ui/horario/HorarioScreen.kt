@@ -57,7 +57,7 @@ import com.example.upaos.ui.components.EmptyState
 import com.example.upaos.ui.components.ErrorView
 import com.example.upaos.ui.components.RefreshableContent
 import com.example.upaos.ui.components.SkeletonBox
-import com.example.upaos.ui.components.cursoColor
+import com.example.upaos.ui.components.courseAccent
 import com.example.upaos.ui.components.toTitleCase
 import com.example.upaos.ui.theme.UpaoBlue
 import java.util.Calendar
@@ -451,7 +451,7 @@ fun HorarioContent(
 
 @Composable
 private fun SkeletonHorarioCard() {
-    AppCard(corner = 14.dp, contentPadding = PaddingValues(10.dp)) {
+    AppCard(corner = 20.dp, contentPadding = PaddingValues(10.dp)) {
         Column {
             SkeletonBox(modifier = Modifier.fillMaxWidth(0.7f).height(14.dp), corner = 7.dp)
             Spacer(modifier = Modifier.height(6.dp))
@@ -594,11 +594,11 @@ private fun CalendarioHorario(
                 Column(
                     Modifier
                         .width(46.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
                         .selectable(selected = selected, role = Role.Tab, onClick = { onDateSelected(date) })
                         .semantics(mergeDescendants = true) { contentDescription = fullDate }
-                        .padding(vertical = 6.dp),
+                        .padding(vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
@@ -694,14 +694,18 @@ private fun HorarioDelDia(
                 subtitle = subtitle
             )
         } else {
-            classes.forEach { scheduled ->
-                ClaseDelDiaCard(
-                    curso = scheduled.curso,
-                    bloque = scheduled.bloque,
-                    infoComponente = deducirInfoComponente(scheduled.curso, scheduled.bloque, asistenciaCursos),
-                    esHoy = selectedDate == scheduleDateStart(System.currentTimeMillis()),
-                    onClick = { onBloqueClick(scheduled.curso, scheduled.bloque) }
-                )
+            Column {
+                classes.forEachIndexed { index, scheduled ->
+                    ClaseDelDiaCard(
+                        curso = scheduled.curso,
+                        bloque = scheduled.bloque,
+                        infoComponente = deducirInfoComponente(scheduled.curso, scheduled.bloque, asistenciaCursos),
+                        esHoy = selectedDate == scheduleDateStart(System.currentTimeMillis()),
+                        connectAbove = index > 0,
+                        connectBelow = index < classes.lastIndex,
+                        onClick = { onBloqueClick(scheduled.curso, scheduled.bloque) }
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -714,122 +718,25 @@ private fun ClaseDelDiaCard(
     bloque: HorarioBloque,
     infoComponente: InfoBloqueComponente,
     esHoy: Boolean,
+    connectAbove: Boolean,
+    connectBelow: Boolean,
     onClick: () -> Unit
 ) {
-    val color = cursoColor(curso.displayNombre)
     val tipoInfo = resolverTipoClase(curso, bloque, infoComponente)
-    val badgeColor = tipoInfo.color
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        color = if (esHoy) color.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
-        tonalElevation = 1.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Línea al lado izquierdo y puntito
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(end = 10.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(3.5.dp)
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(color)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Box(
-                    modifier = Modifier
-                        .size(7.dp)
-                        .clip(CircleShape)
-                        .background(color)
-                )
-            }
-
-            // A la derecha: nombre de curso, tipo (T), hora y pabellón/aula
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = toTitleCase(curso.displayNombre),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = badgeColor.copy(alpha = 0.14f)
-                    ) {
-                        Text(
-                            text = tipoInfo.letra,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = badgeColor,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.AccessTime,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "${bloque.horaInicio12h ?: bloque.horaInicio ?: "—"} - ${bloque.horaFin12h ?: bloque.horaFin ?: "—"}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (!bloque.aula.isNullOrBlank()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.Room,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = bloque.aula!!,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
+    val cAccent = courseAccent(curso.displayNombre)
+    com.example.upaos.ui.components.ClassTimelineRow(
+        start = bloque.horaInicio ?: bloque.horaInicio12h ?: "—",
+        end = bloque.horaFin ?: bloque.horaFin12h ?: "—",
+        title = curso.displayNombre,
+        room = bloque.aula?.takeIf { it.isNotBlank() } ?: "Aula por confirmar",
+        accent = cAccent,
+        connectAbove = connectAbove,
+        connectBelow = connectBelow,
+        detail = tipoInfo.nombreCompleto,
+        detailColor = tipoInfo.color,
+        highlighted = esHoy,
+        onClick = onClick
+    )
 }
 
 /**
@@ -847,7 +754,7 @@ private fun HorarioDetalleModal(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val tipoInfo = resolverTipoClase(curso, bloque, infoComponente)
-    val compColor = tipoInfo.color
+    val compColor = com.example.upaos.ui.theme.campusAccent(tipoInfo.color)
     val compIcon = when {
         tipoInfo.esLab -> Icons.Filled.Science
         tipoInfo.esPrac -> Icons.Filled.Schedule

@@ -1,4 +1,5 @@
 package com.example.upaos.ui.canvas
+import com.example.upaos.ui.components.CampusCard
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -66,7 +67,7 @@ private fun <T> CanvasReadList(vm: CanvasResourceViewModel<List<T>>, leading: @C
         if (!state.loading && state.data.isEmpty()) Text("Sin elementos disponibles")
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { leading() }
-            items(state.data) { item -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) { row(item) } } }
+            items(state.data) { item -> CampusCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) { row(item) } } }
         }
     }
 }

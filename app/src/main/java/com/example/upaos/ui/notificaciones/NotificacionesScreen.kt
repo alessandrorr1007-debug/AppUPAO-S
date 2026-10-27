@@ -1,4 +1,5 @@
 package com.example.upaos.ui.notificaciones
+import com.example.upaos.ui.components.CampusTopBar
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -35,9 +36,10 @@ import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
 import com.example.upaos.ui.components.ErrorView
 import com.example.upaos.ui.components.SkeletonBox
-import com.example.upaos.ui.components.cursoColor
+import com.example.upaos.ui.components.courseAccent
 import com.example.upaos.ui.components.tiempoRelativo
 import com.example.upaos.ui.components.toTitleCase
+import com.example.upaos.ui.components.limpiarMensajeNotificacion
 import com.example.upaos.ui.theme.UpaoOrange
 import kotlinx.coroutines.launch
 
@@ -122,7 +124,7 @@ fun NotificacionesScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            CampusTopBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Notificaciones", fontWeight = FontWeight.Bold)
@@ -225,7 +227,7 @@ fun NotificacionesScreen(
                         EmptyState(
                             icon = Icons.Filled.NotificationsNone,
                             title = if (selectedFilter == NotifFilter.TODAS) "Aún no hay notificaciones" else "Sin notificaciones en esta categoría",
-                            subtitle = "Te avisaremos cuando haya actualizaciones de notas o asistencias cada 5 minutos."
+                            subtitle = "Aquí aparecerán los cambios de notas y asistencias. Puedes elegir la frecuencia de revisión en Ajustes."
                         )
                     }
                 }
@@ -271,13 +273,13 @@ fun NotificacionCard(
 
     val iconContainerColor = when {
         esFalta -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
-        esAsistencia -> Color(0xFFE8F5E9)
+        esAsistencia -> com.example.upaos.ui.theme.campusSuccess.copy(alpha = .14f)
         else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
     }
 
     val iconTintColor = when {
         esFalta -> MaterialTheme.colorScheme.error
-        esAsistencia -> Color(0xFF2E7D32)
+        esAsistencia -> com.example.upaos.ui.theme.campusSuccess
         else -> MaterialTheme.colorScheme.primary
     }
 
@@ -392,14 +394,14 @@ fun NotificacionCard(
                         text = toTitleCase(notif.curso),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = cursoColor(notif.curso)
+                        color = courseAccent(notif.curso)
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                 }
 
-                // Mensaje legible y ordenado
+                // Mensaje legible y ordenado (sin repetir curso/sección)
                 Text(
-                    text = notif.mensaje,
+                    text = limpiarMensajeNotificacion(notif.mensaje, notif.curso),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (notif.leida) FontWeight.Normal else FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,

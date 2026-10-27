@@ -253,7 +253,8 @@ class BannerApi(private val context: Context) {
                 parseBannerObjects(response.use { it.body?.string().orEmpty() })
             },
             parseComponent = ::parseComponente,
-            loadSubcomponents = { getSubcomponentDetails(term, crn, it) }
+            loadSubcomponents = { getSubcomponentDetails(term, crn, it) },
+            periodo = term
         )
     }
 

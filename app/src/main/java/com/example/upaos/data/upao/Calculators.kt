@@ -8,11 +8,10 @@ import kotlin.math.roundToInt
 object Calculators {
 
     /**
-     * Identifica el peso oficial del componente según la regla de la UPAO:
-     * EP1 = 20%, Parcial = 30%, EP2 = 20%, Final = 30%.
+     * Pesos por periodo: 202520 usa 25/20/30/25; los siguientes, 20/30/20/30.
      * Si el nombre no coincide con las siglas estándar, intenta usar el peso reportado por Banner.
      */
-    fun pesoComponente(componente: ComponenteDetalle): Double? {
+    fun pesoComponente(componente: ComponenteDetalle, periodo: String? = null): Double? {
         val texto = listOfNotNull(
             componente.nombre,
             componente.description,
@@ -20,14 +19,41 @@ object Calculators {
             componente.componente
         ).joinToString(" ").uppercase(Locale.ROOT)
 
-        if (texto.contains("FINAL") || texto.contains("EVF")) return 30.0
-        if (texto.contains("PARCIAL") || texto.contains("EVP")) return 30.0
-        if (texto.contains("EP2") || texto.contains("PROCESO 2") || texto.contains("PERMANENTE 2") || texto.contains("EP 2")) return 20.0
-        if (texto.contains("EP1") || texto.contains("PROCESO 1") || texto.contains("PERMANENTE 1") || texto.contains("EP 1")) return 20.0
-
-        val pesoRaw = componente.peso ?: componente.weight ?: componente.percentage ?: componente.porcentaje
-        return toDouble(pesoRaw)
+        val historico = periodo?.trim() == "202520"
+        val reconocido = when {
+            texto.contains("FINAL") || texto.contains("EVF") -> if (historico) 25.0 else 30.0
+            texto.contains("PARCIAL") || texto.contains("EVP") -> if (historico) 20.0 else 30.0
+            texto.contains("EP2") || texto.contains("PROCESO 2") || texto.contains("PERMANENTE 2") || texto.contains("EP 2") -> if (historico) 30.0 else 20.0
+            texto.contains("EP1") || texto.contains("PROCESO 1") || texto.contains("PERMANENTE 1") || texto.contains("EP 1") -> if (historico) 25.0 else 20.0
+            else -> null
+        }
+        return reconocido ?: toDouble(componente.displayPeso?.toString()?.replace("%", ""))
+            ?.takeIf { it.isFinite() && it > 0 && it <= 100 }
     }
+
+    data class Progreso(val acumulado: Double, val pesoEvaluado: Double) {
+        val promedio: Double get() = acumulado * 100.0 / pesoEvaluado
+        val minimoAcumulado: Double get() = com.example.upaos.domain.academic.AcademicRules.PASS_GRADE * pesoEvaluado / 100.0
+        val enRitmoAprobatorio: Boolean get() = acumulado + 1e-9 >= minimoAcumulado
+    }
+
+    fun progreso(componentes: List<ComponenteDetalle>, periodo: String? = null): Progreso? {
+        var puntos = 0.0
+        var evaluado = 0.0
+        for (componente in componentes) {
+            val nota = toDouble(componente.displayNota)?.takeIf { it.isFinite() && it in 0.0..20.0 } ?: continue
+            val peso = pesoComponente(componente, periodo)?.takeIf { it.isFinite() && it > 0 && it <= 100 } ?: continue
+            puntos += nota * peso / 100.0
+            evaluado += peso
+        }
+        return if (evaluado > 0 && evaluado <= 100.0 + 1e-9) Progreso(puntos, evaluado) else null
+    }
+
+    fun progresoCurso(curso: com.example.upaos.data.model.CourseGrade, periodo: String? = null): Progreso? =
+        progreso(curso.componentes.ifEmpty {
+            listOf(ComponenteDetalle(nombre = "EP1", nota = curso.displayEp1.nota),
+                ComponenteDetalle(nombre = "EP2", nota = curso.displayEp2.nota))
+        }, periodo)
 
     fun toDouble(v: Any?): Double? {
         if (v == null) return null
@@ -47,12 +73,12 @@ object Calculators {
      * Promedio ponderado de los componentes que YA tienen nota, normalizado por la suma de sus pesos.
      * Ejemplo: EP1=15 (20%) y Parcial=14 (30%) -> (15*20 + 14*30) / (20+30) = 14.4
      */
-    fun calcularNotaActual(componentes: List<ComponenteDetalle>): Double? {
+    fun calcularNotaActual(componentes: List<ComponenteDetalle>, periodo: String? = null): Double? {
         var sumaPonderada = 0.0
         var sumaPesos = 0.0
 
         for (c in componentes) {
-            val peso = pesoComponente(c) ?: continue
+            val peso = pesoComponente(c, periodo) ?: continue
             if (peso <= 0.0) continue
             val nota = toDouble(c.displayNota) ?: continue
 
@@ -68,7 +94,7 @@ object Calculators {
      * Calcula la nota proyectada (acumulada sobre el total del curso) y lista los componentes pendientes.
      * Si el examen final ya tiene nota, la proyección no aplica.
      */
-    fun calcularNotaProyectada(componentes: List<ComponenteDetalle>): Pair<Double?, List<String>> {
+    fun calcularNotaProyectada(componentes: List<ComponenteDetalle>, periodo: String? = null): Pair<Double?, List<String>> {
         val compFinal = componentes.firstOrNull { c ->
             val txt = listOfNotNull(c.nombre, c.description, c.codigo).joinToString(" ").uppercase(Locale.ROOT)
             txt.contains("FINAL") || txt.contains("EVF")
@@ -83,7 +109,7 @@ object Calculators {
         var componentesConNota = 0
 
         for (c in componentes) {
-            val peso = pesoComponente(c) ?: continue
+            val peso = pesoComponente(c, periodo) ?: continue
             if (peso <= 0.0) continue
             val nota = toDouble(c.displayNota)
 
