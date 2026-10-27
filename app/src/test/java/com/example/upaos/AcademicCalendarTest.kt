@@ -8,10 +8,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.TimeZone
 
 class AcademicCalendarTest {
 
-    private val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    private val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("America/Lima")
+    }
 
     @Test
     fun `test antes de que inicie el ciclo`() {
