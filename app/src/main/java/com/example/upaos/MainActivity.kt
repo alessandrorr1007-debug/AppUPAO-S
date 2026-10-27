@@ -52,6 +52,9 @@ import com.example.upaos.ui.home.HomeScreen
 import com.example.upaos.ui.login.EligeCuentaScreen
 import com.example.upaos.ui.login.LoginScreen
 import com.example.upaos.ui.notificaciones.NotificacionesScreen
+import com.example.upaos.ui.profile.ProfileScreen
+import com.example.upaos.ui.profile.RefreshProfileOnResume
+import com.example.upaos.ui.profile.rememberProfileViewModel
 import com.example.upaos.ui.settings.SettingsScreen
 import com.example.upaos.ui.theme.UPAOSTheme
 import com.example.upaos.widget.ProximoCursoWidget
@@ -66,6 +69,36 @@ class MainActivity : FragmentActivity() {
     private var ultimaVezEnSegundoPlano: Long? = null
     private var yaAutenticadoEnEstaSesion by mutableStateOf(false)
     private var isAppLocked by mutableStateOf(false)
+    private var lockMessage by mutableStateOf(BiometricHelper.Availability.AVAILABLE.message)
+    private var showUpaoRecovery by mutableStateOf(false)
+    private var promptInProgress = false
+    private val credentialLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        promptInProgress = false
+        applyUnlockEvent(if (result.resultCode == android.app.Activity.RESULT_OK)
+            com.example.upaos.data.local.UnlockEvent.DeviceAuthenticated else com.example.upaos.data.local.UnlockEvent.Failed)
+    }
+
+    private fun applyUnlockEvent(event: com.example.upaos.data.local.UnlockEvent) {
+        isAppLocked = com.example.upaos.data.local.remainsLocked(event)
+        if (!isAppLocked) {
+            yaAutenticadoEnEstaSesion = true
+            ultimaVezEnSegundoPlano = null
+            showUpaoRecovery = false
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun unlockWithDeviceCredential() {
+        val keyguard = getSystemService(android.app.KeyguardManager::class.java)
+        val intent = keyguard?.createConfirmDeviceCredentialIntent("Desbloquear UPAO S", "Confirma la credencial del dispositivo")
+        if (intent == null) {
+            applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.Unavailable)
+            lockMessage = BiometricHelper.Availability.NOT_CONFIGURED.message
+            return
+        }
+        promptInProgress = true
+        credentialLauncher.launch(intent)
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -78,12 +111,14 @@ class MainActivity : FragmentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* Permission granted */ }
 
     override fun onStop() {
+        com.example.upaos.service.GradeSyncController.onHidden()
         super.onStop()
         ultimaVezEnSegundoPlano = System.currentTimeMillis()
     }
 
     override fun onResume() {
         super.onResume()
+        com.example.upaos.service.GradeSyncController.onVisible(this)
         actualizarProteccionPantalla()
         if (SecurityLockPolicy.debeBloquear(
                 ultimaVezEnSegundoPlano = ultimaVezEnSegundoPlano,
@@ -110,29 +145,38 @@ class MainActivity : FragmentActivity() {
             isAppLocked = false
             return
         }
-        if (!BiometricHelper.puedeAutenticar(this)) {
-            // Si el dispositivo no tiene hardware/credenciales configuradas, no bloquear indefinidamente
-            isAppLocked = false
+        if (promptInProgress || showUpaoRecovery) return
+        val availability = BiometricHelper.availability(this)
+        if (availability != BiometricHelper.Availability.AVAILABLE) {
+            applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.Unavailable)
+            lockMessage = availability.message
             return
         }
         val executor = ContextCompat.getMainExecutor(this)
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
-                isAppLocked = false
-                yaAutenticadoEnEstaSesion = true
-                ultimaVezEnSegundoPlano = null
+                promptInProgress = false
+                applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.DeviceAuthenticated)
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 super.onAuthenticationError(errorCode, errString)
-                // En caso de cancelación o error, la pantalla AppLockScreen permanece visible
+                promptInProgress = false
+                applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.Failed)
+                lockMessage = if (errorCode == BiometricPrompt.ERROR_LOCKOUT || errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT)
+                    BiometricHelper.Availability.LOCKED_OUT.message else BiometricHelper.Availability.UNAVAILABLE.message
             }
         })
         try {
+            promptInProgress = true
             prompt.authenticate(BiometricHelper.crearPromptInfo())
-        } catch (_: Exception) {
-            // Manejo de fallos imprevistos sin crashear
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) {
+            promptInProgress = false
+            applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.Failed)
+            lockMessage = BiometricHelper.Availability.UNAVAILABLE.message
+            android.util.Log.w("AppLock", "No se pudo iniciar la autenticación local")
         }
     }
 
@@ -205,7 +249,17 @@ class MainActivity : FragmentActivity() {
 
             UPAOSTheme(darkTheme = darkTheme) {
                 if (isAppLocked) {
-                    AppLockScreen(onUnlockClick = { lanzarBiometricPrompt() })
+                    val recoveryUser = tokenManager.getSavedUser()
+                    if (showUpaoRecovery) {
+                        androidx.activity.compose.BackHandler { showUpaoRecovery = false }
+                        LoginScreen(recoveryUser = recoveryUser, useSavedPassword = false, onLoginSuccess = { authenticatedUser ->
+                            applyUnlockEvent(com.example.upaos.data.local.UnlockEvent.UpaoAuthenticated(tokenManager.getSavedUser(), authenticatedUser))
+                        })
+                    } else {
+                        AppLockScreen(onUnlockClick = { lanzarBiometricPrompt() }, message = lockMessage,
+                            onDeviceCredential = { unlockWithDeviceCredential() },
+                            onUpaoRecovery = { showUpaoRecovery = true })
+                    }
                 } else {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -220,6 +274,10 @@ class MainActivity : FragmentActivity() {
                         val nPrefs = com.example.upaos.data.local.NotificationPreferences(context)
                         if (nPrefs.checkAsistenciaEnabled || nPrefs.checkNotasEnabled) {
                             com.example.upaos.service.SyncScheduler.start(context)
+                        }
+                        tokenManager.getSavedUser()?.let { user ->
+                            val hours = com.example.upaos.service.AgendaReminderWorker.preferences(context, user).getInt("hours", 0)
+                            if (hours > 0) com.example.upaos.service.AgendaReminderWorker.configure(context, user, hours)
                         }
                         navController.navigate("home/$activeToken") {
                             popUpTo(0) { inclusive = true }
@@ -279,7 +337,21 @@ class MainActivity : FragmentActivity() {
                                         popUpTo("elige-cuenta") { inclusive = true }
                                     }
                                 },
-                                onBack = { navController.popBackStack() }
+                                onBack = {
+                                    val activeUser = tokenManager.getSavedUser()
+                                    val token = tokenManager.getToken()
+                                    if (!activeUser.isNullOrBlank() && !token.isNullOrBlank()) {
+                                        com.example.upaos.data.upao.UpaoHttpClient.selectAccount(activeUser)
+                                        val popped = navController.popBackStack()
+                                        if (!popped) {
+                                            navegarPorTipoCuenta(token)
+                                        }
+                                    } else {
+                                        if (!navController.popBackStack()) {
+                                            navController.navigate("login") { popUpTo("elige-cuenta") { inclusive = true } }
+                                        }
+                                    }
+                                }
                             )
                         }
 
@@ -290,6 +362,9 @@ class MainActivity : FragmentActivity() {
                             exitTransition = { fadeOut(tween(200)) }
                         ) { backStackEntry ->
                             val token = backStackEntry.arguments?.getString("token") ?: ""
+                            val profileModel = rememberProfileViewModel(backStackEntry)
+                            val profileState by profileModel.state.collectAsState()
+                            RefreshProfileOnResume(profileModel)
                             HomeScreen(
                                 token = token,
                                 initialTab = destinationTabRequest,
@@ -306,9 +381,7 @@ class MainActivity : FragmentActivity() {
                                     }
                                 },
                                 onSwitchAccount = {
-                                    navController.navigate("elige-cuenta") {
-                                        popUpTo(0) { inclusive = true }
-                                    }
+                                    navController.navigate("elige-cuenta") { launchSingleTop = true }
                                 },
                                 onOpenCalculator = {
                                     navController.navigate("calculadora")
@@ -316,6 +389,9 @@ class MainActivity : FragmentActivity() {
                                 onOpenSettings = {
                                     navController.navigate("settings")
                                 },
+                                profileName = profileState.profile?.fullName,
+                                profileFirstName = profileState.profile?.firstName,
+                                onOpenProfile = { navController.navigate("mi-perfil") },
                                 onOpenNotifications = {
                                     navController.navigate("notificaciones")
                                 },
@@ -341,7 +417,7 @@ class MainActivity : FragmentActivity() {
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
                         ) { backStackEntry ->
                             val args = backStackEntry.arguments
-                            val periodo = args?.getString("periodo") ?: "202610"
+                            val periodo = args?.getString("periodo").orEmpty()
                             val carrera = args?.getString("carrera") ?: "UG"
                             val crn = args?.getString("crn") ?: ""
                             val nombre = args?.getString("nombre") ?: ""
@@ -366,6 +442,20 @@ class MainActivity : FragmentActivity() {
                                 usuario = tokenManager.getSavedUser(),
                                 onBack = { navController.popBackStack() }
                             )
+                        }
+
+                        composable(
+                            "mi-perfil",
+                            enterTransition = { slideInHorizontally(tween(280)) { it } },
+                            exitTransition = { fadeOut(tween(180)) },
+                            popEnterTransition = { fadeIn(tween(220)) },
+                            popExitTransition = { slideOutHorizontally(tween(280)) { it } }
+                        ) { profileEntry ->
+                            val homeEntry = remember(profileEntry) { navController.getBackStackEntry("home/{token}") }
+                            val profileModel = rememberProfileViewModel(homeEntry)
+                            val profileState by profileModel.state.collectAsState()
+                            RefreshProfileOnResume(profileModel)
+                            ProfileScreen(profileState, onBack = { navController.popBackStack() }, onRefresh = profileModel::refresh)
                         }
 
                         composable(
@@ -484,7 +574,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
             }
             Spacer(modifier = Modifier.height(20.dp))
             Text(
-                text = "UPAO Móvil",
+                text = "UPAO",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface

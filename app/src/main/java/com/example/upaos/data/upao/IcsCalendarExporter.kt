@@ -80,12 +80,8 @@ object IcsCalendarExporter {
         fechaInicioOverride: LocalDate? = null,
         ahoraUtc: ZonedDateTime? = null
     ): String {
-        val fechaInicio = fechaInicioOverride ?: try {
-            val fechaStr = AcademicCalendar.FECHAS_INICIO_CICLO[term] ?: AcademicCalendar.estimarFechaInicio(term)
-            LocalDate.parse(fechaStr)
-        } catch (_: Exception) {
-            LocalDate.of(2026, 8, 31)
-        }
+        val fechaInicio = fechaInicioOverride ?: com.example.upaos.domain.academic.AcademicRules
+            .startDate(term)?.date ?: throw IllegalArgumentException("Periodo académico no válido")
 
         // Fin de la semana 16 académica (domingo a las 23:59:59 en hora de Lima)
         val finSemana16 = fechaInicio.plusWeeks(AcademicCalendar.TOTAL_SEMANAS_REGULARES.toLong()).minusDays(1)

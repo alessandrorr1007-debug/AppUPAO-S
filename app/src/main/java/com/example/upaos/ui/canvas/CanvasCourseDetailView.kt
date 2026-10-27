@@ -57,7 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.data.api.CanvasApiClient
+import com.example.upaos.data.canvas.*
 import com.example.upaos.data.model.CanvasAssignment
 import com.example.upaos.data.model.CanvasCourse
 import com.example.upaos.data.model.CanvasDiscussionTopic
@@ -98,7 +98,6 @@ fun CanvasCourseDetailView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val courseAccentColor = remember(course.name) { cursoColor(course.name) }
 
     // Interceptar botón atrás físico para volver a la lista de cursos
@@ -108,6 +107,11 @@ fun CanvasCourseDetailView(
     // 0: Inicio, 1: Módulos, 2: Personas, 3: Grupos, 4: Calificaciones,
     // 5: Foro de discusión, 6: Archivos, 7: Programa de curso, 8: Zoom
     var selectedSection by remember { mutableIntStateOf(0) }
+    var selectedPage by remember { mutableStateOf<String?>(null) }
+    var selectedDiscussion by remember { mutableStateOf<CanvasDiscussionTopic?>(null) }
+    selectedPage?.let { CanvasPageDetail(course.id, it, token) { selectedPage = null } }
+    selectedDiscussion?.let { CanvasDiscussionDetail(course.id, it, token) { selectedDiscussion = null } }
+
 
     val sections = remember {
         listOf(
@@ -119,7 +123,11 @@ fun CanvasCourseDetailView(
             Triple(5, "Foro de discusión", Icons.Filled.Forum),
             Triple(6, "Archivos", Icons.AutoMirrored.Filled.InsertDriveFile),
             Triple(7, "Programa de curso", Icons.Filled.Description),
-            Triple(8, "Zoom", Icons.Filled.Videocam)
+            Triple(8, "Zoom", Icons.Filled.Videocam),
+            Triple(9, "Anuncios", Icons.Filled.Info),
+            Triple(10, "Páginas", Icons.Filled.Description),
+            Triple(11, "Quizzes", Icons.Filled.Quiz),
+            Triple(12, "Carpetas", Icons.Filled.Folder)
         )
     }
 
@@ -223,7 +231,9 @@ fun CanvasCourseDetailView(
                     courseId = course.id,
                     token = token,
                     onItemClick = { item, modName ->
-                        if (item.isFile) {
+                        if (item.type.equals("Page", true) && (item.pageUrl != null || item.contentId != null)) {
+                            selectedPage = item.pageUrl ?: "page_id:${item.contentId}"
+                        } else if (item.isFile) {
                             onOpenFile(item, modName)
                         } else if (!item.htmlUrl.isNullOrBlank()) {
                             onOpenUrl(item.htmlUrl, item.title ?: "Módulo")
@@ -248,11 +258,7 @@ fun CanvasCourseDetailView(
                 5 -> CourseDiscussionsSection(
                     courseId = course.id,
                     token = token,
-                    onOpenTopic = { topic ->
-                        if (!topic.htmlUrl.isNullOrBlank()) {
-                            onOpenUrl(topic.htmlUrl, topic.title ?: "Foro de discusión")
-                        }
-                    }
+                    onOpenTopic = { topic -> selectedDiscussion = topic }
                 )
                 6 -> CourseFilesSection(
                     courseId = course.id,
@@ -273,6 +279,11 @@ fun CanvasCourseDetailView(
                     token = token,
                     onOpenUrl = onOpenUrl
                 )
+                9 -> CanvasAnnouncements(token, listOf(course.id))
+                10 -> CanvasPages(course.id, token)
+                11 -> CanvasQuizzes(course.id, token)
+                12 -> CanvasFolders(course.id, token)
+
             }
         }
     }
@@ -532,7 +543,7 @@ private fun CourseHomeSection(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    val dueText = todo.dueAt?.let { formatRelativeDateText(it) } ?: "Sin fecha límite"
+                                    val dueText = todo.dueAt?.let { formatRelativeDateText(it) } ?: "Sin fecha de entrega"
                                     Text(
                                         text = dueText,
                                         style = MaterialTheme.typography.labelSmall,
@@ -612,32 +623,14 @@ private fun CourseModulesSection(
     token: String,
     onItemClick: (CanvasModuleItem, String) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var modules by remember { mutableStateOf<List<CanvasModule>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    val resource = canvasResourceViewModel("modules:${courseId}", token, emptyList<CanvasModule>()) { modules(courseId) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val modules = resourceState.data
+    val isLoading = resourceState.loading
+    val isRefreshing = resourceState.refreshing
+    fun loadModules(isManual: Boolean = false) = resource.refresh(isManual)
 
-    fun loadModules(isManual: Boolean = false) {
-        scope.launch {
-            if (isManual) isRefreshing = true else isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseModules("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    modules = resp.body()!!
-                }
-            } catch (_: Exception) {}
-            finally {
-                isLoading = false
-                isRefreshing = false
-            }
-        }
-    }
-
-    LaunchedEffect(courseId) {
-        loadModules()
-    }
 
     RefreshableContent(
         isRefreshing = isRefreshing,
@@ -692,263 +685,7 @@ private fun CourseGradesSection(
     token: String,
     onOpenAssignment: (CanvasTodoItem) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var assignments by remember { mutableStateOf<List<CanvasAssignment>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isRefreshing by remember { mutableStateOf(false) }
-
-    fun loadGrades(isManual: Boolean = false) {
-        scope.launch {
-            if (isManual) isRefreshing = true else isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseAssignments("Bearer $token", course.id)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    assignments = resp.body()!!
-                }
-            } catch (_: Exception) {}
-            finally {
-                isLoading = false
-                isRefreshing = false
-            }
-        }
-    }
-
-    LaunchedEffect(course.id) {
-        loadGrades()
-    }
-
-    RefreshableContent(
-        isRefreshing = isRefreshing,
-        onRefresh = { loadGrades(isManual = true) },
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-            when {
-                isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                    }
-                }
-                assignments.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        EmptyState(
-                            icon = Icons.Filled.Star,
-                            title = "Sin calificaciones registradas",
-                            subtitle = "No se encontraron tareas ni notas evaluadas en este curso."
-                        )
-                    }
-                }
-                else -> {
-                    // Métricas de calificaciones
-                    val gradedAssignments = remember(assignments) {
-                        assignments.filter { it.submission?.score != null || !it.submission?.grade.isNullOrBlank() }
-                    }
-                    val submittedAssignments = remember(assignments) {
-                        assignments.filter { it.isSubmitted }
-                    }
-
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        // Tarjeta de resumen de notas
-                        item {
-                            AppCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                contentPadding = PaddingValues(14.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceAround
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = "${assignments.size}",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "Total Tareas",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    }
-
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = "${submittedAssignments.size}",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "Entregadas",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    }
-
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = "${gradedAssignments.size}",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "Calificadas",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Lista de tareas y notas
-                        items(assignments, key = { it.id }) { assignment ->
-                            val submission = assignment.submission
-                            val hasGrade = submission?.score != null || !submission?.grade.isNullOrBlank()
-                            val isSubmitted = assignment.isSubmitted
-
-                            AppCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(12.dp),
-                                onClick = {
-                                    val todo = CanvasTodoItem(
-                                        type = "submitting",
-                                        contextType = "Course",
-                                        courseId = course.id,
-                                        contextName = course.name,
-                                        contextShortName = course.courseCode,
-                                        htmlUrl = assignment.htmlUrl,
-                                        assignment = assignment,
-                                        quiz = if (assignment.isQuizAssignment == true || assignment.quizId != null) {
-                                            CanvasQuiz(
-                                                id = assignment.quizId ?: assignment.id,
-                                                title = assignment.name,
-                                                dueAt = assignment.effectiveDueAt,
-                                                lockAt = assignment.lockAt,
-                                                unlockAt = assignment.unlockAt,
-                                                pointsPossible = assignment.pointsPossible,
-                                                htmlUrl = assignment.htmlUrl
-                                            )
-                                        } else null
-                                    )
-                                    onOpenAssignment(todo)
-                                }
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = assignment.name ?: "Tarea sin título",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        val dueText = assignment.effectiveDueAt?.let { formatRelativeDateText(it) } ?: "Sin fecha límite"
-                                        Text(
-                                            text = dueText,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-
-                                        if (assignment.pointsPossible != null && assignment.pointsPossible > 0) {
-                                            Text(
-                                                text = "Puntaje máximo: ${assignment.pointsPossible.toInt()} pts",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    // Badge de Nota / Estado
-                                    when {
-                                        hasGrade -> {
-                                            val scoreVal = submission?.score
-                                            val gradeText = submission?.grade ?: scoreVal?.toString() ?: "-"
-                                            val maxPts = assignment.pointsPossible?.toInt() ?: 20
-                                            val isPassing = (scoreVal ?: 0.0) >= (maxPts * 0.55)
-
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isPassing) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
-                                                modifier = Modifier.padding(2.dp)
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally
-                                                ) {
-                                                    Text(
-                                                        text = gradeText,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 16.sp,
-                                                        color = if (isPassing) Color(0xFF2E7D32) else Color(0xFFD32F2F)
-                                                    )
-                                                    Text(
-                                                        text = "de $maxPts pts",
-                                                        fontSize = 10.sp,
-                                                        color = if (isPassing) Color(0xFF2E7D32) else Color(0xFFD32F2F)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        isSubmitted -> {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = Color(0xFFE3F2FD)
-                                            ) {
-                                                Text(
-                                                    text = "Entregado",
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF1976D2),
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                        else -> {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = MaterialTheme.colorScheme.surfaceVariant
-                                            ) {
-                                                Text(
-                                                    text = "Sin entregar",
-                                                    fontWeight = FontWeight.Normal,
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        item { Spacer(modifier = Modifier.height(16.dp)) }
-                    }
-                }
-            }
-        }
-    }
+    CanvasCourseGrades(course, token, onOpenAssignment)
 }
 
 // -------------------------------------------------------------
@@ -960,26 +697,13 @@ private fun CoursePeopleSection(
     token: String,
     onNavigateToGroups: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var users by remember { mutableStateOf<List<CanvasUser>>(emptyList()) }
-    var isLoadingUsers by remember { mutableStateOf(true) }
+    val resource = canvasResourceViewModel("users:${courseId}", token, emptyList<CanvasUser>()) { people(courseId) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val users = resourceState.data
+    val isLoadingUsers = resourceState.loading
     var searchQuery by remember { mutableStateOf("") }
 
-    LaunchedEffect(courseId) {
-        scope.launch {
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseUsers("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    users = resp.body()!!
-                }
-            } catch (_: Exception) {}
-            finally {
-                isLoadingUsers = false
-            }
-        }
-    }
 
     val filteredUsers = remember(users, searchQuery) {
         if (searchQuery.isBlank()) users
@@ -1112,25 +836,12 @@ private fun CourseGroupsSection(
     token: String,
     onOpenGroup: (CanvasGroup) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var groups by remember { mutableStateOf<List<CanvasGroup>>(emptyList()) }
-    var isLoadingGroups by remember { mutableStateOf(true) }
+    val resource = canvasResourceViewModel("groups:${courseId}", token, emptyList<CanvasGroup>()) { courseGroups(courseId) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val groups = resourceState.data
+    val isLoadingGroups = resourceState.loading
 
-    LaunchedEffect(courseId) {
-        scope.launch {
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseGroups("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    groups = resp.body()!!
-                }
-            } catch (_: Exception) {}
-            finally {
-                isLoadingGroups = false
-            }
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -1253,32 +964,14 @@ private fun CourseDiscussionsSection(
     token: String,
     onOpenTopic: (CanvasDiscussionTopic) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var topics by remember { mutableStateOf<List<CanvasDiscussionTopic>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    val resource = canvasResourceViewModel("topics:${courseId}", token, emptyList<CanvasDiscussionTopic>()) { discussions(courseId) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val topics = resourceState.data
+    val isLoading = resourceState.loading
+    val isRefreshing = resourceState.refreshing
+    fun loadDiscussions(isManual: Boolean = false) = resource.refresh(isManual)
 
-    fun loadDiscussions(isManual: Boolean = false) {
-        scope.launch {
-            if (isManual) isRefreshing = true else isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseDiscussions("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    topics = resp.body()!!
-                }
-            } catch (_: Exception) {}
-            finally {
-                isLoading = false
-                isRefreshing = false
-            }
-        }
-    }
-
-    LaunchedEffect(courseId) {
-        loadDiscussions()
-    }
 
     RefreshableContent(
         isRefreshing = isRefreshing,
@@ -1384,33 +1077,15 @@ private fun CourseFilesSection(
     token: String,
     onOpenFile: (CanvasFileDetail) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var files by remember { mutableStateOf<List<CanvasFileDetail>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    val resource = canvasResourceViewModel("files:${courseId}", token, emptyList<CanvasFileDetail>()) { files(courseId) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val files = resourceState.data
+    val isLoading = resourceState.loading
+    val isRefreshing = resourceState.refreshing
     var searchQuery by remember { mutableStateOf("") }
+    fun loadFiles(isManual: Boolean = false) = resource.refresh(isManual)
 
-    fun loadFiles(isManual: Boolean = false) {
-        scope.launch {
-            if (isManual) isRefreshing = true else isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseFiles("Bearer $token", courseId)
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    files = resp.body()!!
-                }
-            } catch (_: Exception) {}
-            finally {
-                isLoading = false
-                isRefreshing = false
-            }
-        }
-    }
-
-    LaunchedEffect(courseId) {
-        loadFiles()
-    }
 
     RefreshableContent(
         isRefreshing = isRefreshing,
@@ -1531,23 +1206,12 @@ private fun CourseSyllabusSection(
     token: String,
     onOpenAssignment: (CanvasTodoItem) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var courseDetail by remember { mutableStateOf<CanvasCourse?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    val resource = canvasResourceViewModel("courseDetail:${course.id}", token, null as CanvasCourse?) { syllabus(course.id) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val courseDetail = resourceState.data
+    val isLoading = resourceState.loading
 
-    LaunchedEffect(course.id) {
-        try {
-            val resp = withContext(Dispatchers.IO) {
-                CanvasApiClient.apiService.getCourseDetail("Bearer $token", course.id)
-            }
-            if (resp.isSuccessful && resp.body() != null) {
-                courseDetail = resp.body()!!
-            }
-        } catch (_: Exception) {}
-        finally {
-            isLoading = false
-        }
-    }
 
     LazyColumn(
         modifier = Modifier
@@ -1754,98 +1418,6 @@ private fun downloadCanvasFileInDetail(context: Context, url: String, fileName: 
 // 8. SECCIÓN DE ZOOM PARA EL CURSO
 // -------------------------------------------------------------
 
-object CourseZoomPreferences {
-    private const val PREFS_NAME = "course_zoom_preferences"
-
-    fun getCustomZoomMeeting(context: Context, courseId: Long): CourseZoomMeeting? {
-        val prefs = context.getSharedPreferences("${PREFS_NAME}_${com.example.upaos.data.local.TokenManager(context).getSavedUser() ?: "anonymous"}", Context.MODE_PRIVATE)
-        // Migrate the old course preference on first use, preserving saved meeting links.
-        if (!prefs.contains("zoom_url_$courseId")) {
-            val legacy = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            if (legacy.contains("zoom_url_$courseId")) {
-                val editor = prefs.edit()
-                val oldEditor = legacy.edit()
-                listOf("zoom_url", "zoom_title", "zoom_id", "zoom_pwd").forEach { prefix ->
-                    val key = "${prefix}_$courseId"
-                    legacy.getString(key, null)?.let { editor.putString(key, it) }
-                    oldEditor.remove(key)
-                }
-                if (editor.commit()) oldEditor.commit()
-            }
-        }
-        val url = prefs.getString("zoom_url_$courseId", null) ?: return null
-        val title = prefs.getString("zoom_title_$courseId", "Clase Virtual Zoom") ?: "Clase Virtual Zoom"
-        val meetingId = prefs.getString("zoom_id_$courseId", null)
-        val passcode = prefs.getString("zoom_pwd_$courseId", null)
-        return CourseZoomMeeting(
-            courseId = courseId,
-            title = title,
-            joinUrl = url,
-            meetingId = meetingId,
-            passcode = passcode,
-            origin = "CUSTOM"
-        )
-    }
-
-    fun saveCustomZoomMeeting(context: Context, meeting: CourseZoomMeeting) {
-        val prefs = context.getSharedPreferences("${PREFS_NAME}_${com.example.upaos.data.local.TokenManager(context).getSavedUser() ?: "anonymous"}", Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString("zoom_url_${meeting.courseId}", meeting.joinUrl)
-            .putString("zoom_title_${meeting.courseId}", meeting.title)
-            .putString("zoom_id_${meeting.courseId}", meeting.meetingId)
-            .putString("zoom_pwd_${meeting.courseId}", meeting.passcode)
-            .apply()
-    }
-
-    fun deleteCustomZoomMeeting(context: Context, courseId: Long) {
-        val prefs = context.getSharedPreferences("${PREFS_NAME}_${com.example.upaos.data.local.TokenManager(context).getSavedUser() ?: "anonymous"}", Context.MODE_PRIVATE)
-        prefs.edit()
-            .remove("zoom_url_$courseId")
-            .remove("zoom_title_$courseId")
-            .remove("zoom_id_$courseId")
-            .remove("zoom_pwd_$courseId")
-            .apply()
-    }
-}
-
-object ZoomUrlExtractor {
-    private val ZOOM_URL_REGEX = """https?://[a-zA-Z0-9.\-_]*zoom\.us/[jsw]/[0-9]+[^\s<>"']*""".toRegex(RegexOption.IGNORE_CASE)
-    private val MEETING_ID_REGEX = """(?:ID(?:\s*de\s*reuni[oó]n)?|Meeting\s*ID)\s*[:：]?\s*([0-9\s]{9,14})""".toRegex(RegexOption.IGNORE_CASE)
-    private val PASSCODE_REGEX = """(?:C[oó]digo(?:\s*de\s*acceso)?|Contrase[ñn]a|Clave|Passcode|Password)\s*[:：]?\s*([A-Za-z0-9@#*_\-]+)""".toRegex(RegexOption.IGNORE_CASE)
-
-    fun extractZoomMeetingsFromText(
-        text: String,
-        courseId: Long,
-        defaultTitle: String,
-        origin: String
-    ): List<CourseZoomMeeting> {
-        val matches = ZOOM_URL_REGEX.findAll(text).map { it.value.trim() }.distinct().toList()
-        if (matches.isEmpty()) return emptyList()
-
-        val foundMeetingId = MEETING_ID_REGEX.find(text)?.groupValues?.getOrNull(1)?.replace(" ", "")?.trim()
-        val foundPasscode = PASSCODE_REGEX.find(text)?.groupValues?.getOrNull(1)?.trim()
-
-        return matches.map { url ->
-            val idFromUrl = if (foundMeetingId.isNullOrBlank()) {
-                """zoom\.us/[jsw]/([0-9]+)""".toRegex().find(url)?.groupValues?.getOrNull(1)
-            } else foundMeetingId
-
-            val pwdFromUrl = if (foundPasscode.isNullOrBlank()) {
-                """[?&]pwd=([^&#]+)""".toRegex().find(url)?.groupValues?.getOrNull(1)
-            } else foundPasscode
-
-            CourseZoomMeeting(
-                courseId = courseId,
-                title = defaultTitle,
-                joinUrl = url,
-                meetingId = idFromUrl,
-                passcode = pwdFromUrl,
-                origin = origin
-            )
-        }
-    }
-}
-
 private fun launchZoomMeetingIntent(context: Context, url: String) {
     try {
         val cleanUrl = if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("zoomus://")) {
@@ -1876,123 +1448,21 @@ fun CourseZoomSection(
     onOpenUrl: (String, String) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    var zoomMeetings by remember { mutableStateOf<List<CourseZoomMeeting>>(emptyList()) }
-    var canvasLtiTabUrl by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    val repository = rememberCanvasRepository(token)
+    val zoomRepository = remember(repository, course.id) {
+        DefaultCanvasZoomRepository(context.applicationContext, repository, course, repository::requireSession)
+    }
+    val tokens = remember(context) { com.example.upaos.data.local.TokenManager(context.applicationContext) }
+    val zoomVm: CanvasZoomViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        key = canvasViewModelKey("zoom:" + course.id, tokens.getSavedUser().orEmpty(), tokens.getSessionId(), token),
+        factory = canvasViewModelFactory { CanvasZoomViewModel(zoomRepository) })
+    val zoomState by zoomVm.state.collectAsState()
+    CanvasResourceFeedback(zoomState) { zoomVm.refresh() }
+    val zoomMeetings = zoomState.data.meetings
+    val canvasLtiTabUrl = zoomState.data.ltiUrl
+    val isLoading = zoomState.loading
     var showDialog by remember { mutableStateOf(false) }
-
-    fun refreshMeetings() {
-        isLoading = true
-        scope.launch {
-            val foundMeetings = mutableListOf<CourseZoomMeeting>()
-            val custom = CourseZoomPreferences.getCustomZoomMeeting(context, course.id)
-            if (custom != null) {
-                foundMeetings.add(custom)
-            }
-
-            try {
-                // 1. Consultar pestañas de Canvas
-                val tabsResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseTabs("Bearer $token", course.id)
-                }
-                if (tabsResp.isSuccessful && tabsResp.body() != null) {
-                    val zoomTab = tabsResp.body()!!.firstOrNull {
-                        it.label?.contains("zoom", ignoreCase = true) == true ||
-                        it.id.contains("zoom", ignoreCase = true)
-                    }
-                    if (zoomTab != null) {
-                        val full = zoomTab.fullUrl ?: if (!zoomTab.htmlUrl.isNullOrBlank()) {
-                            if (zoomTab.htmlUrl.startsWith("http")) zoomTab.htmlUrl
-                            else "https://upao.instructure.com${zoomTab.htmlUrl}"
-                        } else null
-                        canvasLtiTabUrl = full
-                    }
-                }
-            } catch (_: Exception) {}
-
-            try {
-                // 2. Escanear módulos de Canvas
-                val modResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseModules("Bearer $token", course.id)
-                }
-                if (modResp.isSuccessful && modResp.body() != null) {
-                    modResp.body()!!.forEach { mod ->
-                        mod.items?.forEach { item ->
-                            val titleMatches = item.title?.contains("zoom", ignoreCase = true) == true
-                            val urlMatches = item.url?.contains("zoom.us", ignoreCase = true) == true ||
-                                            item.htmlUrl?.contains("zoom.us", ignoreCase = true) == true
-                            val targetUrl = item.url ?: item.htmlUrl
-                            if ((titleMatches || urlMatches) && !targetUrl.isNullOrBlank()) {
-                                val extracted = ZoomUrlExtractor.extractZoomMeetingsFromText(
-                                    targetUrl, course.id, item.title ?: "Enlace Zoom en ${mod.name}", "MODULE"
-                                )
-                                if (extracted.isNotEmpty()) {
-                                    foundMeetings.addAll(extracted)
-                                } else if (targetUrl.contains("zoom", ignoreCase = true)) {
-                                    foundMeetings.add(
-                                        CourseZoomMeeting(
-                                            courseId = course.id,
-                                            title = item.title ?: "Enlace Zoom (${mod.name})",
-                                            joinUrl = targetUrl,
-                                            origin = "MODULE"
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
-
-            try {
-                // 3. Escanear discusiones y anuncios
-                val discResp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getCourseDiscussions("Bearer $token", course.id)
-                }
-                if (discResp.isSuccessful && discResp.body() != null) {
-                    discResp.body()!!.forEach { topic ->
-                        val textToScan = "${topic.title.orEmpty()} \n ${topic.message.orEmpty()}"
-                        if (textToScan.contains("zoom", ignoreCase = true)) {
-                            val extracted = ZoomUrlExtractor.extractZoomMeetingsFromText(
-                                textToScan, course.id, topic.title ?: "Aviso con Zoom", "ANNOUNCEMENT"
-                            )
-                            foundMeetings.addAll(extracted)
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
-
-            try {
-                // 4. Escanear syllabus si tiene enlace de Zoom
-                if (!course.syllabusBody.isNullOrBlank() && course.syllabusBody.contains("zoom", ignoreCase = true)) {
-                    val extracted = ZoomUrlExtractor.extractZoomMeetingsFromText(
-                        course.syllabusBody, course.id, "Zoom en Sílabo", "SYLLABUS"
-                    )
-                    foundMeetings.addAll(extracted)
-                }
-            } catch (_: Exception) {}
-
-            // Deduplicar por URL
-            val uniqueMeetings = mutableListOf<CourseZoomMeeting>()
-            val seenUrls = mutableSetOf<String>()
-            foundMeetings.forEach { meeting ->
-                val normUrl = meeting.joinUrl.trim().lowercase()
-                if (normUrl !in seenUrls) {
-                    seenUrls.add(normUrl)
-                    uniqueMeetings.add(meeting)
-                }
-            }
-
-            zoomMeetings = uniqueMeetings
-            isLoading = false
-        }
-    }
-
-    LaunchedEffect(course.id) {
-        refreshMeetings()
-    }
+    fun refreshMeetings() = zoomVm.refresh()
 
     val zoomPrimaryColor = Color(0xFF2D8CFF)
 
@@ -2215,7 +1685,7 @@ fun CourseZoomSection(
     }
 
     if (showDialog) {
-        val currentMeeting = CourseZoomPreferences.getCustomZoomMeeting(context, course.id)
+        val currentMeeting = zoomState.data.custom
             ?: zoomMeetings.firstOrNull()
 
         ZoomConfigDialog(
@@ -2223,13 +1693,13 @@ fun CourseZoomSection(
             initialMeeting = currentMeeting,
             onDismiss = { showDialog = false },
             onSave = { meeting ->
-                CourseZoomPreferences.saveCustomZoomMeeting(context, meeting)
+                zoomVm.save(meeting)
                 showDialog = false
                 refreshMeetings()
                 Toast.makeText(context, "Enlace de Zoom guardado", Toast.LENGTH_SHORT).show()
             },
             onDelete = {
-                CourseZoomPreferences.deleteCustomZoomMeeting(context, course.id)
+                zoomVm.delete()
                 showDialog = false
                 refreshMeetings()
                 Toast.makeText(context, "Enlace personalizado eliminado", Toast.LENGTH_SHORT).show()

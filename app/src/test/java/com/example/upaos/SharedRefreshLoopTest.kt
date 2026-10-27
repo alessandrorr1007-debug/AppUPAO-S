@@ -63,4 +63,20 @@ class SharedRefreshLoopTest {
         assertEquals(1, calls)
         loop.setForeground(false)
     }
+    @Test fun adaptiveDeadlineUsesBackoffAndManualRefreshStillCoalesces() = runTest {
+        var calls = 0
+        var interval = 60 * 60_000L
+        val loop = SharedRefreshLoop(backgroundScope, { calls++ },
+            clock = { testScheduler.currentTime }, nextIntervalMillis = { interval })
+        loop.setForeground(true); runCurrent()
+        advanceTimeBy(15 * 60_000L); runCurrent()
+        assertEquals(1, calls)
+        advanceTimeBy(45 * 60_000L); runCurrent()
+        assertEquals(2, calls)
+        interval = 20 * 60_000L
+        loop.requestRefresh(); runCurrent()
+        advanceTimeBy(interval); runCurrent()
+        assertEquals(4, calls)
+        loop.setForeground(false)
+    }
 }

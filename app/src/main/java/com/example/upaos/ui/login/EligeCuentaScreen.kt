@@ -1,6 +1,8 @@
 package com.example.upaos.ui.login
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import com.example.upaos.data.profile.StudentProfile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -48,6 +50,25 @@ fun EligeCuentaScreen(
     var cuentas by remember { mutableStateOf(tokenManager.getCuentas()) }
     var autenticando by remember { mutableStateOf<String?>(null) }
     var eliminarCuenta by remember { mutableStateOf<CuentaGuardada?>(null) }
+    val initialNombres = remember(cuentas) {
+        cuentas.associate { cuenta ->
+            val cachedName = try { tokenManager.getProfileJson(cuenta.usuario)?.let { StudentProfile.parse(it).shortName } }
+            catch (_: Exception) { null }
+            cuenta.usuario to (cachedName ?: cuenta.nombreCorto ?: StudentProfile.shortNameFromFullName(cuenta.nombre))
+        }
+    }
+    var nombres by remember { mutableStateOf(initialNombres) }
+    LaunchedEffect(cuentas) {
+        nombres = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            cuentas.associate { cuenta ->
+                val cachedName = try { tokenManager.getProfileJson(cuenta.usuario)?.let { StudentProfile.parse(it).shortName } }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { null }
+                cuenta.usuario to (cachedName ?: cuenta.nombreCorto ?: StudentProfile.shortNameFromFullName(cuenta.nombre))
+            }
+        }
+    }
+    BackHandler { if (autenticando == null) onBack() }
 
     fun iniciarSesionCon(cuenta: CuentaGuardada) {
         if (autenticando != null) return
@@ -106,7 +127,7 @@ fun EligeCuentaScreen(
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = onBack, enabled = autenticando == null) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Volver",
@@ -143,6 +164,8 @@ fun EligeCuentaScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(cuentas, key = { it.usuario }) { cuenta ->
+                        val nombreMostrar = nombres[cuenta.usuario] ?: cuenta.nombreCorto
+                            ?: StudentProfile.shortNameFromFullName(cuenta.nombre) ?: "Cuenta guardada"
                         AppCard(
                             onClick = { iniciarSesionCon(cuenta) },
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
@@ -156,13 +179,11 @@ fun EligeCuentaScreen(
                                     modifier = Modifier
                                         .size(40.dp)
                                         .clip(CircleShape)
-                                        .background(cursoColor(cuenta.nombre ?: cuenta.usuario)),
+                                        .background(cursoColor(nombreMostrar)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = cuenta.nombre?.trim()?.firstOrNull()?.uppercase()
-                                            ?: cuenta.usuario.firstOrNull()?.uppercase()
-                                            ?: "?",
+                                        text = nombreMostrar.firstOrNull()?.uppercase() ?: "?",
                                         color = MaterialTheme.colorScheme.onPrimary,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp
@@ -171,10 +192,10 @@ fun EligeCuentaScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = cuenta.nombre?.takeIf { it.isNotBlank() } ?: "Usuario UPAO",
+                                        text = nombreMostrar,
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1
+                                        maxLines = 2
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(

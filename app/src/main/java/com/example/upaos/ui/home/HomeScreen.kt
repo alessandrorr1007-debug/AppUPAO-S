@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Grade
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
@@ -64,6 +65,9 @@ fun HomeScreen(
     onSwitchAccount: () -> Unit = onLogout,
     onOpenCalculator: () -> Unit,
     onOpenSettings: () -> Unit,
+    profileName: String? = null,
+    profileFirstName: String? = null,
+    onOpenProfile: () -> Unit = {},
     onOpenNotifications: () -> Unit,
     onOpenCourse: (String, String, String, String) -> Unit = { _, _, _, _ -> }
 ) {
@@ -92,9 +96,22 @@ fun HomeScreen(
     }
 
     val usuario = tokenManager.getSavedUser()
+    val savedAccount = remember(usuario) { tokenManager.getCuentas().firstOrNull { it.usuario == usuario } }
+    val cachedProfile = remember(usuario) {
+        usuario?.let { u ->
+            try {
+                tokenManager.getProfileJson(u)?.let { com.example.upaos.data.profile.StudentProfile.parse(it) }
+            } catch (_: Exception) { null }
+        }
+    }
+    val greetingName = profileFirstName
+        ?: cachedProfile?.firstName
+        ?: com.example.upaos.data.profile.StudentProfile.givenName(
+            profileName ?: cachedProfile?.fullName ?: savedAccount?.nombreCorto ?: savedAccount?.nombre
+        )
 
     fun cerrarSesion() {
-        tokenManager.clearSession()
+        com.example.upaos.data.local.AccountPrivacy.logout(context)
         onLogout()
     }
 
@@ -104,7 +121,7 @@ fun HomeScreen(
     )
     val shared by dashboard.state.collectAsState()
     val unreadCount = shared.notices?.noLeidas ?: 0
-    val semanaEtiqueta = shared.week?.takeIf { it.configurada && it.fueraDeCiclo != true }?.etiqueta
+    val semanaEtiqueta = shared.week?.takeIf { it.configurada && it.fueraDeCiclo != true }?.let { it.etiqueta + if (it.fechaEstimada) " · estimada" else "" }
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(dashboard, lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->
@@ -116,6 +133,8 @@ fun HomeScreen(
     }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    var showAboutDialog by remember { mutableStateOf(false) }
+    val appVersion = remember { com.example.upaos.util.AppUpdater.getCurrentVersionName(context) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -145,6 +164,11 @@ fun HomeScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
+                    profileName?.takeIf { it.isNotBlank() }?.let { name ->
+                        Text(name, style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
                     Text(
                         text = usuario ?: "Estudiante UPAO",
                         style = MaterialTheme.typography.titleMedium,
@@ -163,6 +187,14 @@ fun HomeScreen(
 
 
                 NavigationDrawerItem(
+                    label = { Text("Mi perfil", fontWeight = FontWeight.Medium) },
+                    icon = { Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                    selected = false,
+                    onClick = { coroutineScope.launch { drawerState.close(); onOpenProfile() } },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+
+                NavigationDrawerItem(
                     label = { Text("Cambiar de cuenta", fontWeight = FontWeight.Medium) },
                     icon = {
                         Icon(
@@ -175,6 +207,23 @@ fun HomeScreen(
                     onClick = {
                         coroutineScope.launch { drawerState.close() }
                         onSwitchAccount()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Acerca de", fontWeight = FontWeight.Medium) },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    selected = false,
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        showAboutDialog = true
                     },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
@@ -201,6 +250,15 @@ fun HomeScreen(
                         cerrarSesion()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Text(
+                    text = "v.$appVersion",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(start = 24.dp, bottom = 20.dp)
                 )
             }
         }
@@ -378,6 +436,17 @@ fun HomeScreen(
                     }
                 }
             }
+            if (pagerState.currentPage == 0) {
+                Text(
+                    text = greetingName?.let { "Hola, $it" } ?: "Hola",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 10.dp)
+                )
+            }
             HorizontalPager(
                 state = pagerState,
                 beyondViewportPageCount = 2,
@@ -418,5 +487,75 @@ fun HomeScreen(
         }
     }
 }
+
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.School,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+            },
+            title = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "UPAO S",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "v.$appVersion",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Aplicación estudiantil no oficial diseñada para optimizar el acceso a cursos, horarios, notas y asistencias UPAO.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Desarrollado para la comunidad universitaria UPAO.",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("Cerrar")
+                }
+            }
+        )
+    }
 }
 

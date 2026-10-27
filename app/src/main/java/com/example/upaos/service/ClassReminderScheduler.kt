@@ -15,6 +15,9 @@ import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.ZonedDateTime
 
@@ -22,6 +25,7 @@ object ClassReminderScheduler {
     private const val TAG = "UPAO_ClassReminder"
     private const val PREFS_NAME = "upaos_scheduled_reminders"
     private const val KEY_SCHEDULED_IDS = "scheduled_alarm_ids"
+    private val schedulingLock = Mutex()
 
     /**
      * Reprograma las notificaciones locales 15 minutos antes de cada clase para hoy y mañana.
@@ -29,37 +33,38 @@ object ClassReminderScheduler {
      */
     fun reprogramar(context: Context) {
         CoroutineScope(Dispatchers.IO).launch {
-            reprogramarSuspend(context)
+            try { reprogramarSuspend(context.applicationContext) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { Log.w(TAG, "No se pudieron reprogramar los recordatorios") }
         }
     }
 
-    suspend fun reprogramarSuspend(context: Context) {
+    suspend fun reprogramarSuspend(context: Context) = schedulingLock.withLock {
         val prefs = NotificationPreferences(context)
         if (!prefs.recordatorioClasesEnabled) {
             cancelarTodos(context)
-            return
+            return@withLock
         }
 
-        val user = TokenManager(context).getSavedUser() ?: return
+        val tokens = TokenManager(context)
+        val user = tokens.getSavedUser() ?: return@withLock
+        val sessionId = tokens.getSessionId() ?: return@withLock
+        val owner = ReminderOwner(user, sessionId)
         val apiCache = ApiCache(context)
-        val horarioJson = apiCache.cargar("horario_ultimo_$user")
-            ?: apiCache.listarPorPrefijo("horario_${user}_").values.firstOrNull()
-            ?: apiCache.cargar("horario_$user")
-            ?: apiCache.listarPorPrefijo("horario_").values.firstOrNull()
-
-        if (horarioJson.isNullOrBlank()) {
-            Log.d(TAG, "No hay horario en caché para reprogramar recordatorios.")
-            return
-        }
-
+        val term = apiCache.cargar("horario_ultimo_periodo_$user")
+        val key = reminderScheduleKey(user, term) ?: return@withLock
+        val horarioJson = apiCache.cargar(key) ?: return@withLock
         val horario = try {
             Gson().fromJson(horarioJson, HorarioResponse::class.java)
-        } catch (_: Exception) {
-            null
-        } ?: return
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            Log.w(TAG, "Caché de horario no válida; no se programan recordatorios")
+            return@withLock
+        }
+        if (horario.periodo != term || !owner.matches(tokens.getSavedUser(), tokens.getSessionId())) return@withLock
 
         val cursos = horario.listaCursos
-        if (cursos.isEmpty()) return
+        if (cursos.isEmpty()) return@withLock
 
         // 1. Cancelar alarmas previamente programadas para evitar duplicados
         cancelarTodos(context)
@@ -73,7 +78,7 @@ object ClassReminderScheduler {
         val recordatoriosManana = ClassReminderCalculator.calcularRecordatorios(cursos, manana)
         val todos = (recordatoriosHoy + recordatoriosManana).filter { it.triggerInstant.isAfter(ahora) }
 
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return@withLock
         val canExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             alarmManager.canScheduleExactAlarms()
         } else {
@@ -82,9 +87,16 @@ object ClassReminderScheduler {
 
         val idsGuardados = mutableSetOf<String>()
 
+        synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+        if (!owner.matches(tokens.getSavedUser(), tokens.getSessionId())) return@withLock
         for (rec in todos) {
+            if (!owner.matches(tokens.getSavedUser(), tokens.getSessionId())) break
             val triggerMillis = rec.triggerInstant.toInstant().toEpochMilli()
             val intent = Intent(context, ClassReminderReceiver::class.java).apply {
+                data = android.net.Uri.parse(owner.identity(rec.idAlarma))
+                putExtra("owner_user", user)
+                putExtra("owner_session", sessionId)
+                putExtra("owner_term", term)
                 putExtra("id", rec.idAlarma)
                 putExtra("titulo", rec.titulo)
                 putExtra("mensaje", rec.mensaje)
@@ -118,25 +130,41 @@ object ClassReminderScheduler {
                         alarmManager.set(AlarmManager.RTC_WAKEUP, triggerMillis, pendingIntent)
                     }
                 }
-                idsGuardados.add(rec.idAlarma.toString())
-                Log.d(TAG, "Recordatorio programado: ${rec.mensaje} para ${rec.triggerInstant} (ID=${rec.idAlarma})")
+                idsGuardados.add(owner.identity(rec.idAlarma))
+                Log.d(TAG, "Recordatorio programado")
             } catch (e: Exception) {
-                Log.e(TAG, "Error programando recordatorio ${rec.idAlarma}: ${e.message}")
+                if (e is CancellationException) throw e
+                Log.e(TAG, "No se pudo programar un recordatorio")
             }
         }
 
         guardarIds(context, idsGuardados)
+        }
     }
 
     /**
      * Cancela todas las alarmas de recordatorio de clases pendientes en el sistema.
      */
-    fun cancelarTodos(context: Context) {
+    fun cancelAccount(context: Context, user: String) = synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+        val owned = obtenerIds(context).filter { value ->
+            // Legacy alarms had no owner and may only belong to the formerly active account.
+            !value.startsWith("upaos://class/") || android.net.Uri.parse(value).pathSegments.firstOrNull() == user
+        }.toSet()
+        cancelIds(context, owned)
+        guardarIds(context, obtenerIds(context) - owned)
+    }
+
+    fun cancelarTodos(context: Context) = synchronized(com.example.upaos.data.local.SessionCleanup.lock) {
+        cancelIds(context, obtenerIds(context))
+        guardarIds(context, emptySet())
+    }
+
+    private fun cancelIds(context: Context, ids: Set<String>) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val ids = obtenerIds(context)
         for (idStr in ids) {
-            val id = idStr.toIntOrNull() ?: continue
-            val intent = Intent(context, ClassReminderReceiver::class.java)
+            val uri = if (idStr.startsWith("upaos://class/")) android.net.Uri.parse(idStr) else null
+            val id = (uri?.lastPathSegment ?: idStr).toIntOrNull() ?: continue
+            val intent = Intent(context, ClassReminderReceiver::class.java).apply { data = uri }
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
                 id,
@@ -148,7 +176,6 @@ object ClassReminderScheduler {
                 pendingIntent.cancel()
             }
         }
-        guardarIds(context, emptySet())
         Log.d(TAG, "Se cancelaron todas las alarmas de recordatorio de clases.")
     }
 

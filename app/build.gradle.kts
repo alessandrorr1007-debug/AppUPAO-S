@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.upaos"
         minSdk = 24
         targetSdk = 37
-        versionCode = 17
-        versionName = "1.7.1"
+        versionCode = 25
+        versionName = "1.7.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -34,7 +34,8 @@ android {
             if (!System.getenv("UPAOS_KEYSTORE_PATH").isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("distribution")
             }
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -42,11 +43,20 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
         compose = true
+    }
+    // Opt-in instrumentation against the actual optimized release, using a separately supplied test key.
+    testBuildType = providers.gradleProperty("upaosTestBuildType").getOrElse("debug").also {
+        require(it in setOf("debug", "release")) { "upaosTestBuildType must be debug or release" }
+    }
+    sourceSets {
+        getByName("test").java.srcDir("src/contractTest/java")
+        getByName("androidTest").java.srcDir("src/contractTest/java")
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
@@ -54,11 +64,11 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity)
-    implementation(libs.androidx.constraintlayout)
     
     // Jetpack Compose & Navigation
     implementation(platform("androidx.compose:compose-bom:2024.09.00"))
@@ -92,6 +102,7 @@ dependencies {
     // WorkManager para tareas en segundo plano
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation(libs.androidx.junit)

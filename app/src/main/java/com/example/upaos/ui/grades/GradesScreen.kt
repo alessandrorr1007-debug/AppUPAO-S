@@ -50,17 +50,10 @@ import com.example.upaos.ui.components.toTitleCase
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
-private fun esPeriodoRegular(code: String): Boolean {
-    val s = code.trim()
-    return s.endsWith("10") || s.endsWith("20")
-}
+private fun esPeriodoRegular(code: String) = com.example.upaos.domain.academic.AcademicRules.isRegular(code)
 
-fun detectarPeriodoActual(periodos: List<String>, periodoActual: String? = null): String {
-    val regulares = periodos.filter(::esPeriodoRegular)
-    regulares.maxOrNull()?.let { return it }
-    periodoActual?.takeIf(::esPeriodoRegular)?.let { return it }
-    return periodos.firstOrNull() ?: "202610"
-}
+fun detectarPeriodoActual(periodos: List<String>, periodoActual: String? = null): String =
+    com.example.upaos.domain.academic.AcademicRules.latestAvailable(periodos, periodoActual)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -329,19 +322,13 @@ fun calcularAcumuladoCurso(course: CourseGrade, notaProyectada: Any? = null): Do
 }
 
 fun resolverCreditosCurso(course: CourseGrade, promedioPeriodoRes: PromedioPeriodoResponse? = null): Int {
+    com.example.upaos.domain.academic.AcademicRules.credits(course.rawBanner)?.let { return it }
     val crn = course.crn ?: course.courseReferenceNumber ?: ""
     val crPromedio = promedioPeriodoRes?.cursos?.firstOrNull { it.crn == crn }?.creditos?.takeIf { it > 0 }
     if (crPromedio != null) return crPromedio
 
-    val raw = course.rawBanner
-    val crRaw = (raw?.get("hoursAttempted")
-        ?: raw?.get("creditHours")
-        ?: raw?.get("hours")
-        ?: raw?.get("credits"))
-        ?.toString()?.trim()?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 }
-    if (crRaw != null) return crRaw
-
-    return 3
+    // Unknown credits must not be invented or contribute a default weight to the PPS.
+    return com.example.upaos.domain.academic.AcademicRules.credits(course.rawBanner) ?: 0
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

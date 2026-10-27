@@ -48,10 +48,13 @@ data class CanvasQuiz(
     @SerializedName("lock_at") val lockAt: String? = null,
     @SerializedName("unlock_at") val unlockAt: String? = null,
     @SerializedName("points_possible") val pointsPossible: Double? = null,
-    @SerializedName("html_url") val htmlUrl: String? = null
+    @SerializedName("html_url") val htmlUrl: String? = null,
+    @SerializedName("allowed_attempts") val allowedAttempts: Int? = null,
+    val description: String? = null
+
 ) {
     val effectiveDueAt: String?
-        get() = dueAt?.takeIf { it.isNotBlank() } ?: lockAt?.takeIf { it.isNotBlank() }
+        get() = dueAt?.takeIf { it.isNotBlank() }
 }
 
 data class CanvasRubricRating(
@@ -74,7 +77,10 @@ data class CanvasSubmission(
     @SerializedName("submitted_at") val submittedAt: String? = null,
     val attempt: Int? = null,
     val score: Double? = null,
-    val grade: String? = null
+    val grade: String? = null,
+    val late: Boolean? = null, val missing: Boolean? = null,
+    @SerializedName("submission_comments") val comments: List<CanvasSubmissionComment>? = null,
+    @SerializedName("rubric_assessment") val rubricAssessment: Map<String, CanvasRubricAssessment>? = null
 ) {
     val isSubmitted: Boolean
         get() = !submittedAt.isNullOrBlank() ||
@@ -90,7 +96,8 @@ data class CanvasAssignmentDate(
     @SerializedName("unlock_at") val unlockAt: String? = null,
     @SerializedName("lock_at") val lockAt: String? = null,
     val title: String? = null,
-    @SerializedName("set_type") val setType: String? = null
+    @SerializedName("set_type") val setType: String? = null,
+    val base: Boolean? = null
 )
 
 data class CanvasAssignment(
@@ -118,9 +125,8 @@ data class CanvasAssignment(
 
     val effectiveDueAt: String?
         get() = dueAt?.takeIf { it.isNotBlank() }
-            ?: lockAt?.takeIf { it.isNotBlank() }
-            ?: allDates?.firstOrNull { !it.dueAt.isNullOrBlank() }?.dueAt
-            ?: allDates?.firstOrNull { !it.lockAt.isNullOrBlank() }?.lockAt
+            ?: allDates?.singleOrNull { it.base == true }?.dueAt?.takeIf { it.isNotBlank() }
+
 }
 
 data class CanvasTodoItem(
@@ -182,6 +188,7 @@ data class CanvasParticipant(
     val id: Long,
     val name: String?,
     @SerializedName("full_name") val fullName: String? = null,
+    @SerializedName("display_name") val displayName: String? = null,
     @SerializedName("avatar_url") val avatarUrl: String? = null
 )
 
@@ -243,7 +250,10 @@ data class CanvasModuleItem(
     val url: String? = null,
     val position: Int? = 0,
     @SerializedName("indent") val indent: Int? = 0,
-    @SerializedName("content_id") val contentId: Long? = null
+    @SerializedName("content_id") val contentId: Long? = null,
+    @SerializedName("page_url") val pageUrl: String? = null,
+    @SerializedName("completion_requirement") val completionRequirement: CanvasCompletionRequirement? = null
+
 ) {
     val isHeader: Boolean
         get() = type.equals("SubHeader", ignoreCase = true)
@@ -256,7 +266,10 @@ data class CanvasModule(
     val id: Long,
     val name: String,
     val position: Int? = 0,
-    val items: List<CanvasModuleItem>? = emptyList()
+    val items: List<CanvasModuleItem>? = emptyList(),
+    @SerializedName("items_count") val itemsCount: Int? = null,
+    @SerializedName("completed_at") val completedAt: String? = null,
+    val state: String? = null
 )
 
 data class CanvasGroup(
@@ -290,11 +303,6 @@ data class CanvasNotificationItem(
     val isUnread: Boolean
         get() = readState == false
 }
-
-data class CanvasFileUploadInitResponse(
-    @SerializedName("upload_url") val uploadUrl: String,
-    @SerializedName("upload_params") val uploadParams: Map<String, String>? = emptyMap()
-)
 
 data class CanvasTab(
     val id: String,

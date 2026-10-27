@@ -1,6 +1,7 @@
 package com.example.upaos.data.upao
 
 import android.content.Context
+import com.example.upaos.data.refresh.*
 import com.example.upaos.data.local.ApiCache
 import com.example.upaos.data.local.GradesCache
 import com.example.upaos.data.local.TokenManager
@@ -35,13 +36,14 @@ class UpaoRepository(private val context: Context) {
     private val tokenManager = TokenManager(context)
     private val gson = Gson()
 
-    private val currentUser: String
-        get() = tokenManager.getSavedUser().orEmpty()
+    private val currentUser: String = tokenManager.getSavedUser().orEmpty()
 
     suspend fun getPeriodos(): PeriodosResponse = withContext(Dispatchers.IO) {
         val periodos = bannerApi.getPeriodos()
         val current = Calculators.detectarPeriodoActual(periodos)
-        PeriodosResponse(periodoActual = current, periodos = periodos)
+        if (current.isBlank()) throw UpaoUnexpectedFormatException("No hay periodos regulares disponibles")
+        com.example.upaos.data.local.NotificationPreferences(context, currentUser).syncAcademicPeriod = current
+        PeriodosResponse(periodoActual = current, periodos = periodos.filter(Calculators::esPeriodoRegular))
     }
 
     suspend fun getCarreras(term: String): CarrerasResponse = withContext(Dispatchers.IO) {
@@ -54,8 +56,16 @@ class UpaoRepository(private val context: Context) {
         detail
     }
 
-    suspend fun buscarNotas(term: String, carrera: String): GradesResponse = withContext(Dispatchers.IO) {
+    suspend fun buscarNotas(term: String, carrera: String): GradesResponse = buscarNotasResult(term, carrera).requireComplete()
+
+    suspend fun buscarNotasResult(term: String, carrera: String): RefreshResult<GradesResponse> = captureRefresh("Notas de Banner") {
+        buscarNotasCompletas(term, carrera)
+    }
+
+    private suspend fun buscarNotasCompletas(term: String, carrera: String): GradesResponse = withContext(Dispatchers.IO) {
         val courses = bannerApi.getCourses(term, carrera)
+
+        val projections = java.util.concurrent.ConcurrentHashMap<String, String>()
 
         // Enriquecer cada curso con su detalle y nota actual progresiva en paralelo (limitado por Semaphore en BannerApi)
         val cursosEnriquecidos = coroutineScope {
@@ -63,16 +73,12 @@ class UpaoRepository(private val context: Context) {
                 async {
                     val crn = curso.crn ?: curso.courseReferenceNumber
                     if (crn.isNullOrBlank()) {
-                        curso
+                        throw UpaoUnexpectedFormatException("Falta el identificador de un curso")
                     } else {
                         try {
                             val detail = bannerApi.getCourseGradeDetail(term, crn)
                             val notaActual = Calculators.calcularNotaActual(detail.detalles)
-
-                            // Guardar proyección en GradesCache para compatibilidad
-                            if (detail.notaProyectada != null && currentUser.isNotBlank()) {
-                                gradesCache.guardar("proyectada_${currentUser}_$crn", detail.notaProyectada.toString())
-                            }
+                            detail.notaProyectada?.let { projections[crn] = it.toString() }
 
                             val compEp1 = detail.detalles.firstOrNull { c ->
                                 val t = listOfNotNull(c.nombre, c.description, c.codigo).joinToString(" ").uppercase(Locale.ROOT)
@@ -91,14 +97,17 @@ class UpaoRepository(private val context: Context) {
                                 ep1 = gradeSectionEp1,
                                 ep2 = gradeSectionEp2
                             )
-                        } catch (_: Exception) {
-                            curso
-                        }
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: Exception) { throw IncompleteRefreshException(listOf(RefreshIssue("Desglose de ${curso.displayNombre}", e))) }
                     }
                 }
             }.awaitAll()
         }
 
+        // Keep the legacy projection cache, but only after every course detail completed.
+        for ((crn, value) in projections) {
+            if (currentUser.isNotBlank()) gradesCache.guardar("proyectada_${currentUser}_$crn", value)
+        }
         val notasValidas = cursosEnriquecidos.mapNotNull { Calculators.toDouble(it.notaActual) }
         val promedioGeneral: Double? = if (notasValidas.isNotEmpty()) {
             val prom = notasValidas.average()
@@ -132,14 +141,7 @@ class UpaoRepository(private val context: Context) {
             val crn = curso.crn ?: curso.courseReferenceNumber ?: continue
             val nota = Calculators.toDouble(curso.notaActual)
 
-            // Extraer créditos desde rawBanner o metadata del curso
-            val raw = curso.rawBanner
-            val credVal = raw?.get("creditHours")
-                ?: raw?.get("creditHourLow")
-                ?: raw?.get("credits")
-                ?: raw?.get("hoursAttempted")
-
-            val creditos = Calculators.toDouble(credVal)?.roundToInt() ?: 0
+            val creditos = com.example.upaos.domain.academic.AcademicRules.credits(curso.rawBanner) ?: 0
 
             if (creditos > 0) {
                 sumaCreditos += creditos
@@ -176,7 +178,11 @@ class UpaoRepository(private val context: Context) {
     }
 
     suspend fun getAsistencia(): AsistenciaResponse = withContext(Dispatchers.IO) {
-        bannerApi.getAsistencia()
+        getAsistenciaResult().requireComplete()
+    }
+
+    suspend fun getAsistenciaResult(): RefreshResult<AsistenciaResponse> = captureRefresh("Asistencia de Banner") {
+        bannerApi.getAsistencia().also { if (!it.success) throw UpaoUnexpectedFormatException("Consulta de asistencia no exitosa") }
     }
 
     suspend fun getNotificaciones(usuario: String): NotificacionesResponse = withContext(Dispatchers.IO) {

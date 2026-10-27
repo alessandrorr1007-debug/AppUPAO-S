@@ -18,6 +18,9 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun AppLockScreen(
     onUnlockClick: () -> Unit,
+    message: String = "Usa tu huella dactilar o el PIN del teléfono para acceder.",
+    onDeviceCredential: (() -> Unit)? = null,
+    onUpaoRecovery: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -59,7 +62,7 @@ fun AppLockScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Usa tu huella dactilar, reconocimiento facial o el PIN de tu teléfono para acceder a tus notas y horario.",
+                text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -78,6 +81,12 @@ fun AppLockScreen(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
+            }
+            onDeviceCredential?.let { action ->
+                TextButton(onClick = action) { Text("Usar PIN o patrón del dispositivo") }
+            }
+            onUpaoRecovery?.let { action ->
+                TextButton(onClick = action) { Text("Reautenticarme en UPAO") }
             }
         }
     }

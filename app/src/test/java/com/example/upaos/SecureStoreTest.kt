@@ -197,6 +197,45 @@ class SecureStoreTest {
         assertEquals(listOf("000000002"), tokens.getCuentas().map { it.usuario })
     }
 
+    @Test fun profileIsEncryptedPerAccountAndLogoutClearsOnlyCurrentProfile() {
+        val tokens = TokenManager(FakeContext(), secureStore, FakeSharedPreferences())
+        tokens.saveLogin("000000001", "synthetic", true)
+        val firstSession = tokens.getSessionId()!!
+        val firstJson = "{\"erpId\":\"000000001\"}"
+        assertTrue(tokens.saveProfileIfCurrent("000000001", firstSession, firstJson))
+        assertEquals(firstJson, tokens.getProfileJson("000000001"))
+        assertFalse(mockPrefs.all.values.any { it == firstJson })
+        tokens.saveLogin("000000002", "synthetic", true)
+        val secondSession = tokens.getSessionId()!!
+        assertTrue(tokens.saveProfileIfCurrent("000000002", secondSession, "{\"erpId\":\"000000002\"}"))
+        assertFalse(tokens.saveProfileIfCurrent("000000001", firstSession, "stale"))
+        tokens.clearSession()
+        assertNull(tokens.getProfileJson("000000002"))
+        assertEquals(firstJson, tokens.getProfileJson("000000001"))
+        assertFalse(tokens.saveProfileIfCurrent("000000002", secondSession, "late response"))
+        tokens.removeCuenta("000000001")
+        assertNull(tokens.getProfileJson("000000001"))
+    }
+
+    @Test fun verifiedAccountNamesSurviveLogoutAndRemainSeparatedByAccount() {
+        val tokens = TokenManager(FakeContext(), secureStore, FakeSharedPreferences())
+        tokens.saveLogin("000000001", "synthetic", true, "Usuario 1")
+        val session = tokens.getSessionId()!!
+        assertTrue(tokens.saveProfileIfCurrent("000000001", session, "{}", "Nombre Segundo Apellido Otro", "Nombre Apellido"))
+        tokens.saveLogin("000000001", "synthetic", true, "Usuario 1")
+        assertEquals("Nombre Apellido", tokens.getCuentas().single().nombreCorto)
+        assertEquals("Nombre Segundo Apellido Otro", tokens.getCuentas().single().nombre)
+        tokens.saveLogin("000000002", "synthetic", true)
+        val second = tokens.getSessionId()!!
+        assertTrue(tokens.saveProfileIfCurrent("000000002", second, "{}", "Otro Estudiante", "Otro Estudiante"))
+        assertFalse(tokens.saveProfileIfCurrent("000000001", session, "{}", "stale", "stale"))
+        tokens.clearSession()
+        assertNull(tokens.getProfileJson("000000002"))
+        val accounts = tokens.getCuentas().associateBy { it.usuario }
+        assertEquals("Nombre Apellido", accounts["000000001"]?.nombreCorto)
+        assertEquals("Otro Estudiante", accounts["000000002"]?.nombreCorto)
+    }
+
     // --- Fake SharedPreferences y Context para tests JVM sin dependencias de Android framework ---
 
     private class FakeContext : android.content.ContextWrapper(null)

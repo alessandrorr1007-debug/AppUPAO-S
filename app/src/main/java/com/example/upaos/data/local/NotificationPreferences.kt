@@ -12,6 +12,10 @@ class NotificationPreferences(context: Context, usuario: String? = null) {
         "upaos_notification_snapshots_${usuario ?: TokenManager(context).getSavedUser() ?: "anonymous"}", Context.MODE_PRIVATE
     )
 
+    var gradeSyncPreference: com.example.upaos.service.SyncPolicy.Preference
+        get() = runCatching { com.example.upaos.service.SyncPolicy.Preference.valueOf(prefs.getString("grade_sync_mode", "AUTOMATICO")!!) }.getOrDefault(com.example.upaos.service.SyncPolicy.Preference.AUTOMATICO)
+        set(value) = prefs.edit().putString("grade_sync_mode", value.name).apply()
+
     var checkNotasEnabled: Boolean
         get() = prefs.getBoolean(KEY_CHECK_NOTAS, true)
         set(value) = prefs.edit().putBoolean(KEY_CHECK_NOTAS, value).apply()
@@ -31,6 +35,10 @@ class NotificationPreferences(context: Context, usuario: String? = null) {
     var syncConsecutiveFailures: Int
         get() = prefs.getInt(KEY_SYNC_CONSECUTIVE_FAILURES, 0)
         set(value) = prefs.edit().putInt(KEY_SYNC_CONSECUTIVE_FAILURES, value).apply()
+
+    var syncAcademicPeriod: String?
+        get() = snapshotPrefs.getString("sync_academic_period", null)
+        set(value) = snapshotPrefs.edit().putString("sync_academic_period", value).apply()
 
     var ultimaRevisionAsistencia: Long
         get() = snapshotPrefs.getLong(KEY_ULTIMA_REVISION, 0L)

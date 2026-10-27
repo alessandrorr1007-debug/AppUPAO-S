@@ -60,6 +60,24 @@ class UpaoAuthTest {
     }
 
     @Test
+    fun extractStudentNameFromDataAttribute() {
+        val html = """
+            <div class="user-menu" data-user-name="RODRIGUEZ RUIZ/ALESSANDRO"></div>
+        """.trimIndent()
+        assertEquals("RODRIGUEZ RUIZ/ALESSANDRO", UpaoAuth.extractStudentName(html))
+    }
+
+    @Test
+    fun extractStudentNameFromDisplayNameJson() {
+        val html = """
+            <script>
+                window.initialState = { "displayName": "ALESSANDRO DANIEL" };
+            </script>
+        """.trimIndent()
+        assertEquals("ALESSANDRO DANIEL", UpaoAuth.extractStudentName(html))
+    }
+
+    @Test
     fun parseLoginFormInputsCorrectly() {
         val html = """
             <html>
@@ -88,27 +106,28 @@ class UpaoAuthTest {
 
     @Test
     fun cookieJarAccountIsolation() {
-        val jar = UpaoCookieJar()
+        val jarA = UpaoCookieJar("000111111")
+        val jarB = UpaoCookieJar("000222222")
         val url = "https://ssb.upao.edu.pe/StudentSelfService".toHttpUrl()
 
         // Cuenta A
-        jar.switchAccount("000111111")
+
         val cookieA = Cookie.Builder()
             .domain("ssb.upao.edu.pe")
             .path("/")
             .name("JSESSIONID")
             .value("SESSION_A")
             .build()
-        jar.saveFromResponse(url, listOf(cookieA))
+        jarA.saveFromResponse(url, listOf(cookieA))
 
         // Verificamos en Cuenta A
-        val loadedA = jar.loadForRequest(url)
+        val loadedA = jarA.loadForRequest(url)
         assertEquals(1, loadedA.size)
         assertEquals("SESSION_A", loadedA[0].value)
 
         // Cuenta B
-        jar.switchAccount("000222222")
-        val loadedB = jar.loadForRequest(url)
+
+        val loadedB = jarB.loadForRequest(url)
         assertTrue(loadedB.isEmpty())
 
         val cookieB = Cookie.Builder()
@@ -117,22 +136,22 @@ class UpaoAuthTest {
             .name("JSESSIONID")
             .value("SESSION_B")
             .build()
-        jar.saveFromResponse(url, listOf(cookieB))
+        jarB.saveFromResponse(url, listOf(cookieB))
 
         // Verificamos en Cuenta B
-        assertEquals("SESSION_B", jar.loadForRequest(url)[0].value)
+        assertEquals("SESSION_B", jarB.loadForRequest(url)[0].value)
 
         // Volvemos a Cuenta A
-        jar.switchAccount("000111111")
-        assertEquals("SESSION_A", jar.loadForRequest(url)[0].value)
+
+        assertEquals("SESSION_A", jarA.loadForRequest(url)[0].value)
 
         // Limpiar cuenta A
-        jar.clearActiveAccount()
-        assertTrue(jar.loadForRequest(url).isEmpty())
+        jarA.clear()
+        assertTrue(jarA.loadForRequest(url).isEmpty())
 
         // Cuenta B sigue intacta
-        jar.switchAccount("000222222")
-        assertEquals("SESSION_B", jar.loadForRequest(url)[0].value)
+
+        assertEquals("SESSION_B", jarB.loadForRequest(url)[0].value)
     }
 
     @Test

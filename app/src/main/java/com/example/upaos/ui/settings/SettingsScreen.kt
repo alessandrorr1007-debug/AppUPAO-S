@@ -25,19 +25,14 @@ import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import com.example.upaos.data.local.BiometricHelper
 import com.example.upaos.data.local.NotificationPreferences
 import com.example.upaos.data.local.SecurityPreferences
 import com.example.upaos.data.local.TokenManager
-import com.example.upaos.service.AsistenciaWorker
-import com.example.upaos.service.NotificationService
 import com.example.upaos.service.SyncScheduler
 import com.example.upaos.ui.components.AppCard
-import com.example.upaos.ui.components.StatusBadge
 import com.example.upaos.ui.components.cursoColor
-import com.example.upaos.ui.components.toTitleCase
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,17 +57,21 @@ fun SettingsScreen(
 
     var nombreEstudiante by remember { mutableStateOf<String?>(null) }
 
-    var buscandoActualizacion by remember { mutableStateOf(false) }
-    var dialogActualizacionInfo by remember { mutableStateOf<com.example.upaos.util.UpdateInfo?>(null) }
-    var descargandoActualizacion by remember { mutableStateOf(false) }
 
     LaunchedEffect(usuario) {
         if (usuario == null) {
             cargando = false
             return@LaunchedEffect
         }
-        val cuentaGuardada = TokenManager(context).getCuentas().firstOrNull { it.usuario == usuario }
-        nombreEstudiante = cuentaGuardada?.nombre
+        nombreEstudiante = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val tokens = TokenManager(context)
+            val savedName = tokens.getCuentas().firstOrNull { it.usuario == usuario }?.nombre
+            val profileName = try {
+                tokens.getProfileJson(usuario)?.let { com.example.upaos.data.profile.StudentProfile.parse(it).fullName }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { null }
+            com.example.upaos.data.profile.StudentProfile.normalizeName(profileName ?: savedName)
+        }
         checkAsistenciaEnabled = notificationPrefs.checkAsistenciaEnabled
         checkNotasEnabled = notificationPrefs.checkNotasEnabled
         recordatorioClasesEnabled = notificationPrefs.recordatorioClasesEnabled
@@ -159,7 +158,6 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            if (usuario != null) PrivacyControls(usuario, onAccountRemoved)
             if (cargando) {
                 Box(
                     modifier = Modifier.fillMaxWidth(),
@@ -225,7 +223,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (!nombreEstudiante.isNullOrBlank()) toTitleCase(nombreEstudiante!!) else "Estudiante",
+                            text = "Estudiante",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -235,9 +233,17 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Nombre completo: ${nombreEstudiante ?: "No disponible"}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
+
+            PrivacyControls(usuario, onAccountRemoved)
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -267,7 +273,7 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Revisión automática cada ~10 min (más espaciada de noche y domingos)",
+                                text = "Revisión automática en segundo plano",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontSize = 11.sp,
@@ -418,45 +424,6 @@ fun SettingsScreen(
                     }
 
                     if (checkNotasEnabled || checkAsistenciaEnabled) {
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Botón de sincronización manual inmediata
-                        Button(
-                            onClick = {
-                                SyncScheduler.runNow(context)
-                                Toast.makeText(context, "Sincronizando notas y asistencias en segundo plano...", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Sincronizar ahora (comprobar notas y asistencias)")
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedButton(
-                            onClick = {
-                                if (checkAsistenciaEnabled) {
-                                    NotificationService.mostrarNotificacionAsistencia(
-                                        context,
-                                        "✅ Asistencia registrada (Prueba)",
-                                        "Redes y Comunicaciones: ¡Se registró tu asistencia! (8 asistencias, 1 falta)."
-                                    )
-                                } else {
-                                    NotificationService.mostrarNotificacionNotas(
-                                        context,
-                                        "📢 Nueva nota publicada (Prueba)",
-                                        "Redes y Comunicaciones: Se publicó la nota de Evaluación Parcial (17.5)."
-                                    )
-                                }
-                                Toast.makeText(context, "Notificación de prueba enviada al móvil", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Probar notificación en este celular")
-                        }
-
                         // Verificación de optimización de batería
                         val powerManager = remember {
                             context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
@@ -483,7 +450,7 @@ fun SettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Para que el teléfono no detenga la revisión automática en segundo plano cuando la pantalla está apagada (Xiaomi, Samsung, etc.), desactiva el ahorro de batería para UPAO S.",
+                                        text = "Xiaomi: activa Inicio automático y selecciona Batería > Sin restricciones para UPAO S.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onErrorContainer,
                                         fontSize = 11.sp
@@ -590,74 +557,6 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Sección Actualizaciones
-            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = "Buscar actualizaciones",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        },
-                        supportingContent = {
-                            val currentVer = com.example.upaos.util.AppUpdater.getCurrentVersionName(context)
-                            Text(
-                                text = "Versión actual: v$currentVer",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        leadingContent = {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.EmojiObjects,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        },
-                        trailingContent = {
-                            if (buscandoActualizacion) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                            }
-                        },
-                        modifier = Modifier.clickable(enabled = !buscandoActualizacion) {
-                            buscandoActualizacion = true
-                            scope.launch {
-                                try {
-                                    val info = com.example.upaos.util.AppUpdater.checkForUpdates(context)
-                                    buscandoActualizacion = false
-                                    if (info.hasUpdate) {
-                                        dialogActualizacionInfo = info
-                                    } else {
-                                        Toast.makeText(context, "¡Tienes instalada la última versión disponible (v${info.currentVersion})!", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    buscandoActualizacion = false
-                                    Toast.makeText(context, "No se pudo verificar: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
@@ -665,38 +564,6 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
-
-            dialogActualizacionInfo?.let { info ->
-                com.example.upaos.ui.components.UpdateDialog(
-                    updateInfo = info,
-                    isDownloading = descargandoActualizacion,
-                    onDismiss = { dialogActualizacionInfo = null },
-                    onConfirmUpdate = {
-                        if (info.downloadUrl != null) {
-                            descargandoActualizacion = true
-                            com.example.upaos.util.AppUpdater.downloadAndInstall(
-                                context = context,
-                                downloadUrl = info.downloadUrl,
-                                versionName = info.latestVersion
-                            )
-                            Toast.makeText(
-                                context,
-                                "Descargando actualización en segundo plano...",
-                                Toast.LENGTH_LONG
-                            ).show()
-                            dialogActualizacionInfo = null
-                            descargandoActualizacion = false
-                        } else {
-                            val browserIntent = android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse(info.releasePageUrl)
-                            )
-                            context.startActivity(browserIntent)
-                            dialogActualizacionInfo = null
-                        }
-                    }
-                )
-            }
         }
     }
 }

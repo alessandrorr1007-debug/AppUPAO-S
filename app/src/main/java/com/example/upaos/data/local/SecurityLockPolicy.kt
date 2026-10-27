@@ -29,3 +29,17 @@ object SecurityLockPolicy {
         return tiempoEnSegundoPlano > TIMEOUT_MILLIS
     }
 }
+
+/** Only a verified authentication event can release the gate, never availability checks. */
+sealed interface UnlockEvent {
+    data object Unavailable : UnlockEvent
+    data object Failed : UnlockEvent
+    data object DeviceAuthenticated : UnlockEvent
+    data class UpaoAuthenticated(val expectedUser: String?, val actualUser: String) : UnlockEvent
+}
+
+fun remainsLocked(event: UnlockEvent): Boolean = when (event) {
+    UnlockEvent.Unavailable, UnlockEvent.Failed -> true
+    UnlockEvent.DeviceAuthenticated -> false
+    is UnlockEvent.UpaoAuthenticated -> event.expectedUser.isNullOrBlank() || event.expectedUser != event.actualUser
+}

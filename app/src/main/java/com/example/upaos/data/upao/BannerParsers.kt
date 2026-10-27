@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import org.jsoup.Jsoup
+import java.util.Locale
 
 data class LoginFormResult(
     val actionUrl: String,
@@ -109,9 +110,10 @@ object BannerParsers {
 
     /**
      * Parsea la respuesta JSON de horario (registrationHistory o getRegistrationEvents).
+     * Por defecto filtra y descarta registros retirados o dados de baja [soloActivos].
      * Lanza [UpaoUnexpectedFormatException] si no se encuentra la estructura de registros esperada.
      */
-    fun parseHorarioJson(jsonStr: String): List<JsonObject> {
+    fun parseHorarioJson(jsonStr: String, soloActivos: Boolean = true): List<JsonObject> {
         if (jsonStr.isBlank()) {
             throw UpaoUnexpectedFormatException("Respuesta JSON de horario vacía")
         }
@@ -155,7 +157,64 @@ object BannerParsers {
             throw UpaoUnexpectedFormatException("La estructura raíz del horario no es un objeto ni un arreglo JSON")
         }
 
-        return registros
+        return if (soloActivos) registros.filter { esRegistroActivo(it) } else registros
+    }
+
+    /**
+     * Determina si un registro de matrícula en Banner corresponde a una inscripción activa.
+     * Descarta registros dados de baja, cambiados de sección o eliminados (DW, DD, statusIndicator='N', etc.).
+     */
+    fun esRegistroActivo(obj: JsonObject): Boolean {
+        // 1. statusIndicator ("Y" / "N" / boolean)
+        val statusInd = obj.get("statusIndicator")?.asStringOrNull()?.trim()?.uppercase(Locale.ROOT)
+        if (statusInd == "N" || statusInd == "FALSE") return false
+        val boolInd = obj.get("statusIndicator")?.asBooleanOrNull()
+        if (boolInd == false) return false
+
+        // 2. enrolled / isEnrolled / active
+        val enrolled = obj.get("enrolled")?.asBooleanOrNull()
+            ?: obj.get("isEnrolled")?.asBooleanOrNull()
+            ?: obj.get("active")?.asBooleanOrNull()
+            ?: obj.get("isActive")?.asBooleanOrNull()
+        if (enrolled == false) return false
+
+        // 3. waitlistIndicator / waitingList
+        val waitlist = obj.get("waitlistIndicator")?.asStringOrNull()?.trim()?.uppercase(Locale.ROOT)
+        if (waitlist == "Y" || waitlist == "TRUE") return false
+        if (obj.get("waitlistIndicator")?.asBooleanOrNull() == true) return false
+        if (obj.get("waitingList")?.asBooleanOrNull() == true) return false
+
+        // 4. status (códigos de estado de Ellucian Banner: DW, DD, WD, DC, WL, etc.)
+        val status = (obj.get("status")?.asStringOrNull()
+            ?: obj.get("registrationStatus")?.asStringOrNull()
+            ?: obj.get("statusCode")?.asStringOrNull())?.trim()?.uppercase(Locale.ROOT)
+
+        if (!status.isNullOrBlank()) {
+            val codigosInactivos = setOf("DW", "DD", "WD", "DC", "DP", "DR", "WL", "BA", "EL")
+            if (status in codigosInactivos) return false
+            if (status.startsWith("D") && status.length <= 3) return false // DW, DD, DC, etc.
+            if (status.contains("DROP") || status.contains("WITHDRAW") || status.contains("DELETE")) return false
+        }
+
+        // 5. statusDescription (descripción legible del estado en español o inglés)
+        val desc = (obj.get("statusDescription")?.asStringOrNull()
+            ?: obj.get("statusDesc")?.asStringOrNull()
+            ?: obj.get("registrationStatusDescription")?.asStringOrNull())?.trim()?.uppercase(Locale.ROOT)
+
+        if (!desc.isNullOrBlank()) {
+            if (desc.contains("ELIMINAD") ||
+                desc.contains("BAJA") ||
+                desc.contains("RETIRAD") ||
+                desc.contains("DROP") ||
+                desc.contains("WITHDRAW") ||
+                desc.contains("ANULAD") ||
+                desc.contains("CANCELAD")
+            ) {
+                return false
+            }
+        }
+
+        return true
     }
 
     /**
@@ -182,13 +241,9 @@ object BannerParsers {
         }
 
         val totalCount = rootObj.get("totalCount")?.asIntOrNull()
+        if (rootObj.get("data")?.isJsonArray != true) throw UpaoUnexpectedFormatException("Falta el arreglo de asistencia")
         val dataArr = rootObj.getAsJsonArray("data")
-        val items = mutableListOf<JsonObject>()
-        if (dataArr != null) {
-            for (elem in dataArr) {
-                if (elem.isJsonObject) items.add(elem.asJsonObject)
-            }
-        }
+        val items = dataArr.map { if (it.isJsonObject) it.asJsonObject else throw UpaoUnexpectedFormatException("Registro de asistencia inválido") }
 
         return totalCount to items
     }
@@ -198,4 +253,7 @@ object BannerParsers {
 
     private fun com.google.gson.JsonElement.asIntOrNull(): Int? =
         if (isJsonNull) null else runCatching { asInt }.getOrNull()
+
+    private fun com.google.gson.JsonElement.asBooleanOrNull(): Boolean? =
+        if (isJsonPrimitive && asJsonPrimitive.isBoolean) asBoolean else asStringOrNull()?.toBooleanStrictOrNull()
 }

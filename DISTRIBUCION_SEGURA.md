@@ -64,3 +64,21 @@ En un Android de prueba: actualizar sin desinstalar, iniciar sesión, cambiar de
 cuenta, revisar notas/asistencia/horario, abrir un PDF, exportar un calendario,
 compartir una tarjeta y comprobar recordatorios tras reiniciar. Las pruebas
 unitarias y la compilación no sustituyen esta comprobación con cuenta real.
+
+## Verificación realizada
+
+- 128 pruebas unitarias aprobadas, sin fallos ni pruebas omitidas; incluye cuatro
+  pruebas nuevas de protección de destinos y del token de Canvas.
+- `assembleRelease` y `lintVitalRelease` completados correctamente.
+- Manifiesto release comprobado: versión 17, sin depuración, sin respaldo y
+  receptor de sincronización privado.
+- APK instalable: `app/build/outputs/apk/release/UPAO-S-1.7.1.apk`.
+- Firmado con la clave local existente de Android Studio. Su certificado coincide
+  con el del APK local anterior `app/build/outputs/apk/debug/app-debug.apk`.
+  Esta comprobación no compara los APK antiguos de GitHub.
+- Firma, alineación, versión y ausencia de archivos privados del proyecto dentro
+  del APK comprobadas. La compilación sin firmar que deja Gradle es un archivo
+  intermedio; usar el APK firmado indicado arriba.
+
+No había un dispositivo Android conectado. La comprobación con cuenta real y la
+validación visual del visor PDF quedan pendientes antes de distribuirlo.

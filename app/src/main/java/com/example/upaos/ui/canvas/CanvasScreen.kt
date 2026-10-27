@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import com.example.upaos.data.canvas.*
+import com.example.upaos.data.refresh.*
 import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.webkit.WebView
@@ -18,8 +20,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import android.provider.OpenableColumns
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -79,7 +79,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.text.HtmlCompat
-import com.example.upaos.data.api.CanvasApiClient
 import com.example.upaos.data.local.CanvasCache
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.CanvasConversation
@@ -108,9 +107,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -125,13 +122,13 @@ private fun parseIsoDate(iso: String?): Long? {
             timeZone = TimeZone.getTimeZone("UTC")
         }
         fmt.parse(base)?.time
-    } catch (_: Exception) {
+    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
         null
     }
 }
 
 private fun formatCanvasDueDate(iso: String?): Pair<String, Color> {
-    val millis = parseIsoDate(iso) ?: return Pair("Sin fecha límite", Color(0xFF757575))
+    val millis = parseIsoDate(iso) ?: return Pair("Sin fecha de entrega", Color(0xFF757575))
     val calHoy = Calendar.getInstance()
     val calTarget = Calendar.getInstance().apply { timeInMillis = millis }
 
@@ -204,7 +201,7 @@ private fun downloadCanvasFile(context: Context, url: String, fileName: String) 
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         dm.enqueue(request)
         Toast.makeText(context, "Iniciando descarga: $fileName", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
+    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
         Toast.makeText(context, "Error al iniciar descarga: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
@@ -230,7 +227,16 @@ fun HtmlText(
         update = { tv ->
             tv.setTextColor(textColor)
             tv.setLinkTextColor(linkColor)
-            tv.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT)
+            val text = android.text.SpannableString(HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT))
+            text.getSpans(0, text.length, android.text.style.URLSpan::class.java).forEach { link ->
+                val start = text.getSpanStart(link)
+                val end = text.getSpanEnd(link)
+                text.removeSpan(link)
+                text.setSpan(object : android.text.style.ClickableSpan() {
+                    override fun onClick(widget: android.view.View) { openCanvasContentLink(widget.context, link.url) }
+                }, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            tv.text = text
         },
         modifier = modifier
     )
@@ -244,331 +250,66 @@ fun CanvasContent(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val tokenManager = remember { TokenManager(context) }
-    val cache = remember { CanvasCache(context) }
 
     val userKey = usuario ?: "anonimo"
     var savedCanvasToken by remember(usuario) { mutableStateOf(tokenManager.getCanvasToken(userKey)) }
-    var isSetupMode by remember { mutableStateOf(savedCanvasToken.isNullOrBlank()) }
+    var isSetupMode by remember(userKey) { mutableStateOf(savedCanvasToken.isNullOrBlank()) }
 
-    var selectedMainTab by remember { mutableIntStateOf(0) } // 0: Cursos, 1: Pendientes, 2: Notificaciones, 3: Bandeja de entrada
+    var selectedMainTab by remember(userKey) { mutableIntStateOf(0) } // 0: Cursos, 1: Pendientes, 2: Notificaciones, 3: Bandeja de entrada
 
     // Modales In-App (visualización 100% nativa)
-    var selectedCourseForDetail by remember { mutableStateOf<CanvasCourse?>(null) }
-    var selectedTodoDetail by remember { mutableStateOf<CanvasTodoItem?>(null) }
-    var selectedConversationDetail by remember { mutableStateOf<CanvasConversation?>(null) }
-    var selectedGroupDetail by remember { mutableStateOf<CanvasGroup?>(null) }
-    var selectedFileItem by remember { mutableStateOf<Pair<CanvasModuleItem, String>?>(null) }
-    var inAppWebUrl by remember { mutableStateOf<Pair<String, String>?>(null) }
-
-    // Datos de Cursos
-    var courses by remember { mutableStateOf<List<CanvasCourse>>(emptyList()) }
-    var isLoadingCourses by remember { mutableStateOf(false) }
-    var isRefreshingCourses by remember { mutableStateOf(false) }
-
-    // Datos de Pendientes
-    var items by remember { mutableStateOf<List<CanvasTodoItem>>(emptyList()) }
-    var isLoadingTodo by remember { mutableStateOf(false) }
-    var isRefreshingTodo by remember { mutableStateOf(false) }
-    var lastUpdatedMillis by remember { mutableStateOf<Long?>(null) }
-
-    // Datos de Bandeja de entrada (Conversaciones)
-    var conversations by remember { mutableStateOf<List<CanvasConversation>>(emptyList()) }
-    var isLoadingConvs by remember { mutableStateOf(false) }
-    var isRefreshingConvs by remember { mutableStateOf(false) }
-
-    // Datos de Notificaciones (Activity Stream)
-    var notifications by remember { mutableStateOf<List<CanvasNotificationItem>>(emptyList()) }
-    var isLoadingNotifs by remember { mutableStateOf(false) }
-    var isRefreshingNotifs by remember { mutableStateOf(false) }
-
-    // Datos de Grupos
-    var groups by remember { mutableStateOf<List<CanvasGroup>>(emptyList()) }
-    var isLoadingGroups by remember { mutableStateOf(false) }
-    var isRefreshingGroups by remember { mutableStateOf(false) }
-
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isTokenExpired by remember { mutableStateOf(false) }
-    var isOffline by remember { mutableStateOf(false) }
-
-    fun sortItems(list: List<CanvasTodoItem>): List<CanvasTodoItem> {
-        val now = System.currentTimeMillis()
-        return list.sortedWith(
-            compareBy<CanvasTodoItem> { item ->
-                val dueMillis = parseIsoDate(item.dueAt)
-                when {
-                    dueMillis == null -> 2 // Sin fecha: después de las próximas
-                    dueMillis >= now -> 1 // Próximas a vencer: primero
-                    else -> 3 // Vencidas: al final
-                }
-            }.thenBy { item ->
-                parseIsoDate(item.dueAt) ?: Long.MAX_VALUE
-            }.thenBy { it.title }
-        )
-    }
-
-    fun fetchTodo(isManual: Boolean = false) {
-        val currentToken = savedCanvasToken ?: return
-        scope.launch {
-            if (isManual) isRefreshingTodo = true else if (items.isEmpty()) isLoadingTodo = true
-            errorMessage = null
-            try {
-                // 1. Obtener cursos activos para poder escanear las tareas de todos ellos
-                val activeCourses = withContext(Dispatchers.IO) {
-                    if (courses.isNotEmpty()) {
-                        courses
-                    } else {
-                        val cResp = CanvasApiClient.apiService.getActiveCourses("Bearer $currentToken")
-                        if (cResp.isSuccessful && cResp.body() != null) {
-                            val clean = cResp.body()!!.filter { it.name.isNotBlank() }
-                            courses = clean
-                            cache.guardarCursos(userKey, clean)
-                            clean
-                        } else emptyList()
-                    }
-                }
-
-                // 2. Ejecutar en paralelo:
-                // a) getTodoList (to-do global de Canvas)
-                // b) getCourseAssignments para CADA curso activo (detección exhaustiva)
-                val todoDeferred = async(Dispatchers.IO) {
-                    try {
-                        CanvasApiClient.apiService.getTodoList("Bearer $currentToken")
-                    } catch (_: Exception) { null }
-                }
-
-                val courseAssignmentsDeferred = activeCourses.map { course ->
-                    async(Dispatchers.IO) {
-                        try {
-                            val aResp = CanvasApiClient.apiService.getCourseAssignments("Bearer $currentToken", course.id)
-                            if (aResp.isSuccessful && aResp.body() != null) {
-                                Pair(course, aResp.body()!!)
-                            } else Pair(course, emptyList())
-                        } catch (_: Exception) {
-                            Pair(course, emptyList())
-                        }
-                    }
-                }
-
-                val todoResp = todoDeferred.await()
-                if (todoResp?.code() == 401) {
-                    isTokenExpired = true
-                    return@launch
-                }
-
-                val rawTodoList = todoResp?.body().orEmpty()
-                val combinedList = mutableListOf<CanvasTodoItem>()
-                val processedAssignmentIds = mutableSetOf<Long>()
-
-                // 3. Procesar items de To-Do nativo (filtrando las ya entregadas)
-                for (todo in rawTodoList) {
-                    val assignment = todo.assignment
-                    val yaEntregada = assignment?.isSubmitted == true ||
-                            assignment?.hasSubmittedSubmissions == true
-                    if (!yaEntregada) {
-                        combinedList.add(todo)
-                        if (assignment != null) {
-                            processedAssignmentIds.add(assignment.id)
-                        }
-                    }
-                }
-
-                // 4. Escaneo exhaustivo en cada curso activo (detecta tareas omitidas por To-Do, ej. Automatización)
-                val courseResults = courseAssignmentsDeferred.awaitAll()
-                for ((course, assignments) in courseResults) {
-                    for (assignment in assignments) {
-                        if (assignment.id in processedAssignmentIds) continue
-
-                        // Comprobar si requiere entrega online (subir archivos, texto, url, etc.)
-                        val subTypes = assignment.submissionTypes.orEmpty()
-                        val requiereEntregaOnline = subTypes.any { type ->
-                            type in listOf(
-                                "online_upload",
-                                "online_text_entry",
-                                "online_url",
-                                "media_recording",
-                                "student_annotation",
-                                "online_quiz"
-                            )
-                        }
-
-                        // Comprobar si el alumno YA la entregó
-                        val yaEntregada = assignment.isSubmitted ||
-                                assignment.hasSubmittedSubmissions == true
-
-                        // Comprobar si está bloqueada en el pasado lejano
-                        val lockMillis = parseIsoDate(assignment.lockAt)
-                        val bloqueadaAntigua = assignment.lockedForUser == true &&
-                                lockMillis != null &&
-                                lockMillis < System.currentTimeMillis() - 7 * 24 * 3600 * 1000L
-
-                        if (requiereEntregaOnline && !yaEntregada && !bloqueadaAntigua) {
-                            val nuevoPendiente = CanvasTodoItem(
-                                type = "submitting",
-                                contextType = "Course",
-                                courseId = course.id,
-                                contextName = course.name,
-                                contextShortName = course.courseCode,
-                                htmlUrl = assignment.htmlUrl,
-                                assignment = assignment,
-                                quiz = if (assignment.isQuizAssignment == true || assignment.quizId != null) {
-                                    CanvasQuiz(
-                                        id = assignment.quizId ?: assignment.id,
-                                        title = assignment.name,
-                                        dueAt = assignment.effectiveDueAt,
-                                        lockAt = assignment.lockAt,
-                                        unlockAt = assignment.unlockAt,
-                                        pointsPossible = assignment.pointsPossible,
-                                        htmlUrl = assignment.htmlUrl
-                                    )
-                                } else null
-                            )
-                            combinedList.add(nuevoPendiente)
-                            processedAssignmentIds.add(assignment.id)
-                        }
-                    }
-                }
-
-                val sorted = sortItems(combinedList)
-                items = sorted
-                isOffline = false
-                lastUpdatedMillis = System.currentTimeMillis()
-                cache.guardar(userKey, sorted)
-            } catch (e: Exception) {
-                isOffline = true
-            } finally {
-                isLoadingTodo = false
-                isRefreshingTodo = false
-            }
+    var selectedCourseForDetail by remember(userKey) { mutableStateOf<CanvasCourse?>(null) }
+    var selectedTodoDetail by remember(userKey) { mutableStateOf<CanvasTodoItem?>(null) }
+    var selectedConversationDetail by remember(userKey) { mutableStateOf<CanvasConversation?>(null) }
+    var selectedGroupDetail by remember(userKey) { mutableStateOf<CanvasGroup?>(null) }
+    var selectedFileItem by remember(userKey) { mutableStateOf<Pair<CanvasModuleItem, String>?>(null) }
+    var inAppWebUrl by remember(userKey) { mutableStateOf<Pair<String, String>?>(null) }
+    LaunchedEffect(userKey) {
+        canvasTokenRequests.collect {
+            selectedCourseForDetail = null
+            selectedTodoDetail = null
+            selectedConversationDetail = null
+            selectedGroupDetail = null
+            selectedFileItem = null
+            inAppWebUrl = null
+            isSetupMode = true
         }
     }
 
-    fun fetchConversations(isManual: Boolean = false) {
-        val currentToken = savedCanvasToken ?: return
-        scope.launch {
-            if (isManual) isRefreshingConvs = true else if (conversations.isEmpty()) isLoadingConvs = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getConversations("Bearer $currentToken")
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    conversations = resp.body()!!
-                    cache.guardarConversaciones(userKey, conversations)
-                } else if (resp.code() == 401) {
-                    isTokenExpired = true
-                }
-            } catch (e: Exception) {
-                isOffline = true
-            } finally {
-                isLoadingConvs = false
-                isRefreshingConvs = false
-            }
-        }
-    }
-
-    fun fetchNotifications(isManual: Boolean = false) {
-        val currentToken = savedCanvasToken ?: return
-        scope.launch {
-            if (isManual) isRefreshingNotifs = true else if (notifications.isEmpty()) isLoadingNotifs = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getActivityStream("Bearer $currentToken")
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    notifications = resp.body()!!
-                    cache.guardarNotificaciones(userKey, notifications)
-                } else if (resp.code() == 401) {
-                    isTokenExpired = true
-                }
-            } catch (e: Exception) {
-                isOffline = true
-            } finally {
-                isLoadingNotifs = false
-                isRefreshingNotifs = false
-            }
-        }
-    }
-
-    fun fetchGroups(isManual: Boolean = false) {
-        val currentToken = savedCanvasToken ?: return
-        scope.launch {
-            if (isManual) isRefreshingGroups = true else if (groups.isEmpty()) isLoadingGroups = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getSelfGroups("Bearer $currentToken")
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    groups = resp.body()!!
-                    cache.guardarGrupos(userKey, groups)
-                } else if (resp.code() == 401) {
-                    isTokenExpired = true
-                }
-            } catch (e: Exception) {
-                isOffline = true
-            } finally {
-                isLoadingGroups = false
-                isRefreshingGroups = false
-            }
-        }
-    }
-
-    fun fetchCourses(isManual: Boolean = false) {
-        val currentToken = savedCanvasToken ?: return
-        scope.launch {
-            if (isManual) isRefreshingCourses = true else if (courses.isEmpty()) isLoadingCourses = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getActiveCourses("Bearer $currentToken")
-                }
-                if (resp.isSuccessful && resp.body() != null) {
-                    val cleanCourses = resp.body()!!.filter { it.name.isNotBlank() }
-                    courses = cleanCourses
-                    cache.guardarCursos(userKey, cleanCourses)
-                }
-            } catch (_: Exception) {
-                isOffline = true
-            } finally {
-                isLoadingCourses = false
-                isRefreshingCourses = false
-            }
-        }
-    }
-
-    // Carga inicial
-    LaunchedEffect(userKey, savedCanvasToken) {
-        if (!savedCanvasToken.isNullOrBlank()) {
-            // Cargar caché local
-            val (cachedTodo, cachedTime) = cache.cargar(userKey)
-            if (cachedTodo.isNotEmpty()) {
-                items = sortItems(cachedTodo)
-                lastUpdatedMillis = cachedTime
-                isOffline = true
-            }
-            val cachedConvs = cache.cargarConversaciones(userKey)
-            if (cachedConvs.isNotEmpty()) {
-                conversations = cachedConvs
-            }
-            val cachedNotifs = cache.cargarNotificaciones(userKey)
-            if (cachedNotifs.isNotEmpty()) {
-                notifications = cachedNotifs
-            }
-            val cachedGroups = cache.cargarGrupos(userKey)
-            if (cachedGroups.isNotEmpty()) {
-                groups = cachedGroups
-            }
-            val cachedCourses = cache.cargarCursos(userKey)
-            if (cachedCourses.isNotEmpty()) {
-                courses = cachedCourses
-            }
-
-            fetchCourses()
-            fetchTodo()
-            fetchConversations()
-            fetchNotifications()
-            fetchGroups()
-        }
-    }
+    val repository = rememberCanvasRepository(savedCanvasToken.orEmpty(), userKey)
+    val hub: CanvasHubViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        key = canvasViewModelKey("hub", userKey, tokenManager.getSessionId(), savedCanvasToken.orEmpty()),
+        factory = canvasViewModelFactory { CanvasHubViewModel(userKey, savedCanvasToken.orEmpty(), repository) })
+    val hubState by hub.state.collectAsState()
+    val courses = hubState.courses
+    val isLoadingCourses = hubState.isLoadingCourses
+    val isRefreshingCourses = hubState.isRefreshingCourses
+    val items = hubState.items
+    val isLoadingTodo = hubState.isLoadingTodo
+    val isRefreshingTodo = hubState.isRefreshingTodo
+    val lastUpdatedMillis = hubState.lastUpdatedMillis
+    val conversations = hubState.conversations
+    val isLoadingConvs = hubState.isLoadingConvs
+    val isRefreshingConvs = hubState.isRefreshingConvs
+    val notifications = hubState.notifications
+    val isLoadingNotifs = hubState.isLoadingNotifs
+    val isRefreshingNotifs = hubState.isRefreshingNotifs
+    val groups = hubState.groups
+    val isLoadingGroups = hubState.isLoadingGroups
+    val isRefreshingGroups = hubState.isRefreshingGroups
+    var inboxSearch by remember(userKey) { mutableStateOf("") }
+    var unreadOnly by remember(userKey) { mutableStateOf(false) }
+    val filteredConversations = conversations.filter { (!unreadOnly || it.isUnread) &&
+        (inboxSearch.isBlank() || listOfNotNull(it.subject, it.lastMessage, it.contextName).any { text -> text.contains(inboxSearch, true) }) }
+    val errorMessage = hubState.errorMessage
+    val isTokenExpired = hubState.isTokenExpired
+    val isOffline = hubState.isOffline
+    fun fetchCourses(isManual: Boolean = false) = hub.fetchCourses(isManual)
+    fun fetchTodo(isManual: Boolean = false) = hub.fetchTodo(isManual)
+    fun fetchConversations(isManual: Boolean = false) = hub.fetchConversations(isManual)
+    fun fetchNotifications(isManual: Boolean = false) = hub.fetchNotifications(isManual)
+    fun fetchGroups(isManual: Boolean = false) = hub.fetchGroups(isManual)
 
     if (isSetupMode) {
         CanvasSetupView(
@@ -577,9 +318,6 @@ fun CanvasContent(
             onTokenSaved = { newToken ->
                 savedCanvasToken = newToken
                 isSetupMode = false
-                fetchTodo()
-                fetchConversations()
-                fetchCourses()
             },
             onCancel = if (!savedCanvasToken.isNullOrBlank()) {
                 { isSetupMode = false }
@@ -594,7 +332,7 @@ fun CanvasContent(
                 onOpenAssignment = { selectedTodoDetail = it },
                 onOpenGroup = { selectedGroupDetail = it },
                 onOpenFile = { fileItem, modName -> selectedFileItem = Pair(fileItem, modName) },
-                onOpenUrl = { url, title -> inAppWebUrl = Pair(url, title) },
+                onOpenUrl = { url, _ -> openCanvasContentLink(context, url) },
                 todoItems = items,
                 notifications = notifications,
                 modifier = modifier
@@ -782,9 +520,17 @@ fun CanvasContent(
                             }
                         }
                     )
+                    Tab(selected = selectedMainTab == 4, onClick = { selectedMainTab = 4 }, text = { Text("Anuncios") })
+                    Tab(selected = selectedMainTab == 5, onClick = { selectedMainTab = 5 }, text = { Text("Calendario") })
+
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                errorMessage?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                }
 
                 // Contenido por Pestaña
                 when (selectedMainTab) {
@@ -964,6 +710,8 @@ fun CanvasContent(
                                     .fillMaxSize()
                                     .padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
+                                OutlinedTextField(value = inboxSearch, onValueChange = { inboxSearch = it }, label = { Text("Buscar mensajes") }, modifier = Modifier.fillMaxWidth())
+                                FilterChip(selected = unreadOnly, onClick = { unreadOnly = !unreadOnly }, label = { Text("No leídos") })
                                 when {
                                     isLoadingConvs -> {
                                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -984,7 +732,7 @@ fun CanvasContent(
                                             verticalArrangement = Arrangement.spacedBy(10.dp),
                                             modifier = Modifier.fillMaxSize()
                                         ) {
-                                            items(conversations, key = { it.id }) { conv ->
+                                            items(filteredConversations, key = { it.id }) { conv ->
                                                 CanvasConversationCard(
                                                     conversation = conv,
                                                     onClick = { selectedConversationDetail = conv }
@@ -997,6 +745,9 @@ fun CanvasContent(
                             }
                         }
                     }
+                    4 -> CanvasAnnouncements(savedCanvasToken.orEmpty(), courses.map { it.id })
+                    5 -> CanvasCalendar(savedCanvasToken.orEmpty(), courses.map { it.id })
+
                 }
             }
         }
@@ -1005,12 +756,7 @@ fun CanvasContent(
             selectedTodoDetail?.let { item ->
                 CanvasAssignmentDetailSheet(
                     item = item,
-                    token = savedCanvasToken ?: "",
-                    onDismiss = { selectedTodoDetail = null },
-                    onSubmissionSuccess = {
-                        selectedTodoDetail = null
-                        fetchTodo(isManual = true)
-                    }
+                    onDismiss = { selectedTodoDetail = null }
                 )
             }
 
@@ -1234,6 +980,12 @@ fun CanvasModuleCard(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
+                                item.completionRequirement?.let { requirement ->
+                                    Text(listOfNotNull(requirement.type,
+                                        requirement.completed?.let { if (it) "Completado" else "Pendiente" },
+                                        requirement.minScore?.let { "Mínimo ${canvasPoints(it)}" }).joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall)
+                                }
                                 Icon(
                                     imageVector = if (item.isFile) Icons.Filled.Download else Icons.Filled.Visibility,
                                     contentDescription = null,
@@ -1362,7 +1114,7 @@ fun CanvasTodoItemCard(
 
             if (item.pointsPossible != null && item.pointsPossible!! > 0) {
                 Text(
-                    text = "${item.pointsPossible!!.toInt()} pts",
+                    text = "${canvasPoints(item.pointsPossible)} pts",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1393,83 +1145,13 @@ fun CanvasTodoItemCard(
     }
 }
 
-private suspend fun submitFileToCanvas(
-    token: String,
-    courseId: Long,
-    assignmentId: Long,
-    fileName: String,
-    fileSize: Long,
-    fileBytes: ByteArray,
-    mimeType: String
-): Boolean = withContext(Dispatchers.IO) {
-    try {
-        val authHeader = "Bearer $token"
-        // Paso 1: Notificar a Canvas la intención de subir archivo para entrega
-        val initResp = CanvasApiClient.apiService.initSubmissionFileUpload(
-            authHeader = authHeader,
-            courseId = courseId,
-            assignmentId = assignmentId,
-            name = fileName,
-            size = fileSize
-        )
-        if (!initResp.isSuccessful || initResp.body() == null) {
-            return@withContext false
-        }
-        val initData = initResp.body()!!
-
-        // Paso 2: Subir el archivo al upload_url (S3 o Canvas)
-        val multipartBuilder = MultipartBody.Builder().setType(MultipartBody.FORM)
-        for ((key, value) in initData.uploadParams.orEmpty()) {
-            multipartBuilder.addFormDataPart(key, value)
-        }
-        multipartBuilder.addFormDataPart(
-            "file",
-            fileName,
-            fileBytes.toRequestBody(mimeType.toMediaTypeOrNull())
-        )
-
-        val uploadRequest = Request.Builder()
-            .url(initData.uploadUrl)
-            .post(multipartBuilder.build())
-            .build()
-
-        val uploadResponse = CanvasApiClient.okHttpClient.newCall(uploadRequest).execute()
-        if (!uploadResponse.isSuccessful) {
-            return@withContext false
-        }
-        val uploadResponseBody = uploadResponse.body?.string() ?: return@withContext false
-
-        // Parsear el ID del archivo devuelto por Canvas
-        val jsonElement = JsonParser.parseString(uploadResponseBody)
-        if (!jsonElement.isJsonObject) {
-            return@withContext false
-        }
-        val fileId = jsonElement.asJsonObject.get("id")?.asLong ?: return@withContext false
-
-        // Paso 3: Registrar formalmente la entrega con el fileId
-        val submitResp = CanvasApiClient.apiService.submitAssignment(
-            authHeader = authHeader,
-            courseId = courseId,
-            assignmentId = assignmentId,
-            fileId = fileId
-        )
-
-        submitResp.isSuccessful
-    } catch (_: Exception) {
-        false
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CanvasAssignmentDetailSheet(
     item: CanvasTodoItem,
-    token: String,
-    onDismiss: () -> Unit,
-    onSubmissionSuccess: () -> Unit = {}
+    onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val assignment = item.assignment
     val esExamen = item.isQuiz
     val (dueText, dueColor) = remember(item.dueAt) { formatCanvasDueDate(item.dueAt) }
@@ -1571,6 +1253,9 @@ fun CanvasAssignmentDetailSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            assignment?.unlockAt?.let { Text("Abre: $it") }
+            assignment?.lockAt?.let { Text("Cierra: $it") }
+
             // Metrics row: Points, Submission Type, Status
             Row(
                 modifier = Modifier
@@ -1583,7 +1268,7 @@ fun CanvasAssignmentDetailSheet(
                 if (points != null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Puntos", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${points.toInt()} pts", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("${canvasPoints(points)} pts", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -1602,7 +1287,7 @@ fun CanvasAssignmentDetailSheet(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Intentos", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        text = if (attempts != null && attempts > 0) "$attempts" else "Ilimitados",
+                        text = canvasAttempts(attempts),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -1640,54 +1325,10 @@ fun CanvasAssignmentDetailSheet(
                 )
             }
 
-            // Rubric if available
-            val rubric = assignment?.rubric
-            if (!rubric.isNullOrEmpty()) {
-                Spacer(modifier = Modifier.height(20.dp))
-                Text(
-                    text = "Criterios de Evaluación (Rúbrica)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    rubric.forEach { crit ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = crit.description ?: "Criterio",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                crit.points?.let { pts ->
-                                    Text(
-                                        text = "${pts.toInt()} pts",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
+            CanvasAssignmentExtras(item)
             Spacer(modifier = Modifier.height(24.dp))
+
+            CanvasExternalButton(assignment?.htmlUrl ?: item.webUrl, "Entregar en Canvas")
 
             PrimaryButton(
                 text = "Cerrar",
@@ -1865,22 +1506,12 @@ fun CanvasGroupDetailSheet(
     token: String,
     onDismiss: () -> Unit
 ) {
-    var members by remember { mutableStateOf<List<CanvasUser>>(emptyList()) }
-    var isLoadingMembers by remember { mutableStateOf(true) }
-
-    LaunchedEffect(group.id) {
-        try {
-            val resp = withContext(Dispatchers.IO) {
-                CanvasApiClient.apiService.getGroupUsers("Bearer $token", group.id)
-            }
-            if (resp.isSuccessful && resp.body() != null) {
-                members = resp.body()!!
-            }
-        } catch (_: Exception) {}
-        finally {
-            isLoadingMembers = false
-        }
-    }
+    val resource = canvasResourceViewModel("members:${group.id}", token, emptyList<CanvasUser>()) { groupPeople(group.id) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val members = resourceState.data
+    val isLoadingMembers = resourceState.loading
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2003,21 +1634,12 @@ fun CanvasConversationDetailSheet(
     token: String,
     onDismiss: () -> Unit
 ) {
-    var detail by remember { mutableStateOf<CanvasConversation?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(conversation.id) {
-        isLoading = true
-        try {
-            val resp = withContext(Dispatchers.IO) {
-                CanvasApiClient.apiService.getConversationDetail("Bearer $token", conversation.id)
-            }
-            if (resp.isSuccessful) {
-                detail = resp.body()
-            }
-        } catch (_: Exception) {}
-        isLoading = false
-    }
+    val resource = canvasResourceViewModel("detail:${conversation.id}", token, null as CanvasConversation?) { conversation(conversation.id) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val detail = resourceState.data
+    val isLoading = resourceState.loading
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2051,6 +1673,7 @@ fun CanvasConversationDetailSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            CanvasExternalButton("https://upao.instructure.com/conversations/${conversation.id}", "Responder en Canvas")
             // Participants
             val participants = detail?.participants ?: conversation.participants ?: emptyList()
             if (participants.isNotEmpty()) {
@@ -2127,12 +1750,7 @@ fun CanvasConversationDetailSheet(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = msg.body ?: "",
-                                        fontSize = 14.sp,
-                                        lineHeight = 21.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
+                                    HtmlText(msg.body.orEmpty())
                                 }
                             }
                         }
@@ -2161,26 +1779,12 @@ fun CanvasFileViewerSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var fileDetail by remember { mutableStateOf<CanvasFileDetail?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(item.id) {
-        val fileApiUrl = item.url
-        if (!fileApiUrl.isNullOrBlank()) {
-            isLoading = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getFileByUrl("Bearer $token", fileApiUrl)
-                }
-                if (resp.isSuccessful) {
-                    fileDetail = resp.body()
-                }
-            } catch (_: Exception) {}
-            isLoading = false
-        } else {
-            isLoading = false
-        }
-    }
+    val resource = canvasResourceViewModel("fileDetail:${item.id}", token, null as CanvasFileDetail?) { if (item.url.isNullOrBlank()) null else fileByUrl(item.url) }
+    val resourceState by resource.state.collectAsState()
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
+    val fileDetail = resourceState.data
+    val isLoading = resourceState.loading
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2306,6 +1910,11 @@ fun InAppWebViewModal(
     title: String,
     onDismiss: () -> Unit
 ) {
+    val browserContext = LocalContext.current
+    if (!url.startsWith("private-pdf:")) {
+        LaunchedEffect(url) { openCanvasContentLink(browserContext, url); onDismiss() }
+        return
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2343,7 +1952,7 @@ fun InAppWebViewModal(
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
-                                settings.javaScriptEnabled = true
+                                settings.javaScriptEnabled = false
                                 settings.domStorageEnabled = true
                                 settings.loadWithOverviewMode = true
                                 settings.useWideViewPort = true
@@ -2386,47 +1995,29 @@ fun CanvasSetupView(
     onCancel: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val tokenManager = remember { TokenManager(context) }
     val clipboardManager = LocalClipboardManager.current
-
-    var tokenInput by remember { mutableStateOf(initialToken) }
-    var isValidating by remember { mutableStateOf(false) }
-    var errorText by remember { mutableStateOf<String?>(null) }
-    var userNameDetected by remember { mutableStateOf<String?>(null) }
-
-    fun validarYGuardar() {
-        val cleanToken = tokenInput.trim()
-        if (cleanToken.isBlank()) {
-            errorText = "Por favor ingresa un token de acceso."
-            return
-        }
-
-        isValidating = true
-        errorText = null
-
-        scope.launch {
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    CanvasApiClient.apiService.getUserSelf("Bearer $cleanToken")
-                }
-
-                if (resp.isSuccessful && resp.body() != null) {
-                    val user = resp.body()!!
-                    userNameDetected = user.name ?: user.shortName
-                    tokenManager.saveCanvasToken(usuario, cleanToken)
-                    Toast.makeText(context, "¡Conectado con Canvas como ${userNameDetected}!", Toast.LENGTH_LONG).show()
-                    onTokenSaved(cleanToken)
-                } else if (resp.code() == 401) {
-                    errorText = "Token inválido o expirado. Verifica que lo hayas copiado completo."
-                } else {
-                    errorText = "Error al validar token (${resp.code()}): ${resp.message()}"
-                }
-            } catch (e: Exception) {
-                errorText = "Error de conexión: no se pudo contactar a Canvas LMS (${e.localizedMessage ?: "Revisa tu internet"})."
-            } finally {
-                isValidating = false
-            }
+    var tokenInput by remember(usuario, initialToken) { mutableStateOf(initialToken) }
+    val tokens = remember(context) { TokenManager(context.applicationContext) }
+    val session = tokens.getSessionId()
+    val setupRepository = remember(context, usuario, session) {
+        com.example.upaos.data.canvas.DefaultCanvasSetupRepository(
+            com.example.upaos.data.api.CanvasApiClient.apiService,
+            validateOwner = { tokens.getSavedUser() == usuario && tokens.getSessionId() == session },
+            save = { tokens.saveCanvasToken(usuario, it) })
+    }
+    val setup: CanvasSetupViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        key = canvasViewModelKey("setup", usuario, session, ""),
+        factory = canvasViewModelFactory { CanvasSetupViewModel(setupRepository) })
+    val setupState by setup.state.collectAsState()
+    val isValidating = setupState.loading
+    val errorText = setupState.error
+    val userNameDetected = setupState.userName
+    fun validarYGuardar() = setup.validate(tokenInput)
+    LaunchedEffect(setupState.savedToken) {
+        setupState.savedToken?.let { saved ->
+            setup.consumeSavedToken()
+            Toast.makeText(context, "¡Conectado con Canvas como " + userNameDetected + "!", Toast.LENGTH_LONG).show()
+            onTokenSaved(saved)
         }
     }
 
@@ -2501,7 +2092,7 @@ fun CanvasSetupView(
                     try {
                         val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://upao.instructure.com/profile/settings"))
                         context.startActivity(browserIntent)
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; android.util.Log.w("Canvas", "No se pudo completar la operación de Canvas") }
                 },
                 modifier = Modifier.align(Alignment.End)
             ) {
@@ -2517,7 +2108,7 @@ fun CanvasSetupView(
             value = tokenInput,
             onValueChange = {
                 tokenInput = it
-                errorText = null
+                setup.clearError()
             },
             label = "Token de Acceso de Canvas",
             placeholder = "Pega aquí tu token (ej. 17977~...)",
@@ -2531,7 +2122,7 @@ fun CanvasSetupView(
                         val clip = clipboardManager.getText()?.text
                         if (!clip.isNullOrBlank()) {
                             tokenInput = clip.trim()
-                            errorText = null
+                            setup.clearError()
                         }
                     }
                 ) {

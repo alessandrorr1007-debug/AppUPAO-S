@@ -44,17 +44,19 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (String) -> Unit
+    onLoginSuccess: (String) -> Unit,
+    recoveryUser: String? = null,
+    useSavedPassword: Boolean = true
 ) {
     val context = LocalContext.current
     val tokenManager = remember { TokenManager(context) }
     val scope = rememberCoroutineScope()
 
-    var usuario by remember { mutableStateOf(tokenManager.getSavedUser() ?: "") }
-    var password by remember { mutableStateOf(tokenManager.getSavedPass() ?: "") }
+    var usuario by remember { mutableStateOf(recoveryUser ?: tokenManager.getSavedUser() ?: "") }
+    var password by remember { mutableStateOf(if (useSavedPassword && recoveryUser == null) tokenManager.getSavedPass() ?: "" else "") }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    var guardarPassword by remember { mutableStateOf(tokenManager.getSavedPass() != null) }
+    var guardarPassword by remember { mutableStateOf(useSavedPassword && recoveryUser == null && tokenManager.getSavedPass() != null) }
     var mantenerSesion by remember { mutableStateOf(true) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -75,7 +77,13 @@ fun LoginScreen(
     )
 
     fun procesarLogin(studentName: String?) {
-        tokenManager.saveLogin(usuario, password.takeIf { guardarPassword }, mantenerSesion, studentName)
+        if (recoveryUser == null) {
+            tokenManager.saveLogin(usuario, password.takeIf { guardarPassword }, mantenerSesion, studentName)
+        } else if (usuario != recoveryUser || tokenManager.getSavedUser() != recoveryUser) {
+            loginError = "La cuenta cambió. Vuelve a intentarlo."
+            return
+        }
+        password = ""
         onLoginSuccess(usuario)
     }
 
@@ -143,7 +151,7 @@ fun LoginScreen(
                 ) {
                     ModernTextField(
                         value = usuario,
-                        onValueChange = { if (!isLoading && it.length <= 9 && it.all { char -> char.isDigit() }) { usuario = it; loginError = null } },
+                        onValueChange = { if (recoveryUser == null && !isLoading && it.length <= 9 && it.all { char -> char.isDigit() }) { usuario = it; loginError = null } },
                         label = "ID de usuario",
                         leadingIcon = Icons.Filled.Person,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -174,6 +182,7 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
+                    if (recoveryUser == null) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -204,6 +213,7 @@ fun LoginScreen(
                         )
                     }
 
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
 
                     PrimaryButton(

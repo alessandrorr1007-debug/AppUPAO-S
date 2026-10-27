@@ -24,12 +24,12 @@ import kotlinx.coroutines.sync.withLock
 
 data class DashboardState(
     val periods: List<String> = emptyList(),
-    val currentPeriod: String = "202610",
-    val gradePeriod: String = "202610",
+    val currentPeriod: String = "",
+    val gradePeriod: String = currentPeriod,
     val career: String = "UG",
     val careers: List<String> = listOf("UG"),
-    val schedulePeriod: String = "202610",
-    val attendancePeriod: String = "202610",
+    val schedulePeriod: String = currentPeriod,
+    val attendancePeriod: String = currentPeriod,
     val grades: GradesResponse? = null,
     val average: PromedioPeriodoResponse? = null,
     val projected: Map<String, Any?> = emptyMap(),
@@ -60,7 +60,14 @@ class DashboardViewModel(app: Application, private val token: String, private va
     private val averages = mutableMapOf<Pair<String, String>, PromedioPeriodoResponse>()
     private val projections = mutableMapOf<Pair<String, String>, Map<String, Any?>>()
     private var selectionVersion = 0
-    private val loop = SharedRefreshLoop(viewModelScope, { refreshRound() })
+    private var consecutiveFailures = 0
+    private val loop = SharedRefreshLoop(viewModelScope, { refreshRound() }, nextIntervalMillis = {
+        com.example.upaos.service.SyncIntervalPolicy.proximoIntervalo(
+            java.time.ZonedDateTime.now(com.example.upaos.service.SyncIntervalPolicy.ZONE_LIMA),
+            com.example.upaos.service.SyncIntervalPolicy.SyncContext(
+                fallosConsecutivos = consecutiveFailures, periodoAcademico = state.value.currentPeriod)
+        ).toMillis()
+    })
     val gradeCacheKey get() = "notas_$user"
     val attendanceCacheKey get() = "asistencia_$user"
     fun scheduleCacheKey(term: String) = "horario_${user}_$term"
@@ -128,7 +135,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
         val savedGrades = try { gradesCache.cargar(gradeCacheKey)?.let { gson.fromJson(it, GradesResponse::class.java) } }
             catch (e: CancellationException) { throw e } catch (_: Exception) { null }
         val periods = cached<PeriodosResponse>("dashboard_periodos_$user")
-        val current = detectarPeriodoActual(periods?.periodos ?: emptyList(), periods?.periodoActual)
+        val current = detectarPeriodoActual(periods?.periodos ?: emptyList(), periods?.periodoActual ?: savedGrades?.periodo)
         val schedules = cache.listarPorPrefijo("horario_${user}_").mapNotNull { (key, json) ->
             val term = key.removePrefix("horario_${user}_")
             if (term.toIntOrNull() == null) null else try { term to gson.fromJson(json, HorarioResponse::class.java) }
@@ -201,6 +208,10 @@ class DashboardViewModel(app: Application, private val token: String, private va
                     attendancePeriod = if (attendanceChosen) result.attendancePeriod else current)
                 save("dashboard_periodos_$user", periods)
                 cache.guardar("periodos_$user", gson.toJson(periods.periodos))
+            }
+            if (result.currentPeriod.isBlank()) {
+                mutable.value = result.copy(busy = false, errors = errors)
+                return@withLock
             }
             attempt("carreras") {
                 val careers = upaoRepository.getCarreras(result.gradePeriod).carreras
@@ -292,6 +303,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
                 projected = if (sameGrades) result.projected else projections[gradePeriod to career] ?: emptyMap(),
                 schedulePeriod = if (scheduleChosen) chosen.schedulePeriod else result.schedulePeriod,
                 attendancePeriod = if (attendanceChosen) chosen.attendancePeriod else result.attendancePeriod)
+            consecutiveFailures = if (errors.isEmpty()) 0 else (consecutiveFailures + 1).coerceAtMost(3)
             completedSelectionVersion = version
             try { com.example.upaos.widget.ResumenNotasWidget.updateAll(getApplication()) } catch (_: Exception) { }
             try { com.example.upaos.widget.ProximoCursoWidget.updateAll(getApplication()) } catch (_: Exception) { }

@@ -8,10 +8,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.TimeZone
 
 class AcademicCalendarTest {
 
-    private val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    private val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("America/Lima")
+    }
 
     @Test
     fun `test antes de que inicie el ciclo`() {
@@ -112,7 +115,7 @@ class AcademicCalendarTest {
     fun `test estimarFechaInicio dinamico`() {
         assertEquals("2027-03-23", AcademicCalendar.estimarFechaInicio("202710"))
         assertEquals("2027-08-31", AcademicCalendar.estimarFechaInicio("202720"))
-        assertEquals("2027-01-05", AcademicCalendar.estimarFechaInicio("202700"))
+        assertNull(AcademicCalendar.estimarFechaInicio("202700"))
         // Si está en el mapa, devuelve el valor exacto
         assertEquals("2026-03-23", AcademicCalendar.estimarFechaInicio("202610"))
         assertEquals("2026-08-31", AcademicCalendar.estimarFechaInicio("202620"))

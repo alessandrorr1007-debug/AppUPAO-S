@@ -1,6 +1,7 @@
 package com.example.upaos.data.upao
 
 import android.content.Context
+import com.example.upaos.data.refresh.*
 import com.example.upaos.data.local.TokenManager
 import com.example.upaos.data.model.AsistenciaComponente
 import com.example.upaos.data.model.AsistenciaCurso
@@ -32,8 +33,10 @@ import kotlin.math.roundToInt
 
 class BannerApi(private val context: Context) {
 
-    private val client = UpaoHttpClient.okHttpClient
     private val tokenManager = TokenManager(context)
+    private val accountUser = tokenManager.getSavedUser().orEmpty()
+    private val accountSession by lazy { UpaoHttpClient.forAccount(accountUser) }
+    private val client get() = accountSession.also { it.requireValid() }.client
     private val gson = Gson()
     private val semaphore = Semaphore(4)
 
@@ -57,7 +60,7 @@ class BannerApi(private val context: Context) {
 
             if (isSessionExpired(response)) {
                 response.close()
-                val user = tokenManager.getSavedUser()
+                val user = accountUser
                 val pass = tokenManager.getSavedPass()
 
                 if (!user.isNullOrBlank() && !pass.isNullOrBlank()) {
@@ -65,7 +68,7 @@ class BannerApi(private val context: Context) {
                     if (loginRes.success) {
                         val nextReq = requestBuilder()
                         if (nextReq.url.host.contains("inscripcion.upao.edu.pe")) {
-                            UpaoAuth.ensureInscriptionSession()
+                            UpaoAuth.ensureInscriptionSession(accountUser)
                         }
                         response = client.newCall(nextReq).execute()
                     } else {
@@ -113,7 +116,7 @@ class BannerApi(private val context: Context) {
                 .build()
         }
 
-        val jsonStr = response.body?.string().orEmpty()
+        val jsonStr = response.use { it.body?.string().orEmpty() }
         val periodos = mutableListOf<String>()
 
         try {
@@ -138,7 +141,7 @@ class BannerApi(private val context: Context) {
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
         periodos
     }
@@ -155,7 +158,7 @@ class BannerApi(private val context: Context) {
                 .build()
         }
 
-        val jsonStr = response.body?.string().orEmpty()
+        val jsonStr = response.use { it.body?.string().orEmpty() }
         val niveles = mutableListOf<String>()
 
         try {
@@ -179,7 +182,7 @@ class BannerApi(private val context: Context) {
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
         if (niveles.isEmpty()) listOf("UG") else niveles
     }
@@ -207,27 +210,8 @@ class BannerApi(private val context: Context) {
                 .build()
         }
 
-        val jsonStr = response.body?.string().orEmpty()
-        val parsed = try {
-            JsonParser.parseString(jsonStr)
-        } catch (e: Exception) {
-            throw UpaoUnexpectedFormatException("Error de sintaxis en JSON de cursos", cause = e)
-        }
-
-        val dataArray = when {
-            parsed.isJsonArray -> parsed.asJsonArray
-            parsed.isJsonObject && parsed.asJsonObject.has("data") && parsed.asJsonObject.get("data").isJsonArray ->
-                parsed.asJsonObject.getAsJsonArray("data")
-            parsed.isJsonObject && parsed.asJsonObject.has("items") && parsed.asJsonObject.get("items").isJsonArray ->
-                parsed.asJsonObject.getAsJsonArray("items")
-            else -> throw UpaoUnexpectedFormatException("El JSON de cursos no contiene el arreglo esperado ('data' o raíz)")
-        }
-
-        val result = mutableListOf<JsonObject>()
-        dataArray.forEach { elem ->
-            if (elem.isJsonObject) result.add(elem.asJsonObject)
-        }
-        return result
+        val jsonStr = response.use { it.body?.string().orEmpty() }
+        return parseBannerObjects(jsonStr)
     }
 
     private fun parseCourseGrade(obj: JsonObject): CourseGrade {
@@ -255,85 +239,31 @@ class BannerApi(private val context: Context) {
         )
     }
 
-    suspend fun getCourseGradeDetail(term: String, crn: String): DetalleCursoResponse = withContext(Dispatchers.IO) {
-        val url = "$componentBaseUrl/componentDetails?selectedTerm=$term&selectedCrn=$crn&filterText=&pageOffset=0&pageMaxSize=20&sortColumn=name&sortDirection=asc"
-        val response = executeWithAuth {
-            Request.Builder()
-                .url(url)
-                .header("Accept", "application/json, text/javascript, */*; q=0.01")
-                .header("X-Requested-With", "XMLHttpRequest")
-                .header("Referer", "$componentBaseUrl/componentDetails")
-                .get()
-                .build()
-        }
+    suspend fun getCourseGradeDetail(term: String, crn: String): DetalleCursoResponse =
+        getCourseGradeDetailResult(term, crn).requireComplete()
 
-        val jsonStr = response.body?.string().orEmpty()
-        val componentes = mutableListOf<ComponenteDetalle>()
-
-        try {
-            val parsed = JsonParser.parseString(jsonStr)
-            val items = when {
-                parsed.isJsonArray -> parsed.asJsonArray
-                parsed.isJsonObject && parsed.asJsonObject.has("data") -> parsed.asJsonObject.getAsJsonArray("data")
-                else -> null
-            }
-
-            items?.forEach { elem ->
-                if (elem.isJsonObject) {
-                    val comp = parseComponente(elem.asJsonObject)
-                    val compWithSubs = if (comp.hasSubComponents && comp.componentId != null) {
-                        val subs = getSubcomponentDetails(term, crn, comp.componentId)
-                        comp.copy(subcomponentes = subs)
-                    } else {
-                        comp
-                    }
-                    componentes.add(compWithSubs)
+    suspend fun getCourseGradeDetailResult(term: String, crn: String): RefreshResult<DetalleCursoResponse> = withContext(Dispatchers.IO) {
+        loadBannerGradeDetail(
+            loadComponents = {
+                val url = "$componentBaseUrl/componentDetails?selectedTerm=$term&selectedCrn=$crn&filterText=&pageOffset=0&pageMaxSize=20&sortColumn=name&sortDirection=asc"
+                val response = executeWithAuth {
+                    Request.Builder().url(url).header("Accept", "application/json")
+                        .header("X-Requested-With", "XMLHttpRequest").header("Referer", "$componentBaseUrl/componentDetails").build()
                 }
-            }
-        } catch (_: Exception) {}
-
-        val (proyectada, pendientes) = Calculators.calcularNotaProyectada(componentes)
-
-        DetalleCursoResponse(
-            success = true,
-            totalCount = componentes.size,
-            detalles = componentes,
-            notaProyectada = proyectada,
-            pesosPendientes = pendientes
+                parseBannerObjects(response.use { it.body?.string().orEmpty() })
+            },
+            parseComponent = ::parseComponente,
+            loadSubcomponents = { getSubcomponentDetails(term, crn, it) }
         )
     }
 
     suspend fun getSubcomponentDetails(term: String, crn: String, componentId: Long): List<SubComponente> = withContext(Dispatchers.IO) {
         val url = "$componentBaseUrl/subComponentDetails?selectedTerm=$term&selectedCrn=$crn&selectedComponentId=$componentId&filterText=&pageOffset=0&pageMaxSize=20&sortColumn=name&sortDirection=asc"
         val response = executeWithAuth {
-            Request.Builder()
-                .url(url)
-                .header("Accept", "application/json, text/javascript, */*; q=0.01")
-                .header("X-Requested-With", "XMLHttpRequest")
-                .header("Referer", "$componentBaseUrl/componentDetails")
-                .get()
-                .build()
+            Request.Builder().url(url).header("Accept", "application/json")
+                .header("X-Requested-With", "XMLHttpRequest").header("Referer", "$componentBaseUrl/componentDetails").build()
         }
-
-        val jsonStr = response.body?.string().orEmpty()
-        val subcomponentes = mutableListOf<SubComponente>()
-
-        try {
-            val parsed = JsonParser.parseString(jsonStr)
-            val items = when {
-                parsed.isJsonArray -> parsed.asJsonArray
-                parsed.isJsonObject && parsed.asJsonObject.has("data") -> parsed.asJsonObject.getAsJsonArray("data")
-                else -> null
-            }
-
-            items?.forEach { elem ->
-                if (elem.isJsonObject) {
-                    subcomponentes.add(parseSubComponente(elem.asJsonObject))
-                }
-            }
-        } catch (_: Exception) {}
-
-        subcomponentes
+        parseBannerObjects(response.use { it.body?.string().orEmpty() }).map(::parseSubComponente)
     }
 
     private fun parseComponente(obj: JsonObject): ComponenteDetalle {
@@ -475,7 +405,7 @@ class BannerApi(private val context: Context) {
      */
     suspend fun getHorario(term: String): HorarioResponse = withContext(Dispatchers.IO) {
         try {
-            UpaoAuth.ensureInscriptionSession()
+            UpaoAuth.ensureInscriptionSession(accountUser)
 
             // 1. Visitar registrationHistory para inicializar estado en StudentRegistrationSsb
             val reqHistory = Request.Builder()
@@ -486,8 +416,8 @@ class BannerApi(private val context: Context) {
                 .get()
                 .build()
             try {
-                client.newCall(reqHistory).execute().close()
-            } catch (_: Exception) {}
+                consumeHttpResponse(client, reqHistory) { }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
             // 2. GET registrationHistory/reset?term={term}
             val resetUrl = "$resetRegistrationsUrl?term=$term"
@@ -501,8 +431,10 @@ class BannerApi(private val context: Context) {
                     .build()
             }
 
-            val jsonStr = response.body?.string().orEmpty()
-            val registros = BannerParsers.parseHorarioJson(jsonStr).toMutableList()
+            val jsonStr = response.use { it.body?.string().orEmpty() }
+            val registros = BannerParsers.parseHorarioJson(jsonStr)
+                .filter { BannerParsers.esRegistroActivo(it) }
+                .toMutableList()
 
             val crns = registros.mapNotNull {
                 it.get("courseReferenceNumber")?.asStringOrNull() ?: it.get("crn")?.asStringOrNull()
@@ -524,16 +456,16 @@ class BannerApi(private val context: Context) {
                         .get()
                         .build()
                 }
-                val eventsJson = eventsResponse.body?.string().orEmpty()
+                val eventsJson = eventsResponse.use { it.body?.string().orEmpty() }
                 val eventos = mutableListOf<JsonObject>()
                 try {
                     val parsedEvents = JsonParser.parseString(eventsJson)
                     if (parsedEvents.isJsonArray) {
                         for (elem in parsedEvents.asJsonArray) {
-                            if (elem.isJsonObject) eventos.add(elem.asJsonObject)
+                            if (elem.isJsonObject && BannerParsers.esRegistroActivo(elem.asJsonObject)) eventos.add(elem.asJsonObject)
                         }
                     }
-                } catch (_: Exception) {}
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
                 val finalMeetingMap = if (meetingInfoMap.isEmpty()) {
                     val eventCrns = eventos.mapNotNull { it.get("crn")?.asStringOrNull() }
@@ -554,7 +486,7 @@ class BannerApi(private val context: Context) {
             )
         } catch (e: UpaoException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
             HorarioResponse(
                 success = false,
                 periodo = term,
@@ -580,7 +512,7 @@ class BannerApi(private val context: Context) {
                     .get()
                     .build()
             }
-            val json = response.body?.string().orEmpty()
+            val json = response.use { it.body?.string().orEmpty() }
             val parsed = JsonParser.parseString(json)
             val items: List<JsonObject> = when {
                 parsed.isJsonArray -> parsed.asJsonArray.mapNotNull { if (it.isJsonObject) it.asJsonObject else null }
@@ -599,7 +531,7 @@ class BannerApi(private val context: Context) {
                     meetingMap[c] = item
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
 
         val faltantes = crns.filter { it !in meetingMap }
         if (faltantes.isNotEmpty()) {
@@ -617,7 +549,7 @@ class BannerApi(private val context: Context) {
                                     .get()
                                     .build()
                             }
-                            val j = res.body?.string().orEmpty()
+                            val j = res.use { it.body?.string().orEmpty() }
                             val p = JsonParser.parseString(j)
                             val item = when {
                                 p.isJsonArray && p.asJsonArray.size() > 0 && p.asJsonArray[0].isJsonObject -> p.asJsonArray[0].asJsonObject
@@ -629,7 +561,7 @@ class BannerApi(private val context: Context) {
                                     meetingMap[crn] = item
                                 }
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
                     }
                 }.awaitAll()
             }
@@ -646,6 +578,7 @@ class BannerApi(private val context: Context) {
         val cursosMap = mutableMapOf<String, MutableHorarioCurso>()
 
         for (reg in registros) {
+            if (!BannerParsers.esRegistroActivo(reg)) continue
             val crn = reg.get("courseReferenceNumber")?.asStringOrNull()
                 ?: reg.get("crn")?.asStringOrNull()
             val subject = reg.get("subject")?.asStringOrNull()
@@ -782,6 +715,7 @@ class BannerApi(private val context: Context) {
         val cursosMap = mutableMapOf<String, MutableHorarioCurso>()
 
         for (ev in eventos) {
+            if (!BannerParsers.esRegistroActivo(ev)) continue
             val crn = ev.get("crn")?.asStringOrNull()
                 ?: ev.get("courseReferenceNumber")?.asStringOrNull()
                 ?: ev.get("id")?.asStringOrNull()
@@ -961,14 +895,17 @@ class BannerApi(private val context: Context) {
                         .build()
                 }
 
-                val jsonStr = response.body?.string().orEmpty()
+                val jsonStr = response.use { it.body?.string().orEmpty() }
                 val (rawTotal, pageItems) = BannerParsers.parseAsistenciaJson(jsonStr)
                 if (rawTotal != null) totalCount = rawTotal
                 allItems.addAll(pageItems)
 
-                if (pageItems.isEmpty()) break
+                if (pageItems.isEmpty()) {
+                    if (totalCount != null && allItems.size < totalCount) throw UpaoUnexpectedFormatException("Asistencia incompleta")
+                    break
+                }
                 if (totalCount != null && allItems.size >= totalCount) break
-                if (offset > 10000) break
+                if (offset > 10000) throw UpaoUnexpectedFormatException("Asistencia excede el límite de páginas")
                 offset += pageMaxSize
             }
 
@@ -981,16 +918,10 @@ class BannerApi(private val context: Context) {
                 totalSecciones = totalSecciones,
                 asistencia = cursos
             )
-        } catch (e: UpaoException) {
-            throw e
-        } catch (_: Exception) {
-            AsistenciaResponse(
-                success = false,
-                totalCount = 0,
-                totalSecciones = 0,
-                asistencia = emptyList()
-            )
-        }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: UpaoException) { throw e }
+        catch (e: java.io.IOException) { throw UpaoNetworkException(cause = e) }
+        catch (e: Exception) { throw UpaoUnexpectedFormatException("No se pudo interpretar asistencia", cause = e) }
     }
 
     private fun agruparAsistencia(rawItems: List<JsonObject>): List<AsistenciaCurso> {
