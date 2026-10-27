@@ -255,12 +255,12 @@ fun TarjetaNotasCard(
     val ppsOficial = promedioPeriodoRes?.ppsOficial?.toDouble()
     val ppsCalculado = promedioPeriodoRes?.ppsCalculado?.toDouble()
 
-    val ponderadoLocal: Double? = remember(cursos, notasProyectadas, promedioPeriodoRes) {
+    val ponderadoLocal: Double? = remember(cursos, notasProyectadas, promedioPeriodoRes, periodo) {
         var puntos = 0.0
         var creditos = 0
         cursos.forEach { c ->
             val crn = c.crn ?: c.courseReferenceNumber ?: ""
-            val acumulado = calcularAcumuladoCurso(c, notasProyectadas[crn])
+            val acumulado = calcularAcumuladoCurso(c, notasProyectadas[crn], periodo)
             val cr = resolverCreditosCurso(c, promedioPeriodoRes)
             if (acumulado != null && !acumulado.isNaN() && !acumulado.isInfinite()) {
                 puntos += (acumulado * cr)
@@ -281,7 +281,10 @@ fun TarjetaNotasCard(
     }
 
     val ppsTexto = formatPromedio(pFinal)
-    val gaugeColor = gradeColor(pFinal)
+    val referencia = com.example.upaos.ui.grades.referenciaPonderada(cursos, periodo, promedioPeriodoRes)
+    val gaugeColor = if (ponderadoLocal != null && referencia != null && pFinal != null) {
+        gradeColor(if (pFinal + 1e-9 >= referencia) 10.5 else 0.0)
+    } else gradeColor(pFinal)
 
     Card(
         modifier = modifier
@@ -411,14 +414,16 @@ fun TarjetaNotasCard(
 
             cursos.forEach { curso ->
                 val crn = curso.crn ?: curso.courseReferenceNumber ?: ""
-                val notaAcumulada = calcularAcumuladoCurso(curso, notasProyectadas[crn])
-                val notaActual = curso.displayNotaActual?.toString()?.trim()
+                val notaAcumulada = calcularAcumuladoCurso(curso, notasProyectadas[crn], periodo)
+                val notaActual = (com.example.upaos.data.upao.Calculators.progresoCurso(curso, periodo)?.promedio
+                    ?: curso.displayNotaActual)?.let { com.example.upaos.ui.grades.formatNota(it) }
                 val notaStr = when {
                     !notaActual.isNullOrBlank() && !isPendiente(notaActual) -> notaActual
                     notaAcumulada != null -> String.format(java.util.Locale.US, "%.1f", notaAcumulada)
                     else -> "--"
                 }
-                val notaDouble = notaStr.toDoubleOrNull()
+                val notaDouble = com.example.upaos.data.upao.Calculators.progresoCurso(curso, periodo)?.promedio
+                    ?: com.example.upaos.data.upao.Calculators.toDouble(curso.displayNotaActual)
                 val colorNota = gradeColor(notaDouble)
 
                 Surface(

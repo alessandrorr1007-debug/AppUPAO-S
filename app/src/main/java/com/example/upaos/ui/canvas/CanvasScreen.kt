@@ -1,4 +1,6 @@
 package com.example.upaos.ui.canvas
+import com.example.upaos.ui.components.CampusTopBar
+import com.example.upaos.ui.components.CampusCard
 
 import android.app.DownloadManager
 import android.content.Context
@@ -228,6 +230,10 @@ fun HtmlText(
             tv.setTextColor(textColor)
             tv.setLinkTextColor(linkColor)
             val text = android.text.SpannableString(HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT))
+            // Content can contain inline black text or white backgrounds from Canvas.
+            // Let the selected app theme provide readable foregrounds and backgrounds.
+            text.getSpans(0, text.length, android.text.style.ForegroundColorSpan::class.java).forEach { text.removeSpan(it) }
+            text.getSpans(0, text.length, android.text.style.BackgroundColorSpan::class.java).forEach { text.removeSpan(it) }
             text.getSpans(0, text.length, android.text.style.URLSpan::class.java).forEach { link ->
                 val start = text.getSpanStart(link)
                 val end = text.getSpanEnd(link)
@@ -957,7 +963,7 @@ fun CanvasModuleCard(
                             item.type.equals("Assignment", ignoreCase = true) -> Icons.AutoMirrored.Filled.Assignment
                             else -> Icons.Filled.Description
                         }
-                        val iconColor = if (item.title?.endsWith(".pdf", ignoreCase = true) == true) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary
+                        val iconColor = if (item.title?.endsWith(".pdf", ignoreCase = true) == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -1008,7 +1014,7 @@ fun CanvasTodoItemCard(
 ) {
     val esExamen = item.isQuiz
     val (dueText, dueColor) = remember(item.dueAt) { formatCanvasDueDate(item.dueAt) }
-    val courseColor = remember(item.courseDisplayName) { cursoColor(item.courseDisplayName) }
+    val courseColor = com.example.upaos.ui.theme.campusAccent(remember(item.courseDisplayName) { cursoColor(item.courseDisplayName) })
 
     AppCard(
         modifier = Modifier.fillMaxWidth(),
@@ -1053,7 +1059,7 @@ fun CanvasTodoItemCard(
             // Badge Tarea / Examen
             Surface(
                 shape = RoundedCornerShape(50),
-                color = if (esExamen) Color(0xFFFFEBEE) else Color(0xFFEDE7F6)
+                color = if (esExamen) MaterialTheme.colorScheme.errorContainer else com.example.upaos.ui.theme.campusPurple.copy(alpha = .14f)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
@@ -1062,7 +1068,7 @@ fun CanvasTodoItemCard(
                     Icon(
                         imageVector = if (esExamen) Icons.Filled.Quiz else Icons.AutoMirrored.Filled.Assignment,
                         contentDescription = null,
-                        tint = if (esExamen) Color(0xFFD32F2F) else Color(0xFF673AB7),
+                        tint = if (esExamen) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusPurple,
                         modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -1070,7 +1076,7 @@ fun CanvasTodoItemCard(
                         text = if (esExamen) "EXAMEN" else "TAREA",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (esExamen) Color(0xFFD32F2F) else Color(0xFF673AB7)
+                        color = if (esExamen) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusPurple
                     )
                 }
             }
@@ -1108,7 +1114,7 @@ fun CanvasTodoItemCard(
                     text = dueText,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = dueColor
+                    color = com.example.upaos.ui.theme.campusAccent(dueColor)
                 )
             }
 
@@ -1155,7 +1161,7 @@ fun CanvasAssignmentDetailSheet(
     val assignment = item.assignment
     val esExamen = item.isQuiz
     val (dueText, dueColor) = remember(item.dueAt) { formatCanvasDueDate(item.dueAt) }
-    val courseColor = remember(item.courseDisplayName) { cursoColor(item.courseDisplayName) }
+    val courseColor = com.example.upaos.ui.theme.campusAccent(remember(item.courseDisplayName) { cursoColor(item.courseDisplayName) })
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1199,7 +1205,7 @@ fun CanvasAssignmentDetailSheet(
 
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = if (esExamen) Color(0xFFFFEBEE) else Color(0xFFEDE7F6)
+                    color = if (esExamen) MaterialTheme.colorScheme.errorContainer else com.example.upaos.ui.theme.campusPurple.copy(alpha = .14f)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
@@ -1208,7 +1214,7 @@ fun CanvasAssignmentDetailSheet(
                         Icon(
                             imageVector = if (esExamen) Icons.Filled.Quiz else Icons.AutoMirrored.Filled.Assignment,
                             contentDescription = null,
-                            tint = if (esExamen) Color(0xFFD32F2F) else Color(0xFF673AB7),
+                            tint = if (esExamen) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusPurple,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -1216,7 +1222,7 @@ fun CanvasAssignmentDetailSheet(
                             text = if (esExamen) "EXAMEN" else "TAREA",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (esExamen) Color(0xFFD32F2F) else Color(0xFF673AB7)
+                            color = if (esExamen) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusPurple
                         )
                     }
                 }
@@ -1247,7 +1253,7 @@ fun CanvasAssignmentDetailSheet(
                     text = dueText,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = dueColor
+                    color = com.example.upaos.ui.theme.campusAccent(dueColor)
                 )
             }
 
@@ -1279,7 +1285,7 @@ fun CanvasAssignmentDetailSheet(
                         text = if (hasSubmitted) "Entregado" else "Pendiente",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (hasSubmitted) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        color = if (hasSubmitted) com.example.upaos.ui.theme.campusSuccess else com.example.upaos.ui.theme.campusWarning
                     )
                 }
 
@@ -1306,7 +1312,7 @@ fun CanvasAssignmentDetailSheet(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Card(
+                CampusCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
@@ -1353,9 +1359,9 @@ fun CanvasNotificationCard(
         else -> Icons.Filled.Notifications
     }
     val iconColor = when (item.type?.lowercase()) {
-        "announcement" -> Color(0xFFE65100)
+        "announcement" -> com.example.upaos.ui.theme.campusWarning
         "discussiontopic" -> Color(0xFF0288D1)
-        "submission" -> Color(0xFF2E7D32)
+        "submission" -> com.example.upaos.ui.theme.campusSuccess
         else -> MaterialTheme.colorScheme.primary
     }
 
@@ -1697,7 +1703,7 @@ fun CanvasConversationDetailSheet(
             } else {
                 val messages = detail?.messages ?: emptyList()
                 if (messages.isEmpty()) {
-                    Card(
+                    CampusCard(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
@@ -1724,7 +1730,7 @@ fun CanvasConversationDetailSheet(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         messages.forEach { msg ->
                             val author = participants.firstOrNull { it.id == msg.authorId }?.name ?: conversation.authorName
-                            Card(
+                            CampusCard(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(
@@ -1924,7 +1930,7 @@ fun InAppWebViewModal(
             color = MaterialTheme.colorScheme.background
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                TopAppBar(
+                CampusTopBar(
                     title = {
                         Text(
                             text = title,

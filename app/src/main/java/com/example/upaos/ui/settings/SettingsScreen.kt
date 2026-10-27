@@ -1,6 +1,8 @@
 package com.example.upaos.ui.settings
+import com.example.upaos.ui.components.CampusTopBar
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +16,7 @@ import androidx.compose.material.icons.filled.EmojiObjects
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +38,32 @@ import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.cursoColor
 import kotlinx.coroutines.launch
 
+private enum class SettingsSection(val title: String) {
+    GENERAL("Ajustes"), PRIVACY("Privacidad y datos"), NOTIFICATIONS("Notificaciones")
+}
+
+@Composable
+private fun SettingsDestinationRow(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    AppCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)) {
+                Icon(icon, null, Modifier.padding(12.dp).size(22.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -44,12 +73,19 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var section by rememberSaveable(usuario) { mutableStateOf(SettingsSection.GENERAL) }
+    val pageScroll = key(section) { rememberScrollState() }
+    fun back() {
+        if (section == SettingsSection.GENERAL) onBack() else section = SettingsSection.GENERAL
+    }
+    BackHandler(enabled = section != SettingsSection.GENERAL) { back() }
     val notificationPrefs = remember { NotificationPreferences(context) }
     val securityPrefs = remember { SecurityPreferences(context) }
     val puedeUsarBiometria = remember { BiometricHelper.puedeAutenticar(context) }
     var biometricLockEnabled by remember { mutableStateOf(securityPrefs.isBiometricLockEnabled) }
 
     var checkNotasEnabled by remember { mutableStateOf(notificationPrefs.checkNotasEnabled) }
+    var gradeSyncPreference by remember { mutableStateOf(notificationPrefs.gradeSyncPreference) }
     var checkAsistenciaEnabled by remember { mutableStateOf(notificationPrefs.checkAsistenciaEnabled) }
     var recordatorioClasesEnabled by remember { mutableStateOf(notificationPrefs.recordatorioClasesEnabled) }
     var cargando by remember { mutableStateOf(true) }
@@ -99,6 +135,7 @@ fun SettingsScreen(
 
                     if (cambiarNotas || checkAsistenciaEnabled) {
                         SyncScheduler.start(context)
+                        if (cambiarNotas) SyncScheduler.runNow(context)
                     } else {
                         SyncScheduler.cancel(context)
                     }
@@ -111,11 +148,10 @@ fun SettingsScreen(
                     if (cambiarAsistencia || checkNotasEnabled) {
                         SyncScheduler.start(context)
                         SyncScheduler.runNow(context)
-                        Toast.makeText(context, "Notificaciones de asistencias activadas", Toast.LENGTH_SHORT).show()
                     } else {
                         SyncScheduler.cancel(context)
-                        Toast.makeText(context, "Notificaciones de asistencia desactivadas", Toast.LENGTH_SHORT).show()
                     }
+                    Toast.makeText(context, if (cambiarAsistencia) "Notificaciones de asistencia activadas" else "Notificaciones de asistencia desactivadas", Toast.LENGTH_SHORT).show()
                 }
                 if (cambiarRecordatorioClases != null) {
                     recordatorioClasesEnabled = cambiarRecordatorioClases
@@ -138,13 +174,13 @@ fun SettingsScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text("Ajustes", fontWeight = FontWeight.Bold) },
+            CampusTopBar(
+                title = { Text(section.title, fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { back() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 }
@@ -155,7 +191,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(pageScroll)
                 .padding(16.dp)
         ) {
             if (cargando) {
@@ -203,6 +239,8 @@ fun SettingsScreen(
                 return@Column
             }
 
+            when (section) {
+                SettingsSection.GENERAL -> {
             val avatarColor = cursoColor(nombreEstudiante ?: usuario)
             AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -223,8 +261,8 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Estudiante",
-                            style = MaterialTheme.typography.titleSmall,
+                            text = nombreEstudiante ?: "Nombre no disponible",
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(2.dp))
@@ -233,20 +271,92 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Nombre completo: ${nombreEstudiante ?: "No disponible"}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                    }
+                }
+            }
+
+                Spacer(Modifier.height(14.dp))
+                SettingsDestinationRow("Privacidad y datos", "Cuentas y datos del dispositivo", Icons.Filled.Person) {
+                    section = SettingsSection.PRIVACY
+                }
+                Spacer(Modifier.height(10.dp))
+                SettingsDestinationRow("Activar notificaciones", "Notas, asistencias y recordatorios", Icons.Filled.NotificationsActive) {
+                    section = SettingsSection.NOTIFICATIONS
+                }
+                Spacer(Modifier.height(14.dp))
+            // Sección Seguridad y Bloqueo de la App
+            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Bloqueo de la app",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (puedeUsarBiometria) {
+                                    "Solicitar huella, rostro o PIN al abrir o tras 1 min en segundo plano"
+                                } else {
+                                    "No disponible: configura un PIN, patrón o huella en tu teléfono para activar el bloqueo"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (puedeUsarBiometria) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = biometricLockEnabled,
+                            onCheckedChange = { nuevo ->
+                                if (nuevo && !puedeUsarBiometria) {
+                                    Toast.makeText(
+                                        context,
+                                        "Tu dispositivo no tiene biometría ni PIN/patrón configurado en los Ajustes del sistema.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } else {
+                                    biometricLockEnabled = nuevo
+                                    securityPrefs.isBiometricLockEnabled = nuevo
+                                    (context as? android.app.Activity)?.let { act ->
+                                        if (nuevo) {
+                                            act.window.setFlags(
+                                                android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                                                android.view.WindowManager.LayoutParams.FLAG_SECURE
+                                            )
+                                        } else {
+                                            act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = puedeUsarBiometria || biometricLockEnabled
                         )
                     }
                 }
             }
 
-            PrivacyControls(usuario, onAccountRemoved)
-
-            Spacer(modifier = Modifier.height(14.dp))
-
+                }
+                SettingsSection.PRIVACY -> { PrivacyControls(usuario, onAccountRemoved) }
+                SettingsSection.NOTIFICATIONS -> {
             AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -332,6 +442,39 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Spacer(modifier = Modifier.height(12.dp))
+
+                    Text("Frecuencia de revisión de notas", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Android puede retrasar las revisiones por batería o conexión. El modo frecuente muestra un aviso de revisión en segundo plano.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    listOf(
+                        Triple(com.example.upaos.service.SyncPolicy.Preference.SIEMPRE_INTENSIVO, "Frecuente", "Cada 2 minutos aproximadamente. Puede consumir la batería un poco más rápido."),
+                        Triple(com.example.upaos.service.SyncPolicy.Preference.NORMAL, "Normal", "Revisión en segundo plano cada 15 minutos aproximadamente."),
+                        Triple(com.example.upaos.service.SyncPolicy.Preference.AUTOMATICO, "Automático", "Revisión frecuente en semanas de evaluaciones (7–9 y 15–17), de 07:00 a 23:00. Las demás semanas usa el modo normal.")
+                    ).forEach { (preference, title, description) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable(enabled = checkNotasEnabled && !guardando) {
+                                gradeSyncPreference = preference
+                                notificationPrefs.gradeSyncPreference = preference
+                                com.example.upaos.service.GradeSyncController.reconcile(context)
+                                if (preference != com.example.upaos.service.SyncPolicy.Preference.NORMAL) {
+                                    Toast.makeText(context, description, Toast.LENGTH_LONG).show()
+                                }
+                            }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = gradeSyncPreference == preference, onClick = null, enabled = checkNotasEnabled && !guardando)
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(title, style = MaterialTheme.typography.bodyMedium)
+                                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                    Spacer(Modifier.height(12.dp))
 
                     // Opción 2: Notificaciones de Asistencia
                     Row(
@@ -487,83 +630,26 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Sección Seguridad y Bloqueo de la App
-            AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Filled.Lock,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Bloqueo de la app",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = if (puedeUsarBiometria) {
-                                    "Solicitar huella, rostro o PIN al abrir o tras 1 min en segundo plano"
-                                } else {
-                                    "No disponible: configura un PIN, patrón o huella en tu teléfono para activar el bloqueo"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (puedeUsarBiometria) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                                fontSize = 11.sp
-                            )
-                        }
-                        Switch(
-                            checked = biometricLockEnabled,
-                            onCheckedChange = { nuevo ->
-                                if (nuevo && !puedeUsarBiometria) {
-                                    Toast.makeText(
-                                        context,
-                                        "Tu dispositivo no tiene biometría ni PIN/patrón configurado en los Ajustes del sistema.",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                } else {
-                                    biometricLockEnabled = nuevo
-                                    securityPrefs.isBiometricLockEnabled = nuevo
-                                    (context as? android.app.Activity)?.let { act ->
-                                        if (nuevo) {
-                                            act.window.setFlags(
-                                                android.view.WindowManager.LayoutParams.FLAG_SECURE,
-                                                android.view.WindowManager.LayoutParams.FLAG_SECURE
-                                            )
-                                        } else {
-                                            act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = puedeUsarBiometria || biometricLockEnabled
-                        )
-                    }
-                }
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Tu dispositivo está listo para recibir notificaciones de notas y asistencias en segundo plano.",
+                text = "Para recibir avisos, permite las notificaciones de UPAO S y sus categorías en los ajustes de Android. La revisión requiere una sesión guardada y conexión.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
+            TextButton(onClick = {
+                val intent = if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    }
+                } else {
+                    android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:${context.packageName}"))
+                }
+                context.startActivity(intent)
+            }) { Text("Revisar permisos de notificaciones") }
+                }
+            }
         }
     }
 }

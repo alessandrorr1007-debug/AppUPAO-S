@@ -1,4 +1,6 @@
 package com.example.upaos.ui.calculadora
+import com.example.upaos.ui.components.CampusTopBar
+import com.example.upaos.ui.components.CampusCard
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,9 +31,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upaos.ui.theme.UpaoBlue
-import com.example.upaos.ui.theme.UpaoGreen
-import com.example.upaos.ui.theme.UpaoRed
+import com.example.upaos.ui.theme.campusInfo as UpaoBlue
+import com.example.upaos.ui.theme.campusSuccess as UpaoGreen
+import com.example.upaos.ui.theme.campusError as UpaoRed
 import kotlin.math.roundToInt
 
 // Nota mínima aprobatoria oficial UPAO
@@ -156,7 +158,7 @@ fun CalculadoraScreen(onBack: () -> Unit) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            CampusTopBar(
                 title = {
                     Text(
                         text = "Calculadora de Notas",
@@ -309,7 +311,7 @@ private fun ResultadoBanner(
         EstadoCalculo.NEUTRO -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Card(
+    CampusCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         shape = RoundedCornerShape(20.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -445,7 +447,7 @@ private fun NotaCard(
     // Aporte real en puntos
     val aporte = if (tieneNota && !esInvalido) (d!! * componente.peso / 100.0) else null
 
-    Card(
+    CampusCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         shape = RoundedCornerShape(18.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),

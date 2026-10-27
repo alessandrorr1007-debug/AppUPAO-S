@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -52,6 +53,7 @@ import com.example.upaos.ui.theme.UpaoGreen
 import com.example.upaos.ui.theme.UpaoOrange
 import com.example.upaos.ui.theme.UpaoOrangeBright
 import com.example.upaos.ui.theme.UpaoRed
+import com.example.upaos.ui.theme.campusAccent
 import kotlin.math.abs
 
 // ---------- Logo monograma UPAO (dibujado, evita el bug de painterResource) ----------
@@ -156,7 +158,7 @@ fun PrimaryButton(
     enabled: Boolean = true,
     loading: Boolean = false,
     icon: ImageVector? = null,
-    height: Dp = 44.dp,
+    height: Dp = 48.dp,
     colors: ButtonColors = ButtonDefaults.buttonColors(
         containerColor = MaterialTheme.colorScheme.primary,
         contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -167,14 +169,14 @@ fun PrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled && !loading,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = colors,
         elevation = ButtonDefaults.buttonElevation(
             defaultElevation = if (enabled && !loading) 2.dp else 0.dp,
             pressedElevation = 1.dp,
             disabledElevation = 0.dp
         ),
-        modifier = modifier.height(height)
+        modifier = modifier.heightIn(min = height)
     ) {
         AnimatedContent(
             targetState = loading,
@@ -226,7 +228,13 @@ fun ModernTextField(
         minLines = minLines,
         maxLines = maxLines,
         isError = isError,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            focusedBorderColor = MaterialTheme.colorScheme.primary
+        ),
         placeholder = placeholder?.let { txt -> { Text(txt, fontSize = 13.sp) } },
         leadingIcon = leadingIcon?.let { ic -> { Icon(ic, contentDescription = null, modifier = Modifier.size(20.dp)) } },
         trailingIcon = trailingIcon,
@@ -242,9 +250,9 @@ fun ModernTextField(
 fun AppCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    color: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-    corner: Dp = 14.dp,
+    color: Color = MaterialTheme.colorScheme.surface,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+    corner: Dp = 20.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(corner)
@@ -253,7 +261,8 @@ fun AppCard(
             onClick = onClick,
             colors = CardDefaults.cardColors(containerColor = color),
             shape = shape,
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp, pressedElevation = 2.dp),
             modifier = modifier
         ) {
             Column(modifier = Modifier.padding(contentPadding), content = content)
@@ -262,7 +271,8 @@ fun AppCard(
         Card(
             colors = CardDefaults.cardColors(containerColor = color),
             shape = shape,
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = modifier
         ) {
             Column(modifier = Modifier.padding(contentPadding), content = content)
@@ -282,6 +292,9 @@ fun SectionHeader(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(Modifier.width(3.dp).height(28.dp).clip(RoundedCornerShape(2.dp))
+            .background(MaterialTheme.colorScheme.primary))
+        Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -309,11 +322,12 @@ fun StatusBadge(
     color: Color,
     modifier: Modifier = Modifier
 ) {
+    val readableColor = campusAccent(color)
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(50),
         color = color.copy(alpha = 0.12f),
-        contentColor = color
+        contentColor = readableColor
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -323,7 +337,7 @@ fun StatusBadge(
                 modifier = Modifier
                     .size(5.dp)
                     .clip(CircleShape)
-                    .background(color)
+                    .background(readableColor)
             )
             Spacer(modifier = Modifier.width(5.dp))
             Text(
@@ -347,19 +361,19 @@ fun EmptyState(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 32.dp),
+            .padding(horizontal = 20.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier.size(64.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -369,14 +383,15 @@ fun EmptyState(
             text = title,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center
         )
         if (subtitle != null) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
         }
@@ -410,7 +425,7 @@ fun ErrorView(
         )
         if (onRetry != null) {
             Spacer(modifier = Modifier.height(8.dp))
-            TextButton(onClick = onRetry, modifier = Modifier.height(36.dp)) {
+            TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
                 Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("Reintentar", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -432,7 +447,7 @@ fun ReusableDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(28.dp),
         title = { Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
         text = { Text(text, style = MaterialTheme.typography.bodyMedium) },
         confirmButton = {
@@ -506,6 +521,12 @@ fun gradeColor(value: Any?): Color {
     }
 }
 
+@Composable
+fun gradeAccent(value: Any?): Color = campusAccent(gradeColor(value))
+
+@Composable
+fun courseAccent(name: String?): Color = campusAccent(cursoColor(name))
+
 fun estadoNota(value: Any?): String = when {
     isPendiente(value) -> "Por evaluar"
     (gradeValue(value) ?: 0.0) >= 10.5 -> "Aprobado"
@@ -524,6 +545,40 @@ fun toTitleCase(texto: String?): String {
     return t.lowercase().split(' ').joinToString(" ") { palabra ->
         if (palabra.isEmpty()) "" else if (palabra in palabrasCortas) palabra else palabra.replaceFirstChar { it.uppercase() }
     }
+}
+
+/**
+ * Limpia el mensaje de una notificación para no repetir el nombre del curso ni su sección
+ * cuando ya se muestra como título o encabezado de la tarjeta.
+ */
+fun limpiarMensajeNotificacion(mensaje: String, curso: String?): String {
+    var s = mensaje.trim()
+    if (!curso.isNullOrBlank()) {
+        val c = curso.trim()
+        if (s.startsWith(c, ignoreCase = true)) {
+            s = s.substring(c.length).trim()
+        } else {
+            val baseCourse = c.replace(Regex("\\s*\\(.*?\\)"), "")
+                .replace(Regex("(?i)\\s*secci[oó]n\\s*[a-z0-9]+"), "").trim()
+            if (baseCourse.length >= 3 && s.startsWith(baseCourse, ignoreCase = true)) {
+                s = s.substring(baseCourse.length).trim()
+                s = s.replace(Regex("(?i)^\\s*\\(.*?\\)"), "").trim()
+                s = s.replace(Regex("(?i)^\\s*secci[oó]n\\s*[a-z0-9]+"), "").trim()
+            }
+        }
+        s = s.trimStart(':', '-', '–', '·', ' ', ',').trim()
+    }
+    if (s.contains(":")) {
+        val partes = s.split(":", limit = 2)
+        if (partes.size == 2 && !curso.isNullOrBlank()) {
+            val prefix = partes[0].trim().lowercase()
+            val cursoLow = curso.lowercase()
+            if (cursoLow.contains(prefix) || prefix.contains(cursoLow.take(5))) {
+                s = partes[1].trim()
+            }
+        }
+    }
+    return s.ifBlank { mensaje }
 }
 
 // ---------- Color identificador por curso ----------

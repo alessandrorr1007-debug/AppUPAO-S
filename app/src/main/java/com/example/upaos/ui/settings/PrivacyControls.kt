@@ -1,4 +1,5 @@
 package com.example.upaos.ui.settings
+import com.example.upaos.ui.components.CampusCard
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -22,7 +23,7 @@ fun PrivacyControls(usuario: String, onAccountRemoved: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    Card(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+    CampusCard(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Privacidad y datos", style = MaterialTheme.typography.titleMedium)
             Text("Elige una cuenta guardada. Esto solo afecta a UPAO S; tu cuenta universitaria y Canvas se conservan.", style = MaterialTheme.typography.bodySmall)

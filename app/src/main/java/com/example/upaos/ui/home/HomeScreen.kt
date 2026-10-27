@@ -1,6 +1,10 @@
 package com.example.upaos.ui.home
+import com.example.upaos.ui.components.CampusTopBar
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -22,6 +26,16 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.EventAvailable
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.FactCheck
+import androidx.compose.material.icons.outlined.Assignment
+import androidx.compose.material.icons.filled.FactCheck
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.DisposableEffect
@@ -50,6 +64,20 @@ import com.example.upaos.ui.grades.GradesContent
 import com.example.upaos.ui.horario.HorarioContent
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import kotlinx.coroutines.launch
+
+@Composable
+private fun CampusNavigationIcon(selected: Boolean, active: ImageVector, inactive: ImageVector) {
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.12f else 1f,
+        animationSpec = spring(dampingRatio = .7f, stiffness = 500f),
+        label = "navigationSelection"
+    )
+    Icon(
+        imageVector = if (selected) active else inactive,
+        contentDescription = null,
+        modifier = Modifier.size(22.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -266,7 +294,7 @@ fun HomeScreen(
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
-                TopAppBar(
+                CampusTopBar(
                     navigationIcon = {
                         IconButton(
                             onClick = {
@@ -292,7 +320,7 @@ fun HomeScreen(
                                 3 -> "Asistencia"
                                 else -> "Canvas LMS"
                             },
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
                     },
@@ -347,21 +375,29 @@ fun HomeScreen(
             },
             bottomBar = {
                 val navBarColors = NavigationBarItemDefaults.colors(
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    indicatorColor = MaterialTheme.colorScheme.primary,
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Surface(
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f)),
+                    shadowElevation = 6.dp
+                ) {
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    tonalElevation = 2.dp
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                    windowInsets = WindowInsets(0, 0, 0, 0)
                 ) {
                     NavigationBarItem(
                         selected = pagerState.currentPage == 0,
                         onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
-                        icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Hoy", fontSize = 12.sp) },
+                        icon = { CampusNavigationIcon(pagerState.currentPage == 0, Icons.Filled.EventAvailable, Icons.Outlined.EventAvailable) },
+                        label = { Text("Hoy", fontSize = 10.sp, maxLines = 1, softWrap = false) },
                         colors = navBarColors
                     )
                     NavigationBarItem(
@@ -369,8 +405,8 @@ fun HomeScreen(
                         onClick = {
                             coroutineScope.launch { pagerState.animateScrollToPage(1) }
                         },
-                        icon = { Icon(Icons.Filled.School, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Cursos", fontSize = 12.sp) },
+                        icon = { CampusNavigationIcon(pagerState.currentPage == 1, Icons.Filled.School, Icons.Outlined.School) },
+                        label = { Text("Cursos", fontSize = 10.sp, maxLines = 1, softWrap = false) },
                         colors = navBarColors
                     )
                     NavigationBarItem(
@@ -378,8 +414,8 @@ fun HomeScreen(
                         onClick = {
                             coroutineScope.launch { pagerState.animateScrollToPage(2) }
                         },
-                        icon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Horario", fontSize = 12.sp) },
+                        icon = { CampusNavigationIcon(pagerState.currentPage == 2, Icons.Filled.Schedule, Icons.Outlined.Schedule) },
+                        label = { Text("Horario", fontSize = 10.sp, maxLines = 1, softWrap = false) },
                         colors = navBarColors
                     )
                     NavigationBarItem(
@@ -387,8 +423,8 @@ fun HomeScreen(
                         onClick = {
                             coroutineScope.launch { pagerState.animateScrollToPage(3) }
                         },
-                        icon = { Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Asistencia", fontSize = 12.sp) },
+                        icon = { CampusNavigationIcon(pagerState.currentPage == 3, Icons.Filled.FactCheck, Icons.Outlined.FactCheck) },
+                        label = { Text("Asistencia", fontSize = 10.sp, maxLines = 1, softWrap = false) },
                         colors = navBarColors
                     )
                     NavigationBarItem(
@@ -396,10 +432,11 @@ fun HomeScreen(
                         onClick = {
                             coroutineScope.launch { pagerState.animateScrollToPage(4) }
                         },
-                        icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        label = { Text("Canvas", fontSize = 12.sp) },
+                        icon = { CampusNavigationIcon(pagerState.currentPage == 4, Icons.AutoMirrored.Filled.Assignment, Icons.Outlined.Assignment) },
+                        label = { Text("Canvas", fontSize = 10.sp, maxLines = 1, softWrap = false) },
                         colors = navBarColors
                     )
+                }
                 }
             }
         ) { padding ->
@@ -409,43 +446,45 @@ fun HomeScreen(
                 .padding(padding)
         ) {
             if (semanaEtiqueta != null && pagerState.currentPage == 0) {
-                Surface(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(50)
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFF102C67), Color(0xFF245BE0), Color(0xFF197DAD))
+                            )
+                        )
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.EventNote,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.15f),
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.EventNote,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = semanaEtiqueta!!,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
                     }
                 }
-            }
-            if (pagerState.currentPage == 0) {
-                Text(
-                    text = greetingName?.let { "Hola, $it" } ?: "Hola",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 10.dp)
-                )
             }
             HorizontalPager(
                 state = pagerState,

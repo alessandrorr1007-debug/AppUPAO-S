@@ -93,8 +93,9 @@ fun LoginScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        MaterialTheme.colorScheme.surface,
-                        MaterialTheme.colorScheme.surfaceContainerLow
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = .65f),
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.background
                     )
                 )
             )
@@ -147,7 +148,7 @@ fun LoginScreen(
 
                 AppCard(
                     contentPadding = PaddingValues(16.dp),
-                    corner = 18.dp
+                    corner = 28.dp
                 ) {
                     ModernTextField(
                         value = usuario,
@@ -255,7 +256,7 @@ fun LoginScreen(
                         enabled = isUserValid && password.isNotEmpty(),
                         loading = isLoading,
                         icon = Icons.AutoMirrored.Filled.Login,
-                        height = 46.dp,
+                        height = 52.dp,
                         modifier = Modifier.fillMaxWidth()
                     )
 

@@ -192,9 +192,9 @@ internal class GradeSyncCheck(private val applicationContext: Context) {
                                 }
 
                                 val mensaje = if (notaPreviaSub.isNullOrBlank()) {
-                                    "$cursoNombre: Calificación en $detalleSub: $notaActualSub."
+                                    "Calificación en $detalleSub: $notaActualSub."
                                 } else {
-                                    "$cursoNombre: Tu nota en $detalleSub cambió de $notaPreviaSub a $notaActualSub."
+                                    "Tu nota en $detalleSub cambió de $notaPreviaSub a $notaActualSub."
                                 }
 
                                 publishForCurrentSession { emitGrade(titulo, mensaje, "$key/sub/$subKey/$notaActualSub") }
@@ -220,9 +220,9 @@ internal class GradeSyncCheck(private val applicationContext: Context) {
                                     "🎓 Nota actualizada en $compNombre"
                                 }
                                 val mensaje = if (notaPreviaComp.isNullOrBlank()) {
-                                    "$cursoNombre: Calificación en $compNombre: $notaActualComp."
+                                    "Calificación en $compNombre: $notaActualComp."
                                 } else {
-                                    "$cursoNombre: Tu nota en $compNombre cambió de $notaPreviaComp a $notaActualComp."
+                                    "Tu nota en $compNombre cambió de $notaPreviaComp a $notaActualComp."
                                 }
                                 publishForCurrentSession { emitGrade(titulo, mensaje, "$key/comp/$compKey/$notaActualComp") }
                                 upaoRepository.registrarNotificacionLocal(user, mensaje, curso = cursoNombre, componente = compNombre)

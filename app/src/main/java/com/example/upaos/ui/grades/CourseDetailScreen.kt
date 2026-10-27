@@ -1,4 +1,6 @@
 package com.example.upaos.ui.grades
+import com.example.upaos.ui.components.CampusTopBar
+import com.example.upaos.ui.components.CampusCard
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -17,7 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.example.upaos.data.model.ComponenteDetalle
 import com.example.upaos.ui.components.AppCard
 import com.example.upaos.ui.components.EmptyState
-import com.example.upaos.ui.components.gradeColor
+import com.example.upaos.ui.components.gradeAccent
 import com.example.upaos.ui.components.isPendiente
 import com.example.upaos.ui.components.toTitleCase
 import kotlinx.coroutines.launch
@@ -73,7 +75,7 @@ fun CourseDetailScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            CampusTopBar(
                 title = { Text(toTitleCase(courseName).ifBlank { "Detalle del curso" }, fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
@@ -93,14 +95,6 @@ fun CourseDetailScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp)
         ) {
-            if (crn.isNotBlank()) {
-                Text(
-                    text = "NRC $crn",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
 
             when {
                 isLoading -> {
@@ -128,28 +122,11 @@ fun CourseDetailScreen(
                     )
                 }
                 else -> {
-                    val componentesEvaluados = componentes.filter { !isPendiente(it.displayNota) }
-                    val sumaPesosEvaluados = componentesEvaluados.sumOf {
-                        it.displayPeso?.toString()?.replace("%", "")?.trim()?.toDoubleOrNull() ?: 0.0
-                    }
-                    val sumaPonderada = componentesEvaluados.sumOf { comp ->
-                        val nota = comp.displayNota?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
-                        val peso = comp.displayPeso?.toString()?.replace("%", "")?.trim()?.toDoubleOrNull() ?: 0.0
-                        nota * (peso / 100.0)
-                    }
-                    val puntosAcumulados = (notaProyectada?.toString()?.toDoubleOrNull() ?: sumaPonderada)
-                        .takeUnless { it.isNaN() || it.isInfinite() } ?: 0.0
-                    val promedioParcial: Double? = when {
-                        sumaPesosEvaluados > 0.0 -> (sumaPonderada / (sumaPesosEvaluados / 100.0)).takeUnless { it.isNaN() || it.isInfinite() }
-                        componentesEvaluados.isNotEmpty() -> {
-                            val notas = componentesEvaluados.mapNotNull { it.displayNota?.toString()?.trim()?.toDoubleOrNull() }
-                            if (notas.isNotEmpty()) notas.average().takeUnless { it.isNaN() || it.isInfinite() } else null
-                        }
-                        else -> null
-                    }
-
+                    val progreso = com.example.upaos.data.upao.Calculators.progreso(componentes, periodo)
+                    val puntosAcumulados = progreso?.acumulado ?: 0.0
+                    val promedioParcial = progreso?.promedio
                     if (promedioParcial != null || notaProyectada != null) {
-                        Card(
+                        CampusCard(
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                             ),
@@ -174,7 +151,7 @@ fun CourseDetailScreen(
                                             text = formatNota(promedioParcial ?: puntosAcumulados),
                                             fontSize = 22.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = gradeColor(promedioParcial ?: puntosAcumulados)
+                                            color = gradeAccent(promedioParcial ?: puntosAcumulados)
                                         )
                                     }
                                     Surface(
@@ -196,31 +173,10 @@ fun CourseDetailScreen(
                                                 text = "${formatNota(puntosAcumulados)} / 20 pts",
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                color = AcumuladoColor(progreso?.acumulado, progreso?.minimoAcumulado)
                                             )
                                         }
                                     }
-                                }
-                                val faltan = (10.5 - puntosAcumulados).coerceAtLeast(0.0)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = if (pesosPendientes.isNotEmpty() && faltan > 0.0) {
-                                        "Llevas ${formatNota(puntosAcumulados)} pts asegurados (promedio parcial ${formatNota(promedioParcial)}). Faltan ${formatNota(faltan)} pts para aprobar con 10.5."
-                                    } else if (pesosPendientes.isNotEmpty()) {
-                                        "¡Ya tienes ${formatNota(puntosAcumulados)} pts asegurados! Tienes el curso aprobado."
-                                    } else {
-                                        "Evaluaciones completadas · Nota final: ${formatNota(puntosAcumulados)}"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (pesosPendientes.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Por evaluar: ${pesosPendientes.joinToString(", ")}",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.outline
-                                    )
                                 }
                             }
                         }
@@ -230,8 +186,8 @@ fun CourseDetailScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     AppCard(
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        corner = 14.dp,
+                        color = MaterialTheme.colorScheme.surface,
+                        corner = 20.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column {
@@ -239,7 +195,7 @@ fun CourseDetailScreen(
                                 if (index > 0) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 }
-                                ComponenteRow(componente)
+                                ComponenteRow(componente, periodo)
                             }
                         }
                     }

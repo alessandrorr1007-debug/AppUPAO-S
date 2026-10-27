@@ -232,15 +232,7 @@ class DashboardViewModel(app: Application, private val token: String, private va
                     val crn = course.crn ?: course.courseReferenceNumber ?: continue
                     attempt("proyectada_$crn") {
                         val detail = upaoRepository.getDetalleCurso(result.gradePeriod, result.career, crn)
-                        val compEvaluados = detail.detalles.filter { !isPendiente(it.displayNota) }
-                        val sumaPonderada = if (compEvaluados.isNotEmpty()) {
-                            compEvaluados.sumOf { comp ->
-                                val nota = comp.displayNota?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
-                                val peso = comp.displayPeso?.toString()?.replace("%", "")?.trim()?.toDoubleOrNull() ?: 0.0
-                                nota * (peso / 100.0)
-                            }
-                        } else null
-                        val puntosCalculados = detail.notaProyectada ?: sumaPonderada
+                        val puntosCalculados = com.example.upaos.data.upao.Calculators.progreso(detail.detalles, result.gradePeriod)?.acumulado
                         result = result.copy(projected = result.projected + (crn to puntosCalculados))
                         puntosCalculados?.let { gradesCache.guardar("proyectada_${user}_$crn", it.toString()) }
                     }

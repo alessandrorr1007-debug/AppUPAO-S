@@ -27,7 +27,7 @@ object GradeSyncController {
         if (!prefs.checkNotasEnabled || !TokenManager(context).shouldKeepLoggedIn()) return SyncPolicy.Mode.NORMAL
         val now = ZonedDateTime.now(ZoneId.of("America/Lima"))
         val week = prefs.syncAcademicPeriod?.let { AcademicCalendar.calcularSemana(it, Date.from(now.toInstant())).semana }
-        return SyncPolicy.modo(week, now.toLocalTime())
+        return SyncPolicy.modo(week, now.toLocalTime(), prefs.gradeSyncPreference)
     }
     fun ensureBackup(context: Context) {
         if (!NotificationPreferences(context).checkNotasEnabled || !TokenManager(context).shouldKeepLoggedIn()) {

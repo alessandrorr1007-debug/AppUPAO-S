@@ -32,7 +32,8 @@ internal fun parseBannerObjects(json: String): List<JsonObject> {
 internal suspend fun loadBannerGradeDetail(
     loadComponents: suspend () -> List<JsonObject>,
     parseComponent: (JsonObject) -> ComponenteDetalle,
-    loadSubcomponents: suspend (Long) -> List<SubComponente>
+    loadSubcomponents: suspend (Long) -> List<SubComponente>,
+    periodo: String? = null
 ): RefreshResult<DetalleCursoResponse> {
     val components = when (val root = captureRefresh("Componentes de Banner", loadComponents)) {
         is RefreshResult.Complete -> root.value
@@ -59,7 +60,7 @@ internal suspend fun loadBannerGradeDetail(
     }
     val combined = combineRefreshes(results)
     return combined.map { values ->
-        val (projected, pending) = Calculators.calcularNotaProyectada(values)
+        val (projected, pending) = Calculators.calcularNotaProyectada(values, periodo)
         DetalleCursoResponse(success = combined is RefreshResult.Complete, totalCount = values.size,
             detalles = values, notaProyectada = projected, pesosPendientes = pending)
     }
