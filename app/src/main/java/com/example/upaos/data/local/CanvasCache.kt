@@ -168,8 +168,14 @@ class CanvasCache(private val context: Context) : CanvasCacheStore {
 
     suspend fun saveCanvasList(user: String, key: String, json: String) {
         if (AccountPrivacy.isDeleting(user) || TokenManager(context).getSavedUser() != user) return
-        context.canvasDataStore.edit { it[stringPreferencesKey("canvas_read_${user.trim().lowercase()}_$key")] = json }
+        context.canvasDataStore.edit {
+            it[stringPreferencesKey("canvas_read_${user.trim().lowercase()}_$key")] = json
+            it[androidx.datastore.preferences.core.longPreferencesKey("canvas_read_${user.trim().lowercase()}_timestamp_$key")] = System.currentTimeMillis()
+        }
     }
+
+    suspend fun canvasListUpdatedAt(user: String, key: String): Long? = context.canvasDataStore.data.first()[
+        androidx.datastore.preferences.core.longPreferencesKey("canvas_read_${user.trim().lowercase()}_timestamp_$key")]
 
     suspend fun seenAnnouncements(user: String): Set<String> =
         context.canvasDataStore.data.first()[androidx.datastore.preferences.core.stringSetPreferencesKey("canvas_seen_${user.trim().lowercase()}")] ?: emptySet()
@@ -181,6 +187,9 @@ class CanvasCache(private val context: Context) : CanvasCacheStore {
     }
 
     override suspend fun limpiar(user: String) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            java.io.File(java.io.File(context.cacheDir, "canvas_documents"), com.example.upaos.data.canvas.canvasDocumentOwner(user)).deleteRecursively()
+        }
         context.canvasDataStore.edit { prefs ->
             prefs.asMap().keys.filter { it.name.startsWith("canvas_course_todo_${user}_") }.forEach { prefs.remove(it) }
             prefs.asMap().keys.filter { it.name.startsWith("canvas_read_${user.trim().lowercase()}_") || it.name == "canvas_seen_${user.trim().lowercase()}" }.forEach { prefs.remove(it) }

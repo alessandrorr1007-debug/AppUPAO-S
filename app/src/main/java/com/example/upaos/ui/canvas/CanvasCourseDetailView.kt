@@ -106,14 +106,33 @@ fun CanvasCourseDetailView(
     // 9 Secciones del Curso:
     // 0: Inicio, 1: Módulos, 2: Personas, 3: Grupos, 4: Calificaciones,
     // 5: Foro de discusión, 6: Archivos, 7: Programa de curso, 8: Zoom
-    var selectedSection by remember { mutableIntStateOf(0) }
+    var selectedSection by remember(course.id) { mutableIntStateOf(0) }
+    var moduleQuiz by remember(course.id) { mutableStateOf<Long?>(null) }
+    moduleQuiz?.let { CanvasLinkedResource(CanvasNativeRoute(course.id, "quizzes", it.toString()), token) { moduleQuiz = null } }
+    var moduleAssignment by remember(course.id) { mutableStateOf<Long?>(null) }
+    val tabsVm = canvasResourceViewModel("navigation:${course.id}", token, emptyList<CanvasTab>()) { tabs(course.id) }
+    val tabsState by tabsVm.state.collectAsState()
+    val visibleTabs = canvasVisibleTabs(tabsState.data)
+    var moduleDiscussion by remember(course.id) { mutableStateOf<Long?>(null) }
+    moduleAssignment?.let { id ->
+        val task = canvasResourceViewModel("assignment:${course.id}:$id", token, null as CanvasAssignment?) { assignment(course.id, id) }
+        val state by task.state.collectAsState()
+        CanvasResourceFeedback(state) { task.refresh(true) }
+        LaunchedEffect(state.data) { state.data?.let { onOpenAssignment(CanvasTodoItem(courseId = course.id, contextName = course.name, assignment = it)); moduleAssignment = null } }
+    }
+    moduleDiscussion?.let { id ->
+        val topic = canvasResourceViewModel("moduleTopic:${course.id}:$id", token, null as CanvasDiscussionTopic?) { discussion(course.id, id) }
+        val state by topic.state.collectAsState()
+        CanvasResourceFeedback(state) { topic.refresh(true) }
+        state.data?.let { CanvasDiscussionDetail(course.id, it, token) { moduleDiscussion = null } }
+    }
     var selectedPage by remember { mutableStateOf<String?>(null) }
     var selectedDiscussion by remember { mutableStateOf<CanvasDiscussionTopic?>(null) }
     selectedPage?.let { CanvasPageDetail(course.id, it, token) { selectedPage = null } }
     selectedDiscussion?.let { CanvasDiscussionDetail(course.id, it, token) { selectedDiscussion = null } }
 
 
-    val sections = remember {
+    val allSections = remember {
         listOf(
             Triple(0, "Inicio", Icons.Filled.Home),
             Triple(1, "Módulos", Icons.Filled.Folder),
@@ -127,10 +146,16 @@ fun CanvasCourseDetailView(
             Triple(9, "Anuncios", Icons.Filled.Info),
             Triple(10, "Páginas", Icons.Filled.Description),
             Triple(11, "Quizzes", Icons.Filled.Quiz),
-            Triple(12, "Carpetas", Icons.Filled.Folder)
+            Triple(12, "Carpetas", Icons.Filled.Folder),
+            Triple(13, "Tareas", Icons.AutoMirrored.Filled.Assignment)
         )
     }
 
+    val tabIds = mapOf(1 to "modules", 2 to "people", 3 to "groups", 4 to "grades", 5 to "discussions", 6 to "files",
+        7 to "syllabus", 9 to "announcements", 10 to "pages", 11 to "quizzes", 12 to "files", 13 to "assignments")
+    val sections = allSections.filter { it.first == 0 || it.first == 8 || tabIds[it.first] in visibleTabs }
+    val activeSection = selectedSection.takeIf { id -> sections.any { it.first == id } } ?: 0
+    CanvasResourceFeedback(tabsState) { tabsVm.refresh(true) }
     Column(modifier = modifier.fillMaxSize()) {
         // Top Bar del Curso
         Surface(
@@ -192,7 +217,7 @@ fun CanvasCourseDetailView(
 
         // Navegación de Secciones (ScrollableTabRow)
         ScrollableTabRow(
-            selectedTabIndex = selectedSection,
+            selectedTabIndex = sections.indexOfFirst { it.first == activeSection }.coerceAtLeast(0),
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary,
             edgePadding = 12.dp,
@@ -217,13 +242,15 @@ fun CanvasCourseDetailView(
 
         // Contenido de la Sección seleccionada
         Box(modifier = Modifier.weight(1f)) {
-            when (selectedSection) {
+            when (activeSection) {
                 0 -> CourseHomeSection(
                     course = course,
+                    token = token,
                     courseColor = courseAccentColor,
                     todoItems = todoItems,
                     notifications = notifications,
                     onNavigateToSection = { selectedSection = it },
+                    allowedSections = sections.map { it.first }.toSet(),
                     onOpenAssignment = onOpenAssignment,
                     onOpenUrl = onOpenUrl
                 )
@@ -233,6 +260,12 @@ fun CanvasCourseDetailView(
                     onItemClick = { item, modName ->
                         if (item.type.equals("Page", true) && (item.pageUrl != null || item.contentId != null)) {
                             selectedPage = item.pageUrl ?: "page_id:${item.contentId}"
+                        } else if (item.type.equals("Assignment", true) && item.contentId != null) {
+                            moduleAssignment = item.contentId
+                        } else if (item.type.equals("Discussion", true) && item.contentId != null) {
+                            moduleDiscussion = item.contentId
+                        } else if (item.type.equals("Quiz", true) && item.contentId != null) {
+                            moduleQuiz = item.contentId
                         } else if (item.isFile) {
                             onOpenFile(item, modName)
                         } else if (!item.htmlUrl.isNullOrBlank()) {
@@ -264,9 +297,8 @@ fun CanvasCourseDetailView(
                     courseId = course.id,
                     token = token,
                     onOpenFile = { file ->
-                        if (!file.url.isNullOrBlank()) {
-                            downloadCanvasFileInDetail(context, file.url, file.fileName)
-                        }
+                        onOpenFile(CanvasModuleItem(id = file.id, title = file.fileName, type = "File",
+                            contentId = file.id, url = "https://upao.instructure.com/api/v1/courses/${course.id}/files/${file.id}"), "Archivos")
                     }
                 )
                 7 -> CourseSyllabusSection(
@@ -283,6 +315,7 @@ fun CanvasCourseDetailView(
                 10 -> CanvasPages(course.id, token)
                 11 -> CanvasQuizzes(course.id, token)
                 12 -> CanvasFolders(course.id, token)
+                13 -> CanvasCourseTasks(course, token, onOpenAssignment)
 
             }
         }
@@ -295,29 +328,27 @@ fun CanvasCourseDetailView(
 @Composable
 private fun CourseHomeSection(
     course: CanvasCourse,
+    token: String,
     courseColor: Color,
     todoItems: List<CanvasTodoItem>,
     notifications: List<CanvasNotificationItem>,
     onNavigateToSection: (Int) -> Unit,
+    allowedSections: Set<Int>,
     onOpenAssignment: (CanvasTodoItem) -> Unit,
     onOpenUrl: (String, String) -> Unit
 ) {
     // Filtrar tareas pendientes de este curso
     val courseTodos = remember(todoItems, course.id) {
-        todoItems.filter {
-            it.courseId == course.id ||
-            it.contextName?.contains(course.name, ignoreCase = true) == true ||
-            course.name.contains(it.courseDisplayName, ignoreCase = true)
-        }
+        todoItems.filter { it.courseId == course.id }
     }
 
     // Filtrar notificaciones de este curso
     val courseNotifs = remember(notifications, course.id) {
-        notifications.filter {
-            it.courseId == course.id ||
-            it.courseName?.contains(course.name, ignoreCase = true) == true
-        }.take(3)
+        notifications.filter { it.courseId == course.id }.take(3)
     }
+
+    val frontPage = if (course.defaultView == "wiki") canvasCachedList("page:${course.id}:null", token, com.example.upaos.data.model.CanvasPage::class.java) { listOfNotNull(this.frontPage(course.id)) } else null
+    val homePage = frontPage?.state?.collectAsState()?.value
 
     LazyColumn(
         modifier = Modifier
@@ -356,12 +387,20 @@ private fun CourseHomeSection(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "${course.courseCode ?: "UPAO"} • Periodo Académico Activo",
+                            text = "${course.courseCode ?: "UPAO"} • ${course.term?.name ?: "Periodo no informado"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
+            }
+        }
+
+        if (homePage != null) item {
+            CanvasResourceFeedback(homePage) { frontPage?.refresh(true) }
+            homePage.data.firstOrNull()?.let { page ->
+                Text(page.title ?: "Inicio del curso", style = MaterialTheme.typography.titleMedium)
+                HtmlText(page.body.orEmpty())
             }
         }
 
@@ -437,7 +476,7 @@ private fun CourseHomeSection(
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                quickActions.chunked(2).forEach { rowItems ->
+                quickActions.filter { it.third in allowedSections }.chunked(2).forEach { rowItems ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -623,7 +662,7 @@ private fun CourseModulesSection(
     token: String,
     onItemClick: (CanvasModuleItem, String) -> Unit
 ) {
-    val resource = canvasResourceViewModel("modules:${courseId}", token, emptyList<CanvasModule>()) { modules(courseId) }
+    val resource = canvasCachedList("modules:${courseId}", token, CanvasModule::class.java) { modules(courseId) }
     val resourceState by resource.state.collectAsState()
     CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val modules = resourceState.data
@@ -1393,24 +1432,6 @@ private fun formatRelativeDateText(iso: String?): String {
         "Vence: ${outFmt.format(date)}"
     } catch (_: Exception) {
         "Sin fecha"
-    }
-}
-
-private fun downloadCanvasFileInDetail(context: Context, url: String, fileName: String) {
-    try {
-        val request = android.app.DownloadManager.Request(android.net.Uri.parse(url)).apply {
-            setTitle(fileName)
-            setDescription("Descargando archivo de Canvas LMS")
-            setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName)
-            setAllowedOverMetered(true)
-            setAllowedOverRoaming(true)
-        }
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
-        dm.enqueue(request)
-        android.widget.Toast.makeText(context, "Iniciando descarga: $fileName", android.widget.Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Error al descargar: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
 

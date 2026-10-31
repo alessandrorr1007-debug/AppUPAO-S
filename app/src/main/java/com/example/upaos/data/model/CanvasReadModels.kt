@@ -2,12 +2,16 @@ package com.example.upaos.data.model
 
 import com.google.gson.annotations.SerializedName
 
+data class CanvasRecipient(val id: Long, val name: String? = null)
+data class CanvasDiscussionPermissions(val reply: Boolean? = null)
+
 data class CanvasAnnouncement(
     val id: Long? = null, val title: String? = null, val message: String? = null,
     @SerializedName("context_code") val contextCode: String? = null,
     @SerializedName("posted_at") val postedAt: String? = null,
     @SerializedName("html_url") val htmlUrl: String? = null,
-    val attachments: List<CanvasFileDetail>? = null
+    val attachments: List<CanvasFileDetail>? = null,
+    val author: CanvasParticipant? = null
 )
 data class CanvasSubmissionComment(
     val id: Long? = null, @SerializedName("author_name") val authorName: String? = null,

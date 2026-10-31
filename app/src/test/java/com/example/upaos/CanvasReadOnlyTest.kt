@@ -1,18 +1,25 @@
 package com.example.upaos
 
-import java.io.File
+import com.example.upaos.data.canvas.CanvasRequestPolicy
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.Test
 import org.junit.Assert.*
 
+/** Regression: only explicit student communications can write, never assignments or exams. */
 class CanvasReadOnlyTest {
-    @Test fun canvasSourcesCannotWrite() {
-        val root = sequenceOf(File("src/main/java/com/example/upaos"), File("app/src/main/java/com/example/upaos"))
-            .first { it.isDirectory }
-        val files = File(root, "data/api").listFiles()!!.filter { it.name.startsWith("Canvas") } +
-            File(root, "data/canvas").walkTopDown().filter { it.isFile }.toList()
-        val forbidden = Regex("""@(?:POST|PUT|DELETE|PATCH|Multipart)\b|MultipartBody""")
-        assertTrue(forbidden.containsMatchIn("@POST(\"synthetic\")"))
-        assertTrue(files.isNotEmpty())
-        files.forEach { assertFalse("Write operation in ${it.name}", forbidden.containsMatchIn(it.readText())) }
+    @Test fun onlyStudentCommunicationEndpointsCanWrite() {
+        val origin = "https://upao.instructure.com"
+        listOf("/api/v1/conversations", "/api/v1/conversations/1/add_message",
+            "/api/v1/courses/1/discussion_topics/2/entries",
+            "/api/v1/courses/1/discussion_topics/2/entries/3/replies").forEach {
+            assertTrue(CanvasRequestPolicy.allowed("POST", (origin + it).toHttpUrl()))
+        }
+        listOf("/api/v1/courses/1/assignments/2/submissions", "/api/v1/courses/1/quizzes/2/submissions",
+            "/api/v1/conversations/mark_all_as_read", "/api/v1/conversations?redirect=1", "/courses/1").forEach {
+            assertFalse(it, CanvasRequestPolicy.allowed("POST", (origin + it).toHttpUrl()))
+        }
+        listOf("PUT", "DELETE", "PATCH").forEach { assertFalse(CanvasRequestPolicy.allowed(it, "$origin/api/v1/conversations".toHttpUrl())) }
+        assertFalse(CanvasRequestPolicy.allowed("POST", "https://evil.test/api/v1/conversations".toHttpUrl()))
+        assertFalse(CanvasRequestPolicy.allowed("GET", "$origin/login".toHttpUrl()))
     }
 }

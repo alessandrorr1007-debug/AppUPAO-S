@@ -149,7 +149,7 @@ fun HomeScreen(
     )
     val shared by dashboard.state.collectAsState()
     val unreadCount = shared.notices?.noLeidas ?: 0
-    val semanaEtiqueta = shared.week?.takeIf { it.configurada && it.fueraDeCiclo != true }?.let { it.etiqueta + if (it.fechaEstimada) " · estimada" else "" }
+    val semanaEtiqueta = shared.week?.takeIf { it.configurada && it.fueraDeCiclo != true }?.etiqueta
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(dashboard, lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->
@@ -458,13 +458,13 @@ fun HomeScreen(
                         )
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
                             shape = CircleShape,
                             color = Color.White.copy(alpha = 0.15f),
-                            modifier = Modifier.size(34.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -479,7 +479,7 @@ fun HomeScreen(
                         Text(
                             text = semanaEtiqueta!!,
                             style = MaterialTheme.typography.titleMedium,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )

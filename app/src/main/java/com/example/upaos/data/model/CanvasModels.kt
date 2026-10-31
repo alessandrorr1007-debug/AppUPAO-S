@@ -38,7 +38,15 @@ data class CanvasDiscussionTopic(
     @SerializedName("discussion_subentry_count") val repliesCount: Int? = 0,
     @SerializedName("unread_count") val unreadCount: Int? = 0,
     @SerializedName("html_url") val htmlUrl: String? = null,
-    val author: CanvasParticipant? = null
+    val author: CanvasParticipant? = null,
+    val locked: Boolean? = null,
+    @SerializedName("locked_for_user") val lockedForUser: Boolean? = null,
+    @SerializedName("user_can_see_posts") val userCanSeePosts: Boolean? = null,
+    @SerializedName("require_initial_post") val requireInitialPost: Boolean? = null,
+    @SerializedName("lock_at") val lockAt: String? = null,
+    @SerializedName("delayed_post_at") val delayedPostAt: String? = null,
+    val permissions: CanvasDiscussionPermissions? = null,
+    val attachments: List<CanvasFileDetail>? = null
 )
 
 data class CanvasQuiz(
@@ -121,7 +129,7 @@ data class CanvasAssignment(
     @SerializedName("course_id") val courseId: Long? = null
 ) {
     val isSubmitted: Boolean
-        get() = hasSubmittedSubmissions == true || submission?.isSubmitted == true
+        get() = submission?.isSubmitted == true
 
     val effectiveDueAt: String?
         get() = dueAt?.takeIf { it.isNotBlank() }
@@ -168,7 +176,9 @@ data class CanvasCourse(
     @SerializedName("course_code") val courseCode: String? = null,
     @SerializedName("workflow_state") val workflowState: String? = null,
     @SerializedName("syllabus_body") val syllabusBody: String? = null,
-    val term: CanvasTerm? = null
+    val term: CanvasTerm? = null,
+    val teachers: List<CanvasUser>? = null,
+    @SerializedName("default_view") val defaultView: String? = null
 ) {
     val displayTitle: String
         get() {
@@ -196,7 +206,8 @@ data class CanvasConversationMessage(
     val id: Long,
     @SerializedName("created_at") val createdAt: String? = null,
     val body: String? = null,
-    @SerializedName("author_id") val authorId: Long? = null
+    @SerializedName("author_id") val authorId: Long? = null,
+    val attachments: List<CanvasFileDetail>? = null
 )
 
 data class CanvasConversation(
@@ -226,7 +237,10 @@ data class CanvasFileDetail(
     @SerializedName("content-type") val contentType: String? = null,
     val url: String? = null,
     @SerializedName("created_at") val createdAt: String? = null,
-    @SerializedName("updated_at") val updatedAt: String? = null
+    @SerializedName("updated_at") val updatedAt: String? = null,
+    @SerializedName("locked_for_user") val lockedForUser: Boolean? = null,
+    val locked: Boolean? = null,
+    @SerializedName("hidden_for_user") val hiddenForUser: Boolean? = null
 ) {
     val fileName: String
         get() = displayName ?: filename ?: "Archivo"

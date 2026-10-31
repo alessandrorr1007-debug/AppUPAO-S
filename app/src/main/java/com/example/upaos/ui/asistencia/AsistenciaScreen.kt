@@ -622,173 +622,88 @@ fun AsistenciaCard(
     onClick: (() -> Unit)? = null
 ) {
     val tieneRegistro = item.tieneRegistroAsistencia && !sinDatos
-    val pct = item.porcentaje
+    val pct = item.porcentaje?.takeIf { it.isFinite() }
     val color = com.example.upaos.ui.theme.campusAccent(porcentajeColor(pct, tieneRegistro))
     val faltas = item.totalFaltasCalculadas
-    val (estado, _) = estadoAsistencia(pct, faltas, tieneRegistro)
+    val absenceColor = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess
     val activos = diasActivos(item.horarioDias)
-    val courseColor = courseAccent(item.displayNombre)
-    val diasNombres = if (activos.isNotEmpty()) {
-        activos.sorted().joinToString(" · ") { dayNames[it].lowercase().replaceFirstChar { it.uppercase() } }
-    } else {
-        null
-    }
+    val days = activos.sorted().joinToString(" · ") { dayNames[it].lowercase().replaceFirstChar { it.uppercase() } }
+    val progress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (tieneRegistro && pct != null) (pct / 100.0).toFloat().coerceIn(0f, 1f) else 0f,
+        animationSpec = androidx.compose.animation.core.tween(350), label = "attendanceProgress"
+    )
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min)
+    AppCard(
+        color = MaterialTheme.colorScheme.surface,
+        corner = 16.dp,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
-                .background(color)
-        )
-        AppCard(
-            color = MaterialTheme.colorScheme.surface,
-            corner = 20.dp,
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-            onClick = onClick,
-            modifier = Modifier.weight(1f)
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = toTitleCase(item.displayNombre),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2
-                        )
-                        if (diasNombres != null) {
-                            Text(
-                                text = diasNombres,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = courseColor
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    StatusBadge(text = estado, color = color)
-                    if (onClick != null) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.Filled.ChevronRight,
-                            contentDescription = "Ver desglose",
-                            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (!tieneRegistro) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "Aún no pasaron lista o no hay registro de asistencia (0 faltas).",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.outline
+                        text = toTitleCase(item.displayNombre),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
-                } else {
-                    val pctVal = pct ?: 100.0
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        LinearProgressIndicator(
-                            progress = { (pctVal / 100f).toFloat().coerceIn(0f, 1f) },
-                            color = color,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(7.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                        )
-                        Text(
-                            text = "${formatPct(pctVal)}%",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = color
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Fila destacada: Faltas
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (faltas > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.12f) else com.example.upaos.ui.theme.campusSuccess.copy(alpha = 0.10f),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = if (faltas > 0) Icons.Filled.Cancel else Icons.Filled.CheckCircle,
-                                contentDescription = null,
-                                tint = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (faltas == 1) "1 Falta" else "$faltas Faltas",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (faltas > 0) MaterialTheme.colorScheme.error else com.example.upaos.ui.theme.campusSuccess
-                            )
+                    if (days.isNotBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Filled.Schedule, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(days, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(
+                        text = if (tieneRegistro && pct != null) "${formatPct(pct)}%" else "—",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = color
+                    )
+                    Text("Asistencia", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (tieneRegistro && pct != null) {
+                LinearProgressIndicator(
+                    progress = { progress }, color = color,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp))
+                )
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(7.dp),
+                    color = if (tieneRegistro) absenceColor.copy(alpha = .10f) else MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        dayNames.forEachIndexed { index, _ ->
-                            val activo = index in activos
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (activo) courseColor else MaterialTheme.colorScheme.surfaceVariant
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = dayInitials[index],
-                                    fontSize = 10.sp,
-                                    fontWeight = if (activo) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (activo) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                    if (diasNombres != null) {
-                        Text(
-                            text = diasNombres,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.outline
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(
+                            if (tieneRegistro && faltas > 0) Icons.Filled.Cancel else if (tieneRegistro) Icons.Filled.CheckCircle else Icons.Filled.Schedule,
+                            null, Modifier.size(13.dp), tint = if (tieneRegistro) absenceColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Text(
+                            if (!tieneRegistro) "Sin registro" else if (faltas == 1) "1 falta" else "$faltas faltas",
+                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                            color = if (tieneRegistro) absenceColor else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                if (onClick != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Ver desglose", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                     }
                 }
             }
         }
     }
 }
-
 @Composable
 private fun SkeletonAsistenciaCard() {
     AppCard(corner = 20.dp, contentPadding = PaddingValues(10.dp)) {

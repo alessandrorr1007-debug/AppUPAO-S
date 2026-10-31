@@ -40,8 +40,8 @@ fun ProfileScreen(state: ProfileState, onBack: () -> Unit, onRefresh: () -> Unit
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (state.loading) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
             state.message?.let { message -> item { Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-            val sections = state.profile?.sections.orEmpty().filterNot {
-                it.title.startsWith("Dirección") || it.title == "Información adicional"
+            val sections = state.profile?.sections.orEmpty().filter {
+                it.title in setOf("Datos del estudiante", "Correos") && it.fields.isNotEmpty()
             }
             if (sections.isEmpty()) item {
                 AppCard(modifier = Modifier.fillMaxWidth(), corner = 20.dp) {

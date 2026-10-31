@@ -134,6 +134,9 @@ class CanvasPagedApi(
     override suspend fun getPages(auth: String, course: Long, sort: String, perPage: Int) = all(auth) { delegate.getPages(auth, course, sort, perPage) }
     override suspend fun getQuizzes(auth: String, course: Long, perPage: Int) = all(auth) { delegate.getQuizzes(auth, course, perPage) }
     override suspend fun getFolders(auth: String, course: Long, perPage: Int) = all(auth) { delegate.getFolders(auth, course, perPage) }
+    override suspend fun getScopedConversations(auth: String, scope: String, perPage: Int) = all(auth) { delegate.getScopedConversations(auth, scope, perPage) }
+    override suspend fun findRecipients(auth: String, search: String, context: String, type: String, perPage: Int) = all(auth) { delegate.findRecipients(auth, search, context, type, perPage) }
+    override suspend fun getDiscussionReplies(auth: String, course: Long, topic: Long, entry: Long, perPage: Int) = all(auth) { delegate.getDiscussionReplies(auth, course, topic, entry, perPage) }
     override suspend fun getFolderFiles(auth: String, folder: Long, perPage: Int) = all(auth) { delegate.getFolderFiles(auth, folder, perPage) }
     override suspend fun getQuizSubmissions(auth: String, course: Long, quiz: Long, perPage: Int): Response<CanvasQuizSubmissions> {
         fun unwrap(response: Response<CanvasQuizSubmissions>): Response<List<CanvasQuizAttempt>> {

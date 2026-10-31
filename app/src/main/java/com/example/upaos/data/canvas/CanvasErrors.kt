@@ -26,7 +26,14 @@ suspend fun <T> canvasReadWithBackoff(block: suspend () -> T): T {
         try { return block() } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
             if (canvasError(e) != CanvasError.BUSY || attempt == 2) throw e
-            delay(500L shl attempt)
+            val retryAfter = (e as? HttpException)?.response()?.headers()?.get("Retry-After")?.let { raw ->
+                raw.toLongOrNull()?.coerceAtLeast(0) ?: runCatching {
+                    java.time.Duration.between(java.time.Instant.now(), java.time.ZonedDateTime.parse(raw,
+                        java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant()).seconds.coerceAtLeast(0)
+                }.getOrNull()
+            }
+            if (retryAfter != null && retryAfter > 30) throw e
+            delay(maxOf(500L shl attempt, (retryAfter ?: 0) * 1000))
         }
     }
     error("unreachable")

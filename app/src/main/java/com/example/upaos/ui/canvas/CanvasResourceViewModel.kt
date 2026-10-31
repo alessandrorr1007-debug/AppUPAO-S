@@ -12,13 +12,16 @@ data class CanvasResourceState<T>(
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     val error: String? = null,
-    val failure: CanvasError? = null
+    val failure: CanvasError? = null,
+    val updatedAt: Long? = null,
+    val fromCache: Boolean = false
 )
 
 class CanvasResourceViewModel<T>(
     private val repository: CanvasResourceRepository<T>,
     initial: T,
-    private val restore: (suspend () -> T?)? = null
+    private val restore: (suspend () -> T?)? = null,
+    private val restoreUpdatedAt: (suspend () -> Long?)? = null
 ) : ViewModel() {
     private val mutable = MutableStateFlow(CanvasResourceState(initial))
     val state = mutable.asStateFlow()
@@ -33,13 +36,13 @@ class CanvasResourceViewModel<T>(
             try {
                 if (!restored) {
                     restored = true
-                    try { restore?.invoke()?.let { mutable.value = state.value.copy(data = it, loading = false, refreshing = true) } }
+                    try { restore?.invoke()?.let { mutable.value = state.value.copy(data = it, loading = false, refreshing = true, fromCache = true, updatedAt = restoreUpdatedAt?.invoke()) } }
                     catch (e: CancellationException) { throw e }
                     catch (_: Exception) { /* A corrupt cache must not block the live request. */ }
                 }
                 val data = canvasReadWithBackoff { repository.load() }
                 ensureActive()
-                mutable.value = state.value.copy(data = data)
+                mutable.value = state.value.copy(data = data, updatedAt = System.currentTimeMillis(), fromCache = false)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 mutable.value = state.value.copy(error = canvasError(e).text, failure = canvasError(e))

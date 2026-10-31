@@ -5,6 +5,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class StudentProfileTest {
+    @Test fun readsNestedAddressLocationWithoutInventingMissingFields() {
+        val profile = StudentProfile.parse("""{"addresses":[{"addressLines":["Calle de prueba"],"addressPlace":{"country":{"title":"País de prueba","locality":"Ciudad de prueba","region":{"title":"Región de prueba"},"postalCode":"00000"}}}]}""")
+        val fields = profile.sections.single().fields.associate { it.label to it.value }
+        assertEquals("Ciudad de prueba", fields["Localidad"])
+        assertEquals("Región de prueba", fields["Región"])
+        assertEquals("País de prueba", fields["País"])
+        assertEquals("00000", fields["Código postal"])
+        assertFalse(fields.containsKey("Tipo"))
+    }
+
     @Test fun normalizesNamesAndCollapsesUnicodeWhitespace() {
         assertEquals("Nombre Apellido", StudentProfile.normalizeName("  NOMBRE   APELLIDO  "))
         assertEquals("José Muñoz", StudentProfile.normalizeName("JOSÉ\u00a0\u00a0MUÑOZ"))
@@ -25,6 +35,7 @@ class StudentProfileTest {
         }""")
         assertEquals("Nombre De Prueba", profile.fullName)
         val fields = profile.sections.flatMap { it.fields }
+        assertFalse(fields.any { it.label in setOf("Nombre(s)", "Segundo nombre", "Apellidos") })
         assertTrue(fields.any { it.label == "Código" && it.value == "000000001" })
         assertTrue(fields.any { it.label == "Género" && it.value == "Femenino" })
         assertTrue(fields.any { it.label == "País" && it.value == "País de prueba" })

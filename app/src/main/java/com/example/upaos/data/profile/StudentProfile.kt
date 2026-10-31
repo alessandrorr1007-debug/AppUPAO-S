@@ -32,9 +32,11 @@ data class StudentProfile(
                 value?.takeIf { it.isNotBlank() }?.let { add(ProfileField(label, it)) }
             }
             identity.addValue("Nombre completo", fullName)
-            identity.addValue("Nombre(s)", normalizeName(text(name?.get("firstName"))))
-            identity.addValue("Segundo nombre", normalizeName(text(name?.get("middleName"))))
-            identity.addValue("Apellidos", normalizeName(text(name?.get("lastName"))))
+            if (fullName == null) {
+                identity.addValue("Nombre(s)", normalizeName(text(name?.get("firstName"))))
+                identity.addValue("Segundo nombre", normalizeName(text(name?.get("middleName"))))
+                identity.addValue("Apellidos", normalizeName(text(name?.get("lastName"))))
+            }
             identity.addValue("Código", text(data.get("erpId")))
             val gender = text(data.get("gender"))
             identity.addValue("Género", when (gender?.uppercase(Locale.ROOT)) {
@@ -49,15 +51,17 @@ data class StudentProfile(
                 if (!element.isJsonObject) return@forEachIndexed
                 val address = element.asJsonObject
                 val place = address.get("addressPlace")?.takeIf { it.isJsonObject }?.asJsonObject
+                val country = place?.get("country")?.takeIf { it.isJsonObject }?.asJsonObject
                 val fields = mutableListOf<ProfileField>()
                 fields.addValue("Tipo", text(address.get("type")))
                 fields.addValue("Calle", array(address.get("addressLines")).mapNotNull(::text).joinToString("\n"))
-                fields.addValue("Localidad", text(place?.get("locality")))
-                fields.addValue("Región", text(place?.get("region")))
+                fields.addValue("Localidad", text(place?.get("locality")) ?: text(country?.get("locality")))
+                fields.addValue("Región", text(place?.get("region")) ?: text(country?.get("region")))
                 fields.addValue("País", text(place?.get("country")))
+                fields.addValue("Código postal", text(place?.get("postalCode")) ?: text(country?.get("postalCode")))
                 val extras = JsonObject().apply {
                     address.entrySet().filter { it.key !in setOf("type", "addressLines", "addressPlace") }.forEach { add(it.key, it.value) }
-                    place?.entrySet()?.filter { it.key !in setOf("locality", "region", "country") }?.forEach { add(it.key, it.value) }
+                    place?.entrySet()?.filter { it.key !in setOf("locality", "region", "country", "postalCode") }?.forEach { add(it.key, it.value) }
                 }
                 flatten(extras, "", fields)
                 if (fields.isNotEmpty()) sections += ProfileSection("Dirección ${index + 1}", fields)

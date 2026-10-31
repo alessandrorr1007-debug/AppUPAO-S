@@ -5,6 +5,8 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +31,9 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.ui.semantics.Role
+import com.example.upaos.service.SyncPolicy
 import com.example.upaos.data.local.BiometricHelper
 import com.example.upaos.data.local.NotificationPreferences
 import com.example.upaos.data.local.SecurityPreferences
@@ -39,8 +44,15 @@ import com.example.upaos.ui.components.cursoColor
 import kotlinx.coroutines.launch
 
 private enum class SettingsSection(val title: String) {
-    GENERAL("Ajustes"), PRIVACY("Privacidad y datos"), NOTIFICATIONS("Notificaciones")
+    GENERAL("Ajustes"), PRIVACY("Privacidad y datos"), NOTIFICATIONS("Notificaciones"), HELP("Ayuda y soporte")
 }
+
+private data class FrequencyOption(val preference: SyncPolicy.Preference, val title: String, val description: String)
+private val frequencyOptions = listOf(
+    FrequencyOption(SyncPolicy.Preference.SIEMPRE_INTENSIVO, "Frecuente", "Revisa las notas aproximadamente cada 2 minutos. Puede consumir más batería y mostrar un aviso de revisión en segundo plano. Android puede retrasar o limitar las revisiones; en ese caso se mantiene el respaldo de revisión normal."),
+    FrequencyOption(SyncPolicy.Preference.NORMAL, "Normal", "Revisa las notas en segundo plano aproximadamente cada 15 minutos. Android puede retrasar las revisiones por batería o conexión."),
+    FrequencyOption(SyncPolicy.Preference.AUTOMATICO, "Automático", "Usa revisión frecuente en semanas de evaluaciones (7–9 y 15–17), de 07:00 a 23:00. El resto del tiempo utiliza el modo normal. Android puede retrasar o limitar las revisiones.")
+)
 
 @Composable
 private fun SettingsDestinationRow(
@@ -86,6 +98,7 @@ fun SettingsScreen(
 
     var checkNotasEnabled by remember { mutableStateOf(notificationPrefs.checkNotasEnabled) }
     var gradeSyncPreference by remember { mutableStateOf(notificationPrefs.gradeSyncPreference) }
+    var pendingFrequency by remember { mutableStateOf<FrequencyOption?>(null) }
     var checkAsistenciaEnabled by remember { mutableStateOf(notificationPrefs.checkAsistenciaEnabled) }
     var recordatorioClasesEnabled by remember { mutableStateOf(notificationPrefs.recordatorioClasesEnabled) }
     var cargando by remember { mutableStateOf(true) }
@@ -169,6 +182,23 @@ fun SettingsScreen(
             }
             guardando = false
         }
+    }
+
+    pendingFrequency?.let { option ->
+        AlertDialog(
+            onDismissRequest = { pendingFrequency = null },
+            title = { Text("Revisión ${option.title.lowercase()}") },
+            text = { Text(option.description) },
+            confirmButton = {
+                TextButton(onClick = {
+                    notificationPrefs.gradeSyncPreference = option.preference
+                    gradeSyncPreference = option.preference
+                    pendingFrequency = null
+                    com.example.upaos.service.GradeSyncController.reconcile(context)
+                }) { Text("Aceptar") }
+            },
+            dismissButton = { TextButton(onClick = { pendingFrequency = null }) { Text("Cancelar") } }
+        )
     }
 
     Scaffold(
@@ -283,6 +313,10 @@ fun SettingsScreen(
                 SettingsDestinationRow("Activar notificaciones", "Notas, asistencias y recordatorios", Icons.Filled.NotificationsActive) {
                     section = SettingsSection.NOTIFICATIONS
                 }
+                Spacer(Modifier.height(10.dp))
+                SettingsDestinationRow("Ayuda y soporte", "Preguntas y reporte de problemas", Icons.AutoMirrored.Filled.HelpOutline) {
+                    section = SettingsSection.HELP
+                }
                 Spacer(Modifier.height(14.dp))
             // Sección Seguridad y Bloqueo de la App
             AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
@@ -356,6 +390,7 @@ fun SettingsScreen(
 
                 }
                 SettingsSection.PRIVACY -> { PrivacyControls(usuario, onAccountRemoved) }
+                SettingsSection.HELP -> { HelpSupportContent() }
                 SettingsSection.NOTIFICATIONS -> {
             AppCard(corner = 20.dp, modifier = Modifier.fillMaxWidth()) {
                 Column {
@@ -382,13 +417,6 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Revisión automática en segundo plano",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
                         }
                     }
 
@@ -422,12 +450,6 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            Text(
-                                text = "Avisa cuando publiquen notas o cambien evaluaciones",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            )
                         }
                         Switch(
                             checked = checkNotasEnabled,
@@ -444,32 +466,21 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text("Frecuencia de revisión de notas", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "Android puede retrasar las revisiones por batería o conexión. El modo frecuente muestra un aviso de revisión en segundo plano.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    listOf(
-                        Triple(com.example.upaos.service.SyncPolicy.Preference.SIEMPRE_INTENSIVO, "Frecuente", "Cada 2 minutos aproximadamente. Puede consumir la batería un poco más rápido."),
-                        Triple(com.example.upaos.service.SyncPolicy.Preference.NORMAL, "Normal", "Revisión en segundo plano cada 15 minutos aproximadamente."),
-                        Triple(com.example.upaos.service.SyncPolicy.Preference.AUTOMATICO, "Automático", "Revisión frecuente en semanas de evaluaciones (7–9 y 15–17), de 07:00 a 23:00. Las demás semanas usa el modo normal.")
-                    ).forEach { (preference, title, description) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable(enabled = checkNotasEnabled && !guardando) {
-                                gradeSyncPreference = preference
-                                notificationPrefs.gradeSyncPreference = preference
-                                com.example.upaos.service.GradeSyncController.reconcile(context)
-                                if (preference != com.example.upaos.service.SyncPolicy.Preference.NORMAL) {
-                                    Toast.makeText(context, description, Toast.LENGTH_LONG).show()
-                                }
-                            }.padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(selected = gradeSyncPreference == preference, onClick = null, enabled = checkNotasEnabled && !guardando)
-                            Spacer(Modifier.width(8.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(title, style = MaterialTheme.typography.bodyMedium)
-                                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.selectableGroup()) {
+                        frequencyOptions.forEach { option ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().selectable(
+                                    selected = gradeSyncPreference == option.preference,
+                                    enabled = checkNotasEnabled && !guardando,
+                                    role = Role.RadioButton,
+                                    onClick = { pendingFrequency = option }
+                                ).padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(selected = gradeSyncPreference == option.preference, onClick = null,
+                                    enabled = checkNotasEnabled && !guardando)
+                                Spacer(Modifier.width(8.dp))
+                                Text(option.title, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
@@ -501,12 +512,6 @@ fun SettingsScreen(
                                 text = "Notificaciones de Asistencias",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Avisa cuando te pongan una asistencia o falta en clase",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
                             )
                         }
                         Switch(
@@ -548,12 +553,6 @@ fun SettingsScreen(
                                 text = "Recordatorio de Clases",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Avisa 15 minutos antes con aula y pabellón",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
                             )
                         }
                         Switch(

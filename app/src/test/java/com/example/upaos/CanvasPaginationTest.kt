@@ -65,7 +65,7 @@ class CanvasPaginationTest {
     }
     @Test fun cyclesAreRejectedAndLastAllowedPageIsAccepted() = runTest {
         MockWebServer().use { server ->
-            val first = server.url("/api/v1/courses?enrollment_state=active&per_page=100&page=1").toString()
+            val first = server.url("/api/v1/courses?include[]=term&include[]=teachers&enrollment_state=active&per_page=100&page=1").toString()
             server.enqueue(page("[]", first))
             try { api(server).getActiveCourses("Bearer synthetic"); fail("Cycle") } catch (_: IOException) { }
             assertEquals(1,server.requestCount)

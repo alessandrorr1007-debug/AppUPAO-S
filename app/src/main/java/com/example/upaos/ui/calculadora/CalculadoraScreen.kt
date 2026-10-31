@@ -21,6 +21,16 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import com.example.upaos.data.local.GradesCache
+import com.example.upaos.data.local.TokenManager
+import com.example.upaos.data.model.GradesResponse
+import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,7 +85,7 @@ private fun calcular(notas: List<Double?>): ResultadoCalculo {
             ResultadoCalculo(
                 titulo = "Promedio Final",
                 valorDestacado = formatNota(promedio),
-                mensaje = "¡Felicidades! Curso aprobado · Nota en acta oficial UPAO: $redondeo",
+                mensaje = "¡Felicidades! Curso aprobado",
                 estado = EstadoCalculo.APROBADO
             )
         } else {
@@ -143,7 +153,27 @@ private fun calcular(notas: List<Double?>): ResultadoCalculo {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalculadoraScreen(onBack: () -> Unit) {
-    var valores by remember { mutableStateOf(listOf("", "", "", "")) }
+    val context = LocalContext.current
+    val user = remember(context) { TokenManager(context).getSavedUser() }
+    var valores by rememberSaveable(user) { mutableStateOf(listOf("", "", "", "")) }
+    var selectedCourse by rememberSaveable(user) { mutableStateOf(-1) }
+    var savedGrades by remember { mutableStateOf<GradesResponse?>(null) }
+    var loadingCourses by remember { mutableStateOf(true) }
+    var courseMenu by remember { mutableStateOf(false) }
+    var cacheError by remember { mutableStateOf(false) }
+    LaunchedEffect(user) {
+        try {
+            savedGrades = withContext(Dispatchers.IO) {
+                user?.let { GradesCache(context).cargar("notas_$it") }
+                    ?.let { Gson().fromJson(it, GradesResponse::class.java) }
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { cacheError = true }
+        finally { loadingCourses = false }
+    }
+    val courses = savedGrades?.cursos.orEmpty()
+    val course = courses.getOrNull(selectedCourse)
+    val original = course?.let(::simulationGrades) ?: listOf("", "", "", "")
 
     val notas = componentes.indices.map { i ->
         valores[i].toDoubleOrNull()?.takeIf { it in 0.0..20.0 }
@@ -154,6 +184,8 @@ fun CalculadoraScreen(onBack: () -> Unit) {
         notas[i]?.let { it * componentes[i].peso / 100.0 } ?: 0.0
     }
     val hayNotasIngresadas = valores.any { it.isNotBlank() }
+    val completedGrades = completePassingGrades(valores, componentes.map { it.peso }, NOTA_MINIMA)
+    val missingCount = valores.count { it.isBlank() }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -161,9 +193,9 @@ fun CalculadoraScreen(onBack: () -> Unit) {
             CampusTopBar(
                 title = {
                     Text(
-                        text = "Calculadora de Notas",
+                        text = "Calculadora",
                         fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleMedium
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -193,16 +225,50 @@ fun CalculadoraScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Panel de Resultado Limpio (Sin cajas raras ni íconos encerrados)
-            ResultadoBanner(
-                resultado = resultado,
-                puntosAcumulados = sumaPonderada,
-                llenas = llenas
+            Text("Simula tus notas", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            ExposedDropdownMenuBox(expanded = courseMenu, onExpandedChange = {
+                if (!loadingCourses) courseMenu = !courseMenu
+            }) {
+                OutlinedTextField(
+                    value = course?.displayNombre ?: "Ingreso manual",
+                    onValueChange = {}, readOnly = true,
+                    label = { Text("Curso") },
+                    singleLine = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = courseMenu) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                ExposedDropdownMenu(expanded = courseMenu, onDismissRequest = { courseMenu = false }) {
+                    DropdownMenuItem(text = { Text("Ingreso manual") }, onClick = {
+                        selectedCourse = -1; valores = listOf("", "", "", ""); courseMenu = false
+                    })
+                    courses.forEachIndexed { index, item ->
+                        DropdownMenuItem(text = { Text(item.displayNombre, maxLines = 2, overflow = TextOverflow.Ellipsis) }, onClick = {
+                            selectedCourse = index; valores = simulationGrades(item); courseMenu = false
+                        })
+                    }
+                }
+            }
+            Text(
+                when {
+                    loadingCourses -> "Cargando cursos guardados…"
+                    cacheError -> "No se pudieron leer las notas guardadas. Puedes ingresar notas manualmente."
+                    courses.isEmpty() -> "Consulta tus notas primero para poder elegir un curso. También puedes ingresar notas manualmente."
+                    course != null -> "Notas guardadas · ${savedGrades?.periodo.orEmpty()}. Edita para simular sin cambiar tus notas reales."
+                    else -> "Elige un curso para cargar sus notas guardadas o ingrésalas manualmente."
+                },
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
+            if (course != null) {
+                TextButton(onClick = { valores = original }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                    Text("Restaurar notas guardadas", style = MaterialTheme.typography.labelMedium)
+                }
+            }
             // Subtítulo con pesos oficiales
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -216,7 +282,7 @@ fun CalculadoraScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "EP1 20% · Parcial 30% · EP2 20% · Final 30%",
+                    text = "Resultado al instante",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -225,11 +291,12 @@ fun CalculadoraScreen(onBack: () -> Unit) {
             // Grid 2x2 elegante
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 NotaCard(
                     componente = componentes[0],
                     value = valores[0],
+                    source = gradeSource(valores[0], original[0]),
                     onValueChange = { nuevo ->
                         valores = valores.toMutableList().also { it[0] = nuevo }
                     },
@@ -238,6 +305,7 @@ fun CalculadoraScreen(onBack: () -> Unit) {
                 NotaCard(
                     componente = componentes[1],
                     value = valores[1],
+                    source = gradeSource(valores[1], original[1]),
                     onValueChange = { nuevo ->
                         valores = valores.toMutableList().also { it[1] = nuevo }
                     },
@@ -247,11 +315,12 @@ fun CalculadoraScreen(onBack: () -> Unit) {
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 NotaCard(
                     componente = componentes[2],
                     value = valores[2],
+                    source = gradeSource(valores[2], original[2]),
                     onValueChange = { nuevo ->
                         valores = valores.toMutableList().also { it[2] = nuevo }
                     },
@@ -260,12 +329,39 @@ fun CalculadoraScreen(onBack: () -> Unit) {
                 NotaCard(
                     componente = componentes[3],
                     value = valores[3],
+                    source = gradeSource(valores[3], original[3]),
                     onValueChange = { nuevo ->
                         valores = valores.toMutableList().also { it[3] = nuevo }
                     },
                     modifier = Modifier.weight(1f)
                 )
             }
+
+            if (missingCount > 0) {
+                OutlinedButton(
+                    onClick = { completedGrades?.let { valores = it } },
+                    enabled = completedGrades != null,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text("Completar para aprobar", style = MaterialTheme.typography.labelMedium)
+                }
+                Text(
+                    text = when {
+                        valores.any { it.isNotBlank() && it.toDoubleOrNull()?.let { n -> n.isFinite() && n in 0.0..20.0 } != true } -> "Revisa las notas: deben estar entre 0 y 20."
+                        completedGrades == null -> "Con estas notas no se llega a 10.5, ni con 20 en lo pendiente."
+                        missingCount > 1 -> "Calcula la misma nota necesaria en las evaluaciones pendientes para llegar a 10.5."
+                        else -> "Calcula y coloca la nota que falta para llegar a 10.5."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            ResultadoBanner(
+                resultado = resultado,
+                puntosAcumulados = sumaPonderada,
+                llenas = llenas
+            )
 
             // Pie de página sutil
             Surface(
@@ -285,7 +381,7 @@ fun CalculadoraScreen(onBack: () -> Unit) {
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "La nota mínima aprobatoria UPAO es 10.5 (se redondea a 11 en el acta final).",
+                        text = "La nota mínima aprobatoria UPAO es 10.5.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -313,14 +409,14 @@ private fun ResultadoBanner(
 
     CampusCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             // Fila superior: Título + Badge de estado
             Row(
@@ -333,6 +429,7 @@ private fun ResultadoBanner(
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.8.sp,
+                    modifier = Modifier.weight(1f),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (resultado.estado != EstadoCalculo.NEUTRO) {
@@ -378,7 +475,7 @@ private fun ResultadoBanner(
             ) {
                 Text(
                     text = resultado.valorDestacado,
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Black,
                     color = if (resultado.estado == EstadoCalculo.NEUTRO) MaterialTheme.colorScheme.outline else color
                 )
@@ -388,7 +485,7 @@ private fun ResultadoBanner(
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 6.dp)
+                        modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
             }
@@ -437,6 +534,7 @@ private fun ResultadoBanner(
 private fun NotaCard(
     componente: ComponentePeso,
     value: String,
+    source: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -449,11 +547,11 @@ private fun NotaCard(
 
     CampusCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(10.dp)) {
             // Encabezado con nombre y peso
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -462,7 +560,7 @@ private fun NotaCard(
             ) {
                 Text(
                     text = componente.nombre,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -480,14 +578,14 @@ private fun NotaCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Campo de entrada estilizado y centrado
             OutlinedTextField(
                 value = value,
                 onValueChange = { input ->
                     if (input.length <= 5) {
-                        onValueChange(input.filter { it.isDigit() || it == '.' })
+                        onValueChange(input.replace(',', '.').filter { it.isDigit() || it == '.' })
                     }
                 },
                 placeholder = {
@@ -495,7 +593,7 @@ private fun NotaCard(
                         text = "0 - 20",
                         style = TextStyle(
                             textAlign = TextAlign.Center,
-                            fontSize = 22.sp,
+                            fontSize = 16.sp,
                             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                         ),
                         modifier = Modifier.fillMaxWidth()
@@ -506,7 +604,7 @@ private fun NotaCard(
                         IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(24.dp)) {
                             Icon(
                                 imageVector = Icons.Filled.Clear,
-                                contentDescription = "Borrar",
+                                contentDescription = "Borrar ${componente.nombre}",
                                 modifier = Modifier.size(16.dp),
                                 tint = MaterialTheme.colorScheme.outline
                             )
@@ -517,21 +615,21 @@ private fun NotaCard(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 textStyle = TextStyle(
-                    fontSize = 28.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                     color = if (tieneNota && !esInvalido) {
                         if (d!! >= NOTA_MINIMA) UpaoGreen else UpaoRed
                     } else MaterialTheme.colorScheme.onSurface
                 ),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .heightIn(min = 56.dp)
             )
 
             // Línea inferior: muestra cuánto aporta al promedio o error
@@ -545,14 +643,14 @@ private fun NotaCard(
                 )
             } else if (aporte != null) {
                 Text(
-                    text = "+${formatNota(aporte)} pts al promedio",
+                    text = "$source · +${formatNota(aporte)} pts",
                     color = UpaoGreen,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             } else {
                 Text(
-                    text = "Sin ingresar",
+                    text = "Pendiente · simula aquí",
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
                     fontSize = 11.sp
                 )
@@ -560,3 +658,6 @@ private fun NotaCard(
         }
     }
 }
+
+private fun gradeSource(value: String, original: String): String =
+    if (original.isNotBlank() && value.toDoubleOrNull() == original.toDoubleOrNull()) "Guardada" else "Simulada"

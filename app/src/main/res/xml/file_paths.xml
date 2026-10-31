@@ -2,5 +2,6 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="cache" path="shared_cards/" />
     <cache-path name="calendar" path="calendar/" />
+    <cache-path name="canvas_documents" path="canvas_documents/" />
     <external-files-path name="updates" path="Download/" />
 </paths>

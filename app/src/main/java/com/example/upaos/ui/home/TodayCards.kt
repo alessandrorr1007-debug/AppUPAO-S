@@ -333,111 +333,40 @@ fun TodayNewsCard(
     onNotifications: () -> Unit
 ) {
     if (items.isEmpty()) return
-    val theme = rememberTodayCardTheme()
-
+    val unread = items.count { !it.leida }
     CampusCard(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = theme.cardBg, contentColor = theme.cardTextColor),
-        border = BorderStroke(1.dp, theme.cardBorder)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = RoundedCornerShape(14.dp), color = theme.cardIconBg) {
-                    Icon(Icons.Filled.Notifications, null, Modifier.padding(12.dp).size(22.dp), tint = theme.cardAccent)
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(Icons.Filled.Notifications, null, Modifier.padding(10.dp).size(20.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
-                Column(Modifier.weight(1f)) {
-                    Text("Novedades de hoy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = theme.cardTextColor)
-                    Text("Notas, asistencias y avisos de hoy", style = MaterialTheme.typography.bodySmall, color = theme.cardSubtextColor)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Novedades de hoy", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(if (unread > 0) "$unread sin leer · ${items.size} avisos hoy" else "Estás al día · ${items.size} avisos hoy",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Surface(shape = RoundedCornerShape(12.dp), color = theme.cardIconBg) {
-                    Text(
-                        items.size.toString(),
-                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = theme.cardAccent
+            }
+            items.take(3).forEach { notice ->
+                androidx.compose.runtime.key(notice.id) {
+                    com.example.upaos.ui.components.NotificationCard(
+                        notice = notice,
+                        onClick = onNotifications,
+                        compact = true,
+                        timeLabel = notificationMillis(notice.fechaCreacion)?.let { campusFormat(it, "HH:mm") }.orEmpty()
                     )
                 }
             }
-
-            if (items.isEmpty()) {
-                Surface(
-                    color = theme.innerCardBg,
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, theme.innerCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        Modifier.padding(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = theme.cardAccent, modifier = Modifier.size(22.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Sin novedades hoy", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = theme.cardTextColor)
-                            Text(
-                                if (updated == null) "Actualiza para consultar las novedades del día."
-                                else if (current) "No se registraron nuevas notas ni cambios de asistencia hoy."
-                                else "No hay novedades de hoy en los datos guardados.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = theme.cardSubtextColor
-                            )
-                        }
-                    }
-                }
-            } else {
-                items.forEach { notice ->
-                    Surface(
-                        color = theme.innerCardBg,
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, theme.innerCardBorder),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onNotifications)
-                    ) {
-                        Row(
-                            Modifier.padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Icon(Icons.Filled.Notifications, null, Modifier.size(20.dp), tint = theme.cardAccent)
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(
-                                        if (!notice.leida) "NUEVA NOTA" else "ACTUALIZACIÓN",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = theme.cardAccent,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    notificationMillis(notice.fechaCreacion)?.let {
-                                        Text(campusFormat(it, "HH:mm"), style = MaterialTheme.typography.labelSmall, color = theme.cardSubtextColor)
-                                    }
-                                }
-                                notice.curso?.takeIf { it.isNotBlank() }?.let {
-                                    Text(toTitleCase(it), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = theme.cardTextColor)
-                                }
-                                Text(limpiarMensajeNotificacion(notice.mensaje, notice.curso), style = MaterialTheme.typography.bodyMedium, color = theme.cardTextColor)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onNotifications) {
-                    Text("Ver notificaciones", color = theme.cardAccent, fontWeight = FontWeight.Bold)
-                }
+            SourceStamp(updated, current)
+            TextButton(onClick = onNotifications, modifier = Modifier.fillMaxWidth()) {
+                Text(if (items.size > 3) "Ver todas las novedades (${items.size})" else "Ver notificaciones", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(16.dp))
             }
         }
     }
 }
-

@@ -1,26 +1,15 @@
-# Canvas de UPAO S: consultas de estudiante
+# Canvas de UPAO S: política de acceso vigente
 
-Todas las peticiones del cliente Canvas son GET y se restringen a HTTPS, puerto 443 y `upao.instructure.com`. El token solo viaja en Authorization y el logging HTTP permanece en NONE. El detalle de conversaciones añade `auto_mark_as_read=false`: un GET de ese recurso puede marcar leído si se omite ese parámetro.
+La política GET-only anterior quedó sustituida por `CanvasRequestPolicy`. Se mantienen HTTPS, puerto 443 y origen `upao.instructure.com` para toda petición con Bearer. La API permite GET bajo `/api/v1/` y únicamente cuatro rutas POST: nueva intervención, respuesta a intervención, nueva conversación y respuesta a conversación. No se habilitan entregas, uploads, administración ni ejecución de cuestionarios.
 
-Las listas nuevas usan CanvasPagedApi/collectCanvasPages, incluyendo el sobre `quiz_submissions`. Anuncios y calendario dividen los contextos en lotes de diez. Ventanas: anuncios desde hoy−180 hasta hoy+30; calendario desde hoy−30 hasta hoy+120. Se usa la fecha local del dispositivo. La caché por usuario y los indicadores locales de anuncios viven en CanvasCache; se limpian con su método limpiar.
+Las escrituras solo se disparan tras una acción y confirmación del estudiante. No usan backoff, reintentos de transporte ni redirecciones automáticas. Una respuesta de red ambigua bloquea el reenvío hasta que el estudiante confirma que revisó el hilo y decide redactar nuevamente. El estado de envío es local al ViewModel: no constituye idempotencia garantizada por Canvas ni sobrevive la terminación del proceso.
 
-El HTML recibido por API se presenta con HtmlText (texto nativo, sin JavaScript). Sus enlaces se abren en el navegador; no se envía el Bearer al navegador. Los enlaces de entrega, respuesta, exámenes, LTI y otras páginas completas de Canvas requieren la sesión web que mantenga el navegador y pueden pedir login. Las páginas de curso y los hilos se consultan por API. Nunca se muestran preguntas de exámenes.
+Las lecturas siguen la paginación opaca y conservan datos anteriores ante fallos. Se respeta Retry-After hasta 30 segundos; esperas mayores se presentan como servicio ocupado. No se añade ningún worker. Las conversaciones se leen con auto_mark_as_read=false.
 
-Los intentos se distinguen entre −1, null y cero. Las notas de curso provienen de enrollments; no se recalculan promedios. La etiqueta de aprobado por actividad solo aparece con score y puntos positivos, usando la constante 10.5/20. Las fechas dueAt nunca se sustituyen por lockAt. Si falta dueAt solo se utiliza una fecha base explícita; no se adivinan overrides de secciones o grupos sin información aplicable.
+Las descargas usan un transporte sin Bearer ni cookies para URLs de archivo obtenidas por API. Se validan cada redirección HTTPS y los dominios de Canvas/CDN admitidos. El límite es 32 MiB. Un CDN institucional diferente se rechaza y requiere validación antes de ampliar la lista. Los archivos se guardan en caché privada por usuario; la limpieza Canvas elimina ese directorio. Exportar una copia usa el selector del sistema; esa copia pasa a ser administrada por el usuario. Office se abre mediante FileProvider y permiso de lectura temporal.
 
-New Quizzes no ofrece un identificador universal en estos endpoints. Las actividades LTI se rotulan como posibles New Quizzes y se abren externamente, sin afirmar que todo LTI sea un examen. Los hilos no visibles por requerir una publicación previa muestran el error 403; la app no publica para desbloquearlos.
+HTML se sanea con Jsoup. Texto y enlaces usan componentes Android; tablas usan un WebView de visualización sin JavaScript, red, almacenamiento, archivos, cookies de autenticación ni bridges. Los enlaces a recursos compatibles se resuelven nativamente. Las imágenes de archivos Canvas pueden consultarse nativamente; se precargan hasta ocho imágenes con tamaño informado de hasta 2 MiB. Fórmulas basadas en JavaScript, iframes, vídeo/LTI y contenido externo necesitan su flujo externo autorizado. No se ejecuta HTML arbitrario de curso con privilegios de Android.
 
-El diagnóstico de Ajustes solo se ejecuta a petición. Pagina las listas completas y usa el primer curso activo; prueba detalles solo si hay elementos que permitan identificarlos. Copia nombres de endpoint con placeholders, código HTTP, conteo y tiempo; no incluye parámetros, identificadores, cuerpos, nombres, correos, tokens ni mensajes de excepción. Un guion en HTTP con 0 ms indica un recurso previo no disponible; con tiempo indica ausencia de respuesta HTTP. No verifica transporte de descarga ni continuaciones opacas como endpoints separados.
+Tareas: consulta nativa, entrega web y actualización al retornar. Classic/New Quizzes: metadatos e intentos disponibles; ejecución externa, sin acceso a preguntas ni inicio automático de intentos. Las notas se identifican como Canvas y no se convierten en notas oficiales de Banner.
 
-Las pruebas y `canvas_models_synthetic.json` usan exclusivamente datos sintéticos. No se ha accedido al Canvas real de UPAO: disponibilidad, permisos, respuestas institucionales y presentación en un teléfono son **NO VERIFICADO**. Los avisos opcionales de anuncios/notas no se implementan sin verificar primero las fases obligatorias. No se añade exportador ICS ni otro worker.
-
-La búsqueda dirigida encontró IcsCalendarExporter, pero sus operaciones de generación/exportación requieren HorarioCurso y un periodo académico. No ofrece una entrada para eventos de Canvas; no se amplía ese componente para respetar la restricción de no modificar Horario.
-
-Referencias oficiales consultadas:
-
-- [Conversaciones: auto_mark_as_read](https://developerdocs.instructure.com/services/canvas/resources/conversations)
-- [Anuncios](https://developerdocs.instructure.com/services/canvas/resources/announcements)
-- [Entregas y comentarios](https://developerdocs.instructure.com/services/canvas/resources/submissions)
-- [Hilos de discusión](https://developerdocs.instructure.com/services/canvas/resources/discussion_topics)
-- [Páginas e identificadores](https://developerdocs.instructure.com/services/canvas/resources/pages)
-- [Intentos de quizzes](https://developerdocs.instructure.com/services/canvas/resources/quiz_submissions)
+No se han usado cuentas reales ni se han realizado publicaciones reales. Las pruebas con MockWebServer verifican el contrato local y no demuestran los permisos de UPAO. Consultar CANVAS_IMPLEMENTACION.md y CANVAS_COBERTURA.csv para resultados y pendientes.

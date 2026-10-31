@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -45,6 +47,7 @@ import kotlinx.coroutines.launch
 
 private enum class NotifFilter(val label: String) {
     TODAS("Todas"),
+    SIN_LEER("Sin leer"),
     NOTAS("Notas"),
     ASISTENCIA("Asistencias")
 }
@@ -107,6 +110,7 @@ fun NotificacionesScreen(
     val notificacionesFiltradas = remember(notificaciones, selectedFilter) {
         when (selectedFilter) {
             NotifFilter.TODAS -> notificaciones
+            NotifFilter.SIN_LEER -> notificaciones.filter { !it.leida }
             NotifFilter.NOTAS -> notificaciones.filter { notif ->
                 val esAsist = notif.componente?.contains("asistencia", ignoreCase = true) == true ||
                         notif.mensaje.contains("asistencia", ignoreCase = true) ||
@@ -127,18 +131,18 @@ fun NotificacionesScreen(
             CampusTopBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Notificaciones", fontWeight = FontWeight.Bold)
+                        Text("Notificaciones", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                         if (noLeidasTotal > 0) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 shape = CircleShape,
-                                color = UpaoOrange,
-                                modifier = Modifier.size(22.dp)
+                                color = MaterialTheme.colorScheme.primaryContainer
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = "$noLeidasTotal",
-                                        color = Color.White,
+                                        text = if (noLeidasTotal > 99) "99+" else "$noLeidasTotal",
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -176,9 +180,25 @@ fun NotificacionesScreen(
         ) {
             // Filtros de categoría si hay notificaciones
             if (notificaciones.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .45f),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Filled.NotificationsNone, null, Modifier.size(26.dp), tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(if (noLeidasTotal > 0) "Tienes $noLeidasTotal avisos sin leer" else "Estás al día",
+                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text("Tu actividad académica, en un solo lugar", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -226,22 +246,47 @@ fun NotificacionesScreen(
                     ) {
                         EmptyState(
                             icon = Icons.Filled.NotificationsNone,
-                            title = if (selectedFilter == NotifFilter.TODAS) "Aún no hay notificaciones" else "Sin notificaciones en esta categoría",
-                            subtitle = "Aquí aparecerán los cambios de notas y asistencias. Puedes elegir la frecuencia de revisión en Ajustes."
+                            title = when (selectedFilter) {
+                                NotifFilter.TODAS -> "Aún no hay notificaciones"
+                                NotifFilter.SIN_LEER -> "Todo leído"
+                                else -> "Sin notificaciones en esta categoría"
+                            },
+                            subtitle = if (selectedFilter == NotifFilter.SIN_LEER) "Ya revisaste todos tus avisos. Puedes consultarlos en Todas."
+                                else "Aquí aparecerán los cambios de notas y asistencias. Puedes elegir la frecuencia de revisión en Ajustes."
                         )
                     }
                 }
                 else -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(notificacionesFiltradas, key = { it.id }) { notif ->
-                            NotificacionCard(
-                                notif = notif,
-                                onClick = { marcarLeida(notif) }
-                            )
+                        val today = java.time.LocalDate.now(java.time.ZoneId.of("America/Lima"))
+                        val groups = notificacionesFiltradas.sortedByDescending {
+                            com.example.upaos.ui.home.notificationMillis(it.fechaCreacion) ?: Long.MIN_VALUE
+                        }.groupBy { notif ->
+                            com.example.upaos.ui.home.notificationMillis(notif.fechaCreacion)?.let {
+                                java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.of("America/Lima")).toLocalDate()
+                            }
+                        }
+                        groups.forEach { (date, notices) ->
+                            item(key = "date_$date") {
+                                Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(when (date) {
+                                        today -> "Hoy"
+                                        today.minusDays(1) -> "Ayer"
+                                        null -> "Sin fecha"
+                                        else -> date.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.forLanguageTag("es-PE")))
+                                    }, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                    HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+                                    Text(notices.size.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            items(notices, key = { it.id }) { notif ->
+                                NotificacionCard(notif = notif, onClick = { marcarLeida(notif) })
+                            }
                         }
                     }
                 }
@@ -251,206 +296,9 @@ fun NotificacionesScreen(
 }
 
 @Composable
-fun NotificacionCard(
-    notif: NotificacionItem,
-    onClick: () -> Unit
-) {
-    val esFalta = notif.mensaje.contains("falta", ignoreCase = true)
-    val esAsistencia = notif.componente?.contains("asistencia", ignoreCase = true) == true ||
-            notif.mensaje.contains("asistencia", ignoreCase = true) || esFalta
-
-    val categoriaLabel = when {
-        esFalta -> "FALTA"
-        esAsistencia -> "ASISTENCIA"
-        else -> "NOTAS"
-    }
-
-    val iconVector = when {
-        esFalta -> Icons.Filled.WarningAmber
-        esAsistencia -> Icons.AutoMirrored.Filled.FactCheck
-        else -> Icons.AutoMirrored.Filled.MenuBook
-    }
-
-    val iconContainerColor = when {
-        esFalta -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
-        esAsistencia -> com.example.upaos.ui.theme.campusSuccess.copy(alpha = .14f)
-        else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-    }
-
-    val iconTintColor = when {
-        esFalta -> MaterialTheme.colorScheme.error
-        esAsistencia -> com.example.upaos.ui.theme.campusSuccess
-        else -> MaterialTheme.colorScheme.primary
-    }
-
-    val cardColor = if (notif.leida) {
-        MaterialTheme.colorScheme.surfaceContainerLow
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHighest
-    }
-
-    val borderModifier = if (!notif.leida) {
-        Modifier.border(
-            width = 1.dp,
-            color = if (esFalta) MaterialTheme.colorScheme.error.copy(alpha = 0.5f) else UpaoOrange.copy(alpha = 0.5f),
-            shape = RoundedCornerShape(18.dp)
-        )
-    } else {
-        Modifier
-    }
-
-    AppCard(
-        color = cardColor,
-        onClick = onClick,
-        corner = 18.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(borderModifier)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top
-        ) {
-            // Icono grande de categoría
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = iconContainerColor,
-                modifier = Modifier.size(44.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = iconVector,
-                        contentDescription = null,
-                        tint = iconTintColor,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                // Fila superior: Chip de categoría + estado no leída
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = iconTintColor.copy(alpha = 0.12f)
-                        ) {
-                            Text(
-                                text = categoriaLabel,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = iconTintColor,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        if (!notif.componente.isNullOrBlank() && !esAsistencia) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
-                                Text(
-                                    text = notif.componente.trim(),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    if (!notif.leida) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(UpaoOrange)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "NUEVA",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = UpaoOrange
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Nombre del curso (resaltado)
-                if (!notif.curso.isNullOrBlank()) {
-                    Text(
-                        text = toTitleCase(notif.curso),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = courseAccent(notif.curso)
-                    )
-                    Spacer(modifier = Modifier.height(3.dp))
-                }
-
-                // Mensaje legible y ordenado (sin repetir curso/sección)
-                Text(
-                    text = limpiarMensajeNotificacion(notif.mensaje, notif.curso),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (notif.leida) FontWeight.Normal else FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 20.sp
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Fila inferior: Tiempo relativo + Marcar como leída
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = tiempoRelativo(notif.fechaCreacion),
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-
-                    if (!notif.leida) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable(onClick = onClick)
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Marcar leída",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
+fun NotificacionCard(notif: NotificacionItem, onClick: () -> Unit) {
+    com.example.upaos.ui.components.NotificationCard(notice = notif, onClick = onClick)
 }
-
 @Composable
 private fun SkeletonNotificacion() {
     AppCard(corner = 18.dp, modifier = Modifier.fillMaxWidth()) {

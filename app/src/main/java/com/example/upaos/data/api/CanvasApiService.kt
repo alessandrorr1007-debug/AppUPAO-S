@@ -23,10 +23,56 @@ import java.util.concurrent.TimeUnit
 import com.example.upaos.data.model.CanvasFileDetail
 import com.example.upaos.data.model.CanvasTab
 import retrofit2.http.Url
+import retrofit2.http.POST
+import retrofit2.http.FormUrlEncoded
+import retrofit2.http.Field
 
 import com.example.upaos.data.model.*
 
 interface CanvasApiService {
+
+    @FormUrlEncoded
+    @POST("api/v1/courses/{C}/discussion_topics/{T}/entries")
+    suspend fun postDiscussionEntry(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("T") topic: Long, @Field("message") message: String): Response<CanvasDiscussionEntry>
+
+    @FormUrlEncoded
+    @POST("api/v1/courses/{C}/discussion_topics/{T}/entries/{E}/replies")
+    suspend fun postDiscussionReply(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("T") topic: Long, @Path("E") entry: Long, @Field("message") message: String): Response<CanvasDiscussionEntry>
+
+    @FormUrlEncoded
+    @POST("api/v1/conversations")
+    suspend fun createConversation(@Header("Authorization") auth: String,
+        @Field("recipients[]") recipients: List<Long>, @Field("subject") subject: String,
+        @Field("body") body: String, @Field("context_code") context: String): Response<List<CanvasConversation>>
+
+    @FormUrlEncoded
+    @POST("api/v1/conversations/{id}/add_message")
+    suspend fun replyConversation(@Header("Authorization") auth: String, @Path("id") id: Long,
+        @Field("body") body: String): Response<CanvasConversation>
+
+    @GET("api/v1/conversations")
+    suspend fun getScopedConversations(@Header("Authorization") auth: String,
+        @Query("scope") scope: String, @Query("per_page") perPage: Int = 100): Response<List<CanvasConversation>>
+
+    @GET("api/v1/search/recipients")
+    suspend fun findRecipients(@Header("Authorization") auth: String, @Query("search") search: String,
+        @Query("context") context: String, @Query("type") type: String = "user",
+        @Query("per_page") perPage: Int = 100): Response<List<CanvasRecipient>>
+
+    @GET("api/v1/courses/{C}/discussion_topics/{T}")
+    suspend fun getDiscussion(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("T") topic: Long): Response<CanvasDiscussionTopic>
+
+    @GET("api/v1/courses/{C}/discussion_topics/{T}/entries/{E}/replies")
+    suspend fun getDiscussionReplies(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("T") topic: Long, @Path("E") entry: Long,
+        @Query("per_page") perPage: Int = 100): Response<List<CanvasDiscussionEntry>>
+
+    @GET("api/v1/courses/{C}/assignments/{A}?include[]=submission")
+    suspend fun getAssignment(@Header("Authorization") auth: String, @Path("C") course: Long,
+        @Path("A") assignment: Long): Response<CanvasAssignment>
 
     @GET
     suspend fun getListPage(@Header("Authorization") authHeader: String, @Url pageUrl: String): Response<List<com.google.gson.JsonObject>>
@@ -47,7 +93,7 @@ interface CanvasApiService {
         @Query("per_page") perPage: Int = 100
     ): Response<List<CanvasTodoItem>>
 
-    @GET("api/v1/courses")
+    @GET("api/v1/courses?include[]=term&include[]=teachers")
     suspend fun getActiveCourses(
         @Header("Authorization") authHeader: String,
         @Query("enrollment_state") state: String = "active",
@@ -233,7 +279,7 @@ object CanvasApiClient {
 
     private val destinationGuard = okhttp3.Interceptor { chain ->
         val request = chain.request()
-        if (request.method != "GET" || !TrustedServers.isCanvas(request.url)) {
+        if (!com.example.upaos.data.canvas.CanvasRequestPolicy.allowed(request.method, request.url)) {
             throw java.io.IOException("Destino de Canvas no autorizado")
         }
         chain.proceed(request)
@@ -243,6 +289,9 @@ object CanvasApiClient {
         .addInterceptor(destinationGuard)
         .addNetworkInterceptor(destinationGuard)
         .addInterceptor(loggingInterceptor)
+        .retryOnConnectionFailure(false)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .connectTimeout(35, TimeUnit.SECONDS)
         .readTimeout(35, TimeUnit.SECONDS)
         .build()

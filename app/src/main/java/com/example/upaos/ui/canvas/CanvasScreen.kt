@@ -1,4 +1,5 @@
 package com.example.upaos.ui.canvas
+import com.example.upaos.data.canvas.*
 import com.example.upaos.ui.components.CampusTopBar
 import com.example.upaos.ui.components.CampusCard
 
@@ -190,32 +191,31 @@ private fun formatActualizado(millis: Long?): String {
     }
 }
 
-private fun downloadCanvasFile(context: Context, url: String, fileName: String) {
-    try {
-        val request = DownloadManager.Request(Uri.parse(url)).apply {
-            setTitle(fileName)
-            setDescription("Descargando archivo de Canvas LMS")
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-            setAllowedOverMetered(true)
-            setAllowedOverRoaming(true)
-        }
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        dm.enqueue(request)
-        Toast.makeText(context, "Iniciando descarga: $fileName", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-        Toast.makeText(context, "Error al iniciar descarga: ${e.message}", Toast.LENGTH_SHORT).show()
-    }
-}
-
 @Composable
 fun HtmlText(
     html: String,
     modifier: Modifier = Modifier
 ) {
+    var destination by remember(html) { mutableStateOf<CanvasNativeRoute?>(null) }
+    val htmlToken = canvasSavedToken()
+    destination?.let { route -> CanvasLinkedResource(route, htmlToken) { destination = null } }
+    val safeHtml = remember(html) { canvasSafeHtml(html) }
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
+    if (safeHtml.contains("<table", ignoreCase = true)) {
+        val richContext = LocalContext.current
+        Column(modifier) {
+            CanvasRichHtmlView(safeHtml, Modifier.fillMaxWidth()) { url ->
+                val route = canvasNativeRoute(url)
+                if (route != null) destination = route else openCanvasContentLink(richContext, url)
+            }
+            CanvasInlineImages(html, htmlToken)
+        }
+        return
+    }
 
+
+    Column(modifier) {
     AndroidView(
         factory = { ctx ->
             TextView(ctx).apply {
@@ -229,7 +229,7 @@ fun HtmlText(
         update = { tv ->
             tv.setTextColor(textColor)
             tv.setLinkTextColor(linkColor)
-            val text = android.text.SpannableString(HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT))
+            val text = android.text.SpannableString(HtmlCompat.fromHtml(safeHtml, HtmlCompat.FROM_HTML_MODE_COMPACT))
             // Content can contain inline black text or white backgrounds from Canvas.
             // Let the selected app theme provide readable foregrounds and backgrounds.
             text.getSpans(0, text.length, android.text.style.ForegroundColorSpan::class.java).forEach { text.removeSpan(it) }
@@ -239,13 +239,18 @@ fun HtmlText(
                 val end = text.getSpanEnd(link)
                 text.removeSpan(link)
                 text.setSpan(object : android.text.style.ClickableSpan() {
-                    override fun onClick(widget: android.view.View) { openCanvasContentLink(widget.context, link.url) }
+                    override fun onClick(widget: android.view.View) {
+                        val route = canvasNativeRoute(link.url)
+                        if (route != null) destination = route else openCanvasContentLink(widget.context, link.url)
+                    }
                 }, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             tv.text = text
         },
-        modifier = modifier
+        modifier = Modifier.fillMaxWidth()
     )
+    CanvasInlineImages(html, htmlToken)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -540,68 +545,8 @@ fun CanvasContent(
 
                 // Contenido por Pestaña
                 when (selectedMainTab) {
-                    0 -> {
-                        // TAB CURSOS
-                        RefreshableContent(
-                            isRefreshing = isRefreshingCourses,
-                            onRefresh = { fetchCourses(isManual = true) },
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                when {
-                                    isLoadingCourses -> {
-                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                                Text(
-                                                    "Cargando tus cursos de Canvas...",
-                                                    fontSize = 12.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-                                    courses.isEmpty() -> {
-                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            EmptyState(
-                                                icon = Icons.Filled.School,
-                                                title = "Sin cursos activos",
-                                                subtitle = "No se encontraron cursos activos matriculados en tu cuenta de Canvas."
-                                            )
-                                        }
-                                    }
-                                    else -> {
-                                        LazyColumn(
-                                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.fillMaxSize()
-                                        ) {
-                                            item {
-                                                Text(
-                                                    text = "Mis cursos matriculados (${courses.size})",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.padding(vertical = 4.dp)
-                                                )
-                                            }
-                                            items(courses, key = { it.id }) { course ->
-                                                CanvasCourseCard(
-                                                    course = course,
-                                                    onClick = { selectedCourseForDetail = course }
-                                                )
-                                            }
-                                            item { Spacer(modifier = Modifier.height(16.dp)) }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    0 -> CanvasCoursesOverview(savedCanvasToken.orEmpty(), courses, isLoadingCourses, isRefreshingCourses,
+                        { fetchCourses(true) }) { selectedCourseForDetail = it }
                     1 -> {
                         // TAB PENDIENTES
                         RefreshableContent(
@@ -704,53 +649,7 @@ fun CanvasContent(
                             }
                         }
                     }
-                    3 -> {
-                        // TAB BANDEJA DE ENTRADA
-                        RefreshableContent(
-                            isRefreshing = isRefreshingConvs,
-                            onRefresh = { fetchConversations(isManual = true) },
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                OutlinedTextField(value = inboxSearch, onValueChange = { inboxSearch = it }, label = { Text("Buscar mensajes") }, modifier = Modifier.fillMaxWidth())
-                                FilterChip(selected = unreadOnly, onClick = { unreadOnly = !unreadOnly }, label = { Text("No leídos") })
-                                when {
-                                    isLoadingConvs -> {
-                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                                        }
-                                    }
-                                    conversations.isEmpty() -> {
-                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            EmptyState(
-                                                icon = Icons.Filled.Mail,
-                                                title = "Bandeja de entrada vacía",
-                                                subtitle = "No tienes comunicaciones recientes en la bandeja de entrada de Canvas."
-                                            )
-                                        }
-                                    }
-                                    else -> {
-                                        LazyColumn(
-                                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.fillMaxSize()
-                                        ) {
-                                            items(filteredConversations, key = { it.id }) { conv ->
-                                                CanvasConversationCard(
-                                                    conversation = conv,
-                                                    onClick = { selectedConversationDetail = conv }
-                                                )
-                                            }
-                                            item { Spacer(modifier = Modifier.height(16.dp)) }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    3 -> CanvasNativeInbox(savedCanvasToken.orEmpty(), courses) { selectedConversationDetail = it }
                     4 -> CanvasAnnouncements(savedCanvasToken.orEmpty(), courses.map { it.id })
                     5 -> CanvasCalendar(savedCanvasToken.orEmpty(), courses.map { it.id })
 
@@ -918,7 +817,8 @@ fun CanvasModuleCard(
     module: CanvasModule,
     onItemClick: (CanvasModuleItem) -> Unit
 ) {
-    val items = module.items ?: emptyList()
+    val items = module.items.orEmpty().sortedBy { it.position ?: Int.MAX_VALUE }
+    var expanded by remember(module.id) { mutableStateOf(true) }
 
     AppCard(
         modifier = Modifier.fillMaxWidth(),
@@ -934,14 +834,15 @@ fun CanvasModuleCard(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = module.name,
+                text = module.name + if (module.state == "locked") " · Bloqueado" else "",
+                modifier = Modifier.clickable { expanded = !expanded },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
 
-        if (items.isNotEmpty()) {
+        if (expanded && items.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
             Spacer(modifier = Modifier.height(6.dp))
@@ -970,7 +871,7 @@ fun CanvasModuleCard(
                             color = MaterialTheme.colorScheme.surface,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onItemClick(item) }
+                                .clickable(enabled = module.state != "locked") { onItemClick(item) }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
@@ -979,7 +880,7 @@ fun CanvasModuleCard(
                                 Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = item.title ?: "Archivo",
+                                    text = (item.title ?: "Archivo") + if (item.completionRequirement?.completed == true) " · Completado" else "",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
@@ -1158,10 +1059,20 @@ fun CanvasAssignmentDetailSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val assignment = item.assignment
-    val esExamen = item.isQuiz
-    val (dueText, dueColor) = remember(item.dueAt) { formatCanvasDueDate(item.dueAt) }
-    val courseColor = com.example.upaos.ui.theme.campusAccent(remember(item.courseDisplayName) { cursoColor(item.courseDisplayName) })
+    val detailsToken = canvasSavedToken()
+    val courseId = item.courseId ?: item.assignment?.courseId
+    val assignmentId = item.assignment?.id
+    val latest = canvasResourceViewModel("taskDetail:$courseId:$assignmentId", detailsToken, item.assignment) {
+        if (courseId != null && assignmentId != null) assignment(courseId, assignmentId) else item.assignment
+    }
+    val latestState by latest.state.collectAsState()
+    CanvasRefreshOnResume { latest.refresh(true) }
+    CanvasResourceFeedback(latestState) { latest.refresh(true) }
+    val resolvedItem = item.copy(assignment = latestState.data ?: item.assignment)
+    val assignment = resolvedItem.assignment
+    val esExamen = resolvedItem.isQuiz
+    val (dueText, dueColor) = remember(resolvedItem.dueAt) { formatCanvasDueDate(resolvedItem.dueAt) }
+    val courseColor = com.example.upaos.ui.theme.campusAccent(remember(resolvedItem.courseDisplayName) { cursoColor(resolvedItem.courseDisplayName) })
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1193,7 +1104,7 @@ fun CanvasAssignmentDetailSheet(
                         Icon(Icons.Filled.School, contentDescription = null, tint = courseColor, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = toTitleCase(item.courseDisplayName),
+                            text = toTitleCase(resolvedItem.courseDisplayName),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = courseColor,
@@ -1232,7 +1143,7 @@ fun CanvasAssignmentDetailSheet(
 
             // Title
             Text(
-                text = item.title,
+                text = resolvedItem.title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -1270,7 +1181,7 @@ fun CanvasAssignmentDetailSheet(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
-                val points = item.pointsPossible
+                val points = resolvedItem.pointsPossible
                 if (points != null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Puntos", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1278,7 +1189,7 @@ fun CanvasAssignmentDetailSheet(
                     }
                 }
 
-                val hasSubmitted = assignment?.isSubmitted == true || assignment?.hasSubmittedSubmissions == true
+                val hasSubmitted = assignment?.isSubmitted == true
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Estado", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
@@ -1331,10 +1242,10 @@ fun CanvasAssignmentDetailSheet(
                 )
             }
 
-            CanvasAssignmentExtras(item)
+            CanvasAssignmentExtras(resolvedItem)
             Spacer(modifier = Modifier.height(24.dp))
 
-            CanvasExternalButton(assignment?.htmlUrl ?: item.webUrl, "Entregar en Canvas")
+            CanvasExternalButton(assignment?.htmlUrl ?: resolvedItem.webUrl, "Entregar en Canvas")
 
             PrimaryButton(
                 text = "Cerrar",
@@ -1515,7 +1426,6 @@ fun CanvasGroupDetailSheet(
     val resource = canvasResourceViewModel("members:${group.id}", token, emptyList<CanvasUser>()) { groupPeople(group.id) }
     val resourceState by resource.state.collectAsState()
     CanvasResourceFeedback(resourceState) { resource.refresh(true) }
-    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val members = resourceState.data
     val isLoadingMembers = resourceState.loading
 
@@ -1643,7 +1553,6 @@ fun CanvasConversationDetailSheet(
     val resource = canvasResourceViewModel("detail:${conversation.id}", token, null as CanvasConversation?) { conversation(conversation.id) }
     val resourceState by resource.state.collectAsState()
     CanvasResourceFeedback(resourceState) { resource.refresh(true) }
-    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
     val detail = resourceState.data
     val isLoading = resourceState.loading
 
@@ -1679,7 +1588,10 @@ fun CanvasConversationDetailSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            CanvasExternalButton("https://upao.instructure.com/conversations/${conversation.id}", "Responder en Canvas")
+            val replyRepository = rememberCanvasRepository(token)
+            CanvasComposer("conversation:${conversation.id}", token, afterSend = { resource.refresh(true) }) { body ->
+                replyRepository.sendReply(conversation.id, body)
+            }
             // Participants
             val participants = detail?.participants ?: conversation.participants ?: emptyList()
             if (participants.isNotEmpty()) {
@@ -1756,7 +1668,8 @@ fun CanvasConversationDetailSheet(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    HtmlText(msg.body.orEmpty())
+                                    Text(msg.body.orEmpty())
+                                    CanvasAttachments(msg.attachments)
                                 }
                             }
                         }
@@ -1784,212 +1697,30 @@ fun CanvasFileViewerSheet(
     onOpenInAppViewer: (url: String, title: String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
-    val resource = canvasResourceViewModel("fileDetail:${item.id}", token, null as CanvasFileDetail?) { if (item.url.isNullOrBlank()) null else fileByUrl(item.url) }
-    val resourceState by resource.state.collectAsState()
-    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
-    CanvasResourceFeedback(resourceState) { resource.refresh(true) }
-    val fileDetail = resourceState.data
-    val isLoading = resourceState.loading
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(46.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = when {
-                                item.title?.endsWith(".pdf", ignoreCase = true) == true -> Icons.Filled.PictureAsPdf
-                                item.title?.endsWith(".docx", ignoreCase = true) == true || item.title?.endsWith(".doc", ignoreCase = true) == true -> Icons.Filled.Description
-                                else -> Icons.AutoMirrored.Filled.InsertDriveFile
-                            },
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title ?: "Archivo",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = moduleName,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                }
-            } else {
-                fileDetail?.let { fd ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Tamaño del archivo", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(fd.formattedSize, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(18.dp))
-                }
-            }
-
-            // Action 1: Ver en Visor Interno (In-App)
-            PrimaryButton(
-                text = "Ver en Visor Interno (In-App)",
-                icon = Icons.Filled.Visibility,
-                onClick = {
-                    val directUrl = fileDetail?.url
-                    if (!directUrl.isNullOrBlank()) {
-                        val isPdf = item.title?.endsWith(".pdf", ignoreCase = true) == true
-                        val viewerUrl = if (isPdf) {
-                            "private-pdf:" + directUrl
-                        } else {
-                            directUrl
-                        }
-                        onOpenInAppViewer(viewerUrl, item.title ?: "Visor de Documentos")
-                        onDismiss()
-                    } else {
-                        Toast.makeText(context, "No se pudo obtener el enlace del archivo", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                enabled = !isLoading && fileDetail?.url != null,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Action 2: Descargar al celular
-            OutlinedButton(
-                onClick = {
-                    val directUrl = fileDetail?.url
-                    if (!directUrl.isNullOrBlank()) {
-                        downloadCanvasFile(context, directUrl, item.title ?: "archivo_canvas")
-                        onDismiss()
-                    }
-                },
-                enabled = !isLoading && fileDetail?.url != null,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Descargar al celular", fontWeight = FontWeight.SemiBold)
-            }
+    val resource = canvasResourceViewModel("fileDetail:${item.id}", token, null as CanvasFileDetail?) {
+        if (item.url.isNullOrBlank()) null else fileByUrl(item.url)
+    }
+    val state by resource.state.collectAsState()
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
+            Text(item.title ?: "Documento", style = MaterialTheme.typography.titleLarge)
+            CanvasResourceFeedback(state) { resource.refresh(true) }
+            if (state.loading) CircularProgressIndicator()
+            state.data?.let { CanvasDocument(it, token) }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InAppWebViewModal(
-    url: String,
-    title: String,
-    onDismiss: () -> Unit
-) {
-    val browserContext = LocalContext.current
-    if (!url.startsWith("private-pdf:")) {
-        LaunchedEffect(url) { openCanvasContentLink(browserContext, url); onDismiss() }
-        return
-    }
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                CampusTopBar(
-                    title = {
-                        Text(
-                            text = title,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Filled.Close, contentDescription = "Cerrar")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-                )
-
-                var isLoading by remember { mutableStateOf(true) }
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                    if (url.startsWith("private-pdf:")) {
-                        PrivatePdfViewer(url.removePrefix("private-pdf:"))
-                    } else {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                settings.javaScriptEnabled = false
-                                settings.domStorageEnabled = true
-                                settings.loadWithOverviewMode = true
-                                settings.useWideViewPort = true
-                                settings.builtInZoomControls = true
-                                settings.displayZoomControls = false
-                                settings.allowFileAccess = false
-                                settings.allowContentAccess = false
-                                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                                webViewClient = object : WebViewClient() {
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        isLoading = false
-                                    }
-                                }
-                                loadUrl(url)
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    if (isLoading) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
-                    }
-                }
-            }
-        }
+fun InAppWebViewModal(url: String, title: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val route = remember(url) { canvasNativeRoute(url) }
+    if (route != null) {
+        CanvasLinkedResource(route, canvasSavedToken(), onDismiss)
+    } else if (url.startsWith("private-pdf:")) {
+        CanvasReadDetail(title, onDismiss) { Box(Modifier.height(500.dp)) { PrivatePdfViewer(url.removePrefix("private-pdf:")) } }
+    } else {
+        LaunchedEffect(url) { openCanvasContentLink(context, url); onDismiss() }
     }
 }
 

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -52,6 +53,7 @@ import com.example.upaos.ui.home.HomeScreen
 import com.example.upaos.ui.login.EligeCuentaScreen
 import com.example.upaos.ui.login.LoginScreen
 import com.example.upaos.ui.notificaciones.NotificacionesScreen
+import com.example.upaos.ui.navigation.backFrom
 import com.example.upaos.ui.profile.ProfileScreen
 import com.example.upaos.ui.profile.RefreshProfileOnResume
 import com.example.upaos.ui.profile.rememberProfileViewModel
@@ -284,6 +286,22 @@ class MainActivity : FragmentActivity() {
                         }
                     }
 
+                    fun volverDesde(entry: androidx.navigation.NavBackStackEntry) {
+                        navController.backFrom(entry) {
+                            val activeToken = tokenManager.getToken()
+                            val activeUser = tokenManager.getSavedUser()
+                            if (!activeUser.isNullOrBlank() && !activeToken.isNullOrBlank()) {
+                                com.example.upaos.data.upao.UpaoHttpClient.selectAccount(activeUser)
+                                navegarPorTipoCuenta(activeToken)
+                            } else {
+                                navController.navigate("login") {
+                                    popUpTo(navController.graph.id) { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                    }
+
                     NavHost(
                         navController = navController,
                         startDestination = "splash"
@@ -327,7 +345,7 @@ class MainActivity : FragmentActivity() {
                             "elige-cuenta",
                             enterTransition = { fadeIn(tween(300)) + slideInHorizontally(tween(300)) { it / 3 } },
                             exitTransition = { fadeOut(tween(200)) }
-                        ) {
+                        ) { accountEntry ->
                             EligeCuentaScreen(
                                 onLoginSuccess = { token ->
                                     navegarPorTipoCuenta(token)
@@ -339,18 +357,10 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onBack = {
                                     val activeUser = tokenManager.getSavedUser()
-                                    val token = tokenManager.getToken()
-                                    if (!activeUser.isNullOrBlank() && !token.isNullOrBlank()) {
+                                    if (!activeUser.isNullOrBlank()) {
                                         com.example.upaos.data.upao.UpaoHttpClient.selectAccount(activeUser)
-                                        val popped = navController.popBackStack()
-                                        if (!popped) {
-                                            navegarPorTipoCuenta(token)
-                                        }
-                                    } else {
-                                        if (!navController.popBackStack()) {
-                                            navController.navigate("login") { popUpTo("elige-cuenta") { inclusive = true } }
-                                        }
                                     }
+                                    volverDesde(accountEntry)
                                 }
                             )
                         }
@@ -416,6 +426,7 @@ class MainActivity : FragmentActivity() {
                             popEnterTransition = { fadeIn(tween(220)) },
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
                         ) { backStackEntry ->
+                            BackHandler { volverDesde(backStackEntry) }
                             val args = backStackEntry.arguments
                             val periodo = args?.getString("periodo").orEmpty()
                             val carrera = args?.getString("carrera") ?: "UG"
@@ -427,7 +438,7 @@ class MainActivity : FragmentActivity() {
                                 carrera = carrera,
                                 crn = crn,
                                 courseName = nombre,
-                                onBack = { navController.popBackStack() }
+                                onBack = { volverDesde(backStackEntry) }
                             )
                         }
 
@@ -437,10 +448,11 @@ class MainActivity : FragmentActivity() {
                             exitTransition = { fadeOut(tween(180)) },
                             popEnterTransition = { fadeIn(tween(220)) },
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
-                        ) {
+                        ) { notificationsEntry ->
+                            BackHandler { volverDesde(notificationsEntry) }
                             NotificacionesScreen(
                                 usuario = tokenManager.getSavedUser(),
-                                onBack = { navController.popBackStack() }
+                                onBack = { volverDesde(notificationsEntry) }
                             )
                         }
 
@@ -451,11 +463,12 @@ class MainActivity : FragmentActivity() {
                             popEnterTransition = { fadeIn(tween(220)) },
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
                         ) { profileEntry ->
+                            BackHandler { volverDesde(profileEntry) }
                             val homeEntry = remember(profileEntry) { navController.getBackStackEntry("home/{token}") }
                             val profileModel = rememberProfileViewModel(homeEntry)
                             val profileState by profileModel.state.collectAsState()
                             RefreshProfileOnResume(profileModel)
-                            ProfileScreen(profileState, onBack = { navController.popBackStack() }, onRefresh = profileModel::refresh)
+                            ProfileScreen(profileState, onBack = { volverDesde(profileEntry) }, onRefresh = profileModel::refresh)
                         }
 
                         composable(
@@ -464,10 +477,11 @@ class MainActivity : FragmentActivity() {
                             exitTransition = { fadeOut(tween(180)) },
                             popEnterTransition = { fadeIn(tween(220)) },
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
-                        ) {
+                        ) { settingsEntry ->
+                            BackHandler { volverDesde(settingsEntry) }
                             SettingsScreen(
                                 usuario = tokenManager.getSavedUser(),
-                                onBack = { navController.popBackStack() },
+                                onBack = { volverDesde(settingsEntry) },
                                 onAccountRemoved = { navController.navigate("elige-cuenta") { popUpTo(0) { inclusive = true } } }
                             )
                         }
@@ -478,9 +492,10 @@ class MainActivity : FragmentActivity() {
                             exitTransition = { fadeOut(tween(180)) },
                             popEnterTransition = { fadeIn(tween(220)) },
                             popExitTransition = { slideOutHorizontally(tween(280)) { it } }
-                        ) {
+                        ) { calculatorEntry ->
+                            BackHandler { volverDesde(calculatorEntry) }
                             CalculadoraScreen(
-                                onBack = { navController.popBackStack() }
+                                onBack = { volverDesde(calculatorEntry) }
                             )
                         }
 

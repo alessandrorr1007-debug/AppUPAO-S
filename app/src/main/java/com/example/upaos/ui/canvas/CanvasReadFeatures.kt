@@ -29,7 +29,7 @@ internal fun canvasSavedToken(): String {
 }
 
 @Composable
-private fun <T> canvasCachedList(flow: String, token: String, itemClass: Class<T>,
+internal fun <T> canvasCachedList(flow: String, token: String, itemClass: Class<T>,
     load: suspend CanvasCourseRepository.() -> List<T>): CanvasResourceViewModel<List<T>> {
     val context = LocalContext.current.applicationContext
     val tokens = remember(context) { TokenManager(context) }
@@ -51,7 +51,7 @@ private fun <T> canvasCachedList(flow: String, token: String, itemClass: Class<T
                 cache.readCanvasList(user, flow)?.let {
                     gson.fromJson<List<T>>(it, TypeToken.getParameterized(List::class.java, itemClass).type)
                 }
-            })
+            }, restoreUpdatedAt = { cache.canvasListUpdatedAt(user, flow) })
         })
 }
 
@@ -64,6 +64,7 @@ private fun <T> CanvasReadList(vm: CanvasResourceViewModel<List<T>>, leading: @C
             TextButton(onClick = { vm.refresh(true) }, enabled = !state.refreshing) { Text("Actualizar") }
             if (state.loading || state.refreshing) CircularProgressIndicator(Modifier.size(24.dp))
         }
+        state.updatedAt?.let { Text("${if (state.fromCache) "Datos guardados · " else ""}Actualizado: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))}", style = MaterialTheme.typography.bodySmall) }
         if (!state.loading && state.data.isEmpty()) Text("Sin elementos disponibles")
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { leading() }
@@ -73,7 +74,7 @@ private fun <T> CanvasReadList(vm: CanvasResourceViewModel<List<T>>, leading: @C
 }
 
 @Composable
-private fun CanvasReadDetail(title: String, onClose: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+internal fun CanvasReadDetail(title: String, onClose: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     androidx.compose.ui.window.Dialog(onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {
@@ -94,6 +95,8 @@ internal fun CanvasAnnouncements(token: String, courses: List<Long>) {
     val cache = remember { CanvasCache(context) }
     var seen by remember(user) { mutableStateOf(emptySet<String>()) }
     var selected by remember { mutableStateOf<CanvasAnnouncement?>(null) }
+    var replyAnnouncement by remember { mutableStateOf<CanvasDiscussionTopic?>(null) }
+    var replyCourse by remember { mutableStateOf<Long?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(user) { seen = cache.seenAnnouncements(user) }
     CanvasReadList(vm) { a ->
@@ -107,18 +110,25 @@ internal fun CanvasAnnouncements(token: String, courses: List<Long>) {
         if (a.id != null && key !in seen) Text("No visto · solo en este dispositivo")
     }
     selected?.let { a -> CanvasReadDetail(a.title ?: "Anuncio", { selected = null }) {
+        Text("${a.author?.displayName ?: a.author?.name ?: "Autor no disponible"} · ${a.postedAt ?: "Sin fecha"}")
         HtmlText(a.message.orEmpty())
         CanvasAttachments(a.attachments)
-        CanvasExternalButton(a.htmlUrl)
+        val course = a.contextCode?.removePrefix("course_")?.toLongOrNull()
+        if (course != null && a.id != null) {
+            val topicVm = canvasResourceViewModel("announcementTopic:$course:${a.id}", token, null as CanvasDiscussionTopic?) { discussion(course, a.id) }
+            val topicState by topicVm.state.collectAsState()
+            if (topicState.data?.let { canvasCanReply(it) } == true) TextButton(onClick = { replyCourse = course; replyAnnouncement = topicState.data }) { Text("Responder al anuncio") }
+        }
     } }
+    replyAnnouncement?.let { topic -> replyCourse?.let { course -> CanvasDiscussionDetail(course, topic, token) { replyAnnouncement = null } } }
 }
 
 @Composable
 internal fun CanvasAttachments(files: List<CanvasFileDetail>?) {
-    val context = LocalContext.current
-    files.orEmpty().forEach { file ->
-        TextButton(onClick = { openCanvasContentLink(context, file.url) }) { Text(file.fileName) }
-    }
+    var selected by remember(files) { mutableStateOf<CanvasFileDetail?>(null) }
+    val token = canvasSavedToken()
+    files.orEmpty().forEach { file -> TextButton(onClick = { selected = file }) { Text(file.fileName) } }
+    selected?.let { file -> CanvasReadDetail(file.fileName, { selected = null }) { CanvasDocument(file, token) } }
 }
 
 @Composable
@@ -127,6 +137,7 @@ internal fun CanvasAssignmentExtras(item: CanvasTodoItem) {
     val assignment = item.assignment ?: return
     val vm = canvasResourceViewModel("submission:$course:${assignment.id}", canvasSavedToken(), null as CanvasSubmission?) { submission(course, assignment.id) }
     val state by vm.state.collectAsState()
+    CanvasRefreshOnResume { vm.refresh(true) }
     CanvasResourceFeedback(state) { vm.refresh(true) }
     if (state.loading) CircularProgressIndicator(Modifier.size(24.dp))
     val submission = state.data ?: assignment.submission
@@ -172,6 +183,7 @@ internal fun CanvasCourseGrades(course: CanvasCourse, token: String, openAssignm
     val groups = canvasCachedList("assignmentGroups:${course.id}", token, CanvasAssignmentGroup::class.java) { assignmentGroups(course.id) }
     Column(Modifier.fillMaxSize()) {
         val grades = state.data.firstOrNull()?.grades
+        Text("Fuente: Canvas LMS · las notas oficiales se consultan en Banner", Modifier.padding(12.dp))
         Text("Nota actual: ${grades?.currentGrade ?: canvasPoints(grades?.currentScore)}", Modifier.padding(12.dp))
         Text("Nota final: ${grades?.finalGrade ?: canvasPoints(grades?.finalScore)}", Modifier.padding(horizontal = 12.dp))
         CanvasReadList(groups) { group ->
@@ -226,12 +238,12 @@ internal fun CanvasCalendar(token: String, courses: List<Long>) {
 
 @Composable
 internal fun CanvasPageDetail(course: Long, page: String?, token: String, onClose: () -> Unit) {
-    val vm = canvasResourceViewModel("page:$course:$page", token, null as CanvasPage?) { if (page == null) frontPage(course) else this.page(course, page) }
+    val vm = canvasCachedList("page:$course:$page", token, CanvasPage::class.java) { listOfNotNull(if (page == null) frontPage(course) else this.page(course, page)) }
     val state by vm.state.collectAsState()
     CanvasResourceFeedback(state) { vm.refresh(true) }
-    CanvasReadDetail(state.data?.title ?: "Página", onClose) {
-        if (state.loading) CircularProgressIndicator() else if (state.data == null) Text("No disponible")
-        state.data?.let { HtmlText(it.body.orEmpty()); CanvasExternalButton(it.htmlUrl) }
+    CanvasReadDetail(state.data.firstOrNull()?.title ?: "Página", onClose) {
+        if (state.loading) CircularProgressIndicator() else if (state.data.isEmpty()) Text("No disponible")
+        state.data.firstOrNull()?.let { HtmlText(it.body.orEmpty()); CanvasExternalButton(it.htmlUrl) }
     }
 }
 
@@ -248,13 +260,17 @@ internal fun CanvasPages(course: Long, token: String) {
 }
 
 @Composable
-internal fun CanvasQuizzes(course: Long, token: String) {
+internal fun CanvasQuizzes(course: Long, token: String, initialQuiz: Long? = null) {
     val vm = canvasCachedList("quizzes:$course", token, CanvasQuiz::class.java) { quizzes(course) }
     val assignments = canvasCachedList("quizAssignments:$course", token, CanvasAssignment::class.java) { assignments(course) }
     val tasks by assignments.state.collectAsState()
     val quizzes by vm.state.collectAsState()
     CanvasResourceFeedback(tasks) { assignments.refresh(true) }
     var selected by remember { mutableStateOf<CanvasQuiz?>(null) }
+    var initialOpened by remember(initialQuiz) { mutableStateOf(false) }
+    LaunchedEffect(initialQuiz, quizzes.data) {
+        if (!initialOpened && initialQuiz != null) quizzes.data.firstOrNull { it.id == initialQuiz }?.let { selected = it; initialOpened = true }
+    }
     CanvasReadList(vm, leading = {
         // Canvas does not expose a reliable New Quizzes flag in every account: label LTI conservatively.
         Column {
@@ -288,36 +304,68 @@ internal fun CanvasQuizzes(course: Long, token: String) {
 
 @Composable
 internal fun CanvasDiscussionDetail(course: Long, topic: CanvasDiscussionTopic, token: String, onClose: () -> Unit) {
+    val repository = rememberCanvasRepository(token)
+    val metadata = canvasResourceViewModel("topic:$course:${topic.id}", token, null as CanvasDiscussionTopic?) { discussion(course, topic.id) }
+    val topicState by metadata.state.collectAsState()
+    val current = topicState.data ?: topic
     val vm = canvasResourceViewModel("discussion:$course:${topic.id}", token, null as CanvasDiscussionView?) { discussionView(course, topic.id) }
     val state by vm.state.collectAsState()
-    CanvasResourceFeedback(state) { vm.refresh(true) }
-    CanvasReadDetail(topic.title ?: "Discusión", onClose) {
-        HtmlText(topic.message.orEmpty())
+    var target by remember(course, topic.id) { mutableStateOf<Long?>(null) }
+    CanvasReadDetail(current.title ?: "Discusión", onClose) {
+        CanvasResourceFeedback(topicState) { metadata.refresh(true) }
+        HtmlText(current.message.orEmpty())
+        CanvasAttachments(current.attachments)
+        TextButton(onClick = { metadata.refresh(true); vm.refresh(true) }) { Text("Actualizar discusión") }
+        CanvasResourceFeedback(state) { vm.refresh(true) }
         if (state.loading) CircularProgressIndicator()
-        state.data?.let { data -> CanvasDiscussionEntries(data.view.orEmpty(), data.participants.orEmpty()) }
-        CanvasExternalButton(topic.htmlUrl, "Responder en Canvas")
+        if (current.userCanSeePosts == false) Text("Canvas requiere tu participación o permisos adicionales para mostrar las intervenciones.")
+        else state.data?.let { data -> CanvasDiscussionEntries(data.view.orEmpty(), data.participants.orEmpty(), course, topic.id, token) { target = it } }
+        if (target != null) TextButton(onClick = { target = null }) { Text("Cancelar respuesta al comentario") }
+        if (topicState.data != null && canvasCanReply(current)) {
+            CanvasComposer("topic:$course:${topic.id}:$target", token,
+                label = if (target == null) "Participar en la discusión" else "Responder al comentario",
+                afterSend = { metadata.refresh(true); vm.refresh(true) }) { message ->
+                repository.postEntry(course, topic.id, target, message)
+            }
+        } else if (!topicState.loading) Text("La participación está restringida o no se pudo verificar la discusión.")
     }
 }
 
 @Composable
-private fun CanvasDiscussionEntries(entries: List<CanvasDiscussionEntry>, people: List<CanvasParticipant>, depth: Int = 0) {
+private fun CanvasDiscussionEntries(entries: List<CanvasDiscussionEntry>, people: List<CanvasParticipant>,
+    course: Long, topic: Long, token: String, reply: (Long) -> Unit) {
     val rows = remember(entries) {
-        val pending = java.util.ArrayDeque<Pair<Int, CanvasDiscussionEntry>>()
-        entries.asReversed().forEach { pending.addFirst(depth to it) }
+        val pending = java.util.ArrayDeque<Triple<Int, Long?, CanvasDiscussionEntry>>()
+        entries.asReversed().forEach { pending.addFirst(Triple(0, it.id, it)) }
         buildList {
             while (pending.isNotEmpty()) {
                 val next = pending.removeFirst()
                 add(next)
-                next.second.replies.orEmpty().asReversed().forEach { pending.addFirst((next.first + 1) to it) }
+                next.third.replies.orEmpty().asReversed().forEach { pending.addFirst(Triple(next.first + 1, next.second, it)) }
             }
         }
     }
-    rows.forEach { (level, entry) ->
+    rows.forEach { (level, parent, entry) ->
         Column(Modifier.padding(start = (level.coerceAtMost(6) * 12).dp)) {
             HorizontalDivider()
             Text("${people.firstOrNull { it.id == entry.userId }?.let { it.displayName ?: it.name } ?: "Autor no disponible"} · ${entry.createdAt.orEmpty()}")
-            if (entry.deleted == true) Text("Entrada eliminada") else HtmlText(entry.message.orEmpty())
-            if (entry.hasMoreReplies == true) Text("Canvas indica que hay más respuestas. Abrir el hilo en Canvas.")
+            if (entry.deleted == true) Text("Entrada eliminada") else {
+                HtmlText(entry.message.orEmpty())
+                if (parent != null) TextButton(onClick = { reply(parent) }) { Text("Responder") }
+            }
+            if (entry.hasMoreReplies == true && parent != null) {
+                var expanded by remember(entry.id) { mutableStateOf(false) }
+                TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Ocultar respuestas" else "Cargar todas las respuestas") }
+                if (expanded) {
+                    val more = canvasResourceViewModel("replies:$course:$topic:$parent", token, emptyList<CanvasDiscussionEntry>()) { discussionReplies(course, topic, parent) }
+                    val moreState by more.state.collectAsState()
+                    CanvasResourceFeedback(moreState) { more.refresh(true) }
+                    moreState.data.forEach { r ->
+                        Text("${people.firstOrNull { it.id == r.userId }?.name ?: "Autor no disponible"} · ${r.createdAt.orEmpty()}")
+                        if (r.deleted == true) Text("Entrada eliminada") else HtmlText(r.message.orEmpty())
+                    }
+                }
+            }
         }
     }
 }
@@ -327,6 +375,7 @@ internal fun CanvasFolders(course: Long, token: String) {
     val context = LocalContext.current
     val vm = canvasCachedList("folders:$course", token, CanvasFolder::class.java) { folders(course) }
     var selected by remember { mutableStateOf<CanvasFolder?>(null) }
+    val folderState by vm.state.collectAsState()
     var metadata by remember { mutableStateOf<CanvasFileDetail?>(null) }
     CanvasReadList(vm) { folder ->
         TextButton(onClick = { selected = folder }, enabled = folder.id != null) { Text(folder.name ?: "Carpeta") }
@@ -338,6 +387,9 @@ internal fun CanvasFolders(course: Long, token: String) {
             val state by files.state.collectAsState()
             CanvasResourceFeedback(state) { files.refresh(true) }
             if (state.loading) CircularProgressIndicator()
+            val parent = folderState.data.firstOrNull { it.id == folder.parentFolderId }
+            if (parent != null) TextButton(onClick = { selected = parent }) { Text("Subir a ${parent.name ?: "carpeta superior"}") }
+            folderState.data.filter { it.parentFolderId == folder.id }.forEach { child -> TextButton(onClick = { selected = child }) { Text("Carpeta: ${child.name ?: "Sin nombre"}") } }
             state.data.forEach { file -> TextButton(onClick = { metadata = file }) { Text(file.fileName) } }
         }
     }
@@ -348,7 +400,7 @@ internal fun CanvasFolders(course: Long, token: String) {
         CanvasReadDetail(state.data.fileName, { metadata = null }) {
             Text("${state.data.formattedSize} · ${state.data.contentType.orEmpty()}")
             Text("Actualizado: ${state.data.updatedAt ?: "No disponible"}")
-            TextButton(onClick = { openCanvasContentLink(context, state.data.url) }, enabled = state.data.url != null) { Text("Descargar") }
+            CanvasDocument(state.data, token)
         }
     }
 }
